@@ -12,7 +12,7 @@ import {
   readPendingGithubReconnect,
   safeGitHubReconnectReturnUrl,
 } from './github-reauthorization-banner.component';
-import { digestOAuthState } from './oauth-state-digest';
+import { hashOAuthState } from './oauth-state-hash';
 
 describe('GitHub reauthorization handoff', () => {
   afterEach(() => sessionStorage.removeItem(GITHUB_RECONNECT_SESSION_KEY));
@@ -38,21 +38,21 @@ describe('GitHub reauthorization handoff', () => {
     expect(safeGitHubReconnectReturnUrl('/new-project?store=github&returnUrl=https://evil.example')).toBe('/');
   });
 
-  it('accepts only the stored OAuth state digest and a valid operation envelope', async () => {
+  it('accepts only the stored OAuth state hash and a valid operation envelope', async () => {
     sessionStorage.setItem(
       GITHUB_RECONNECT_SESSION_KEY,
       JSON.stringify({
         operationID: '11111111-1111-4111-8111-111111111111',
         firebaseUID: 'firebase-actor',
-        oauthStateDigest: await digestOAuthState('state-expected'),
+        oauthStateHash: await hashOAuthState('state-expected'),
         returnUrl: '/projects/repo?branch=work',
         requiredScopes: ['repo'],
       }),
     );
-    expect(readPendingGithubReconnect(await digestOAuthState('different-state'))).toBeUndefined();
+    expect(readPendingGithubReconnect(await hashOAuthState('different-state'))).toBeUndefined();
     expect(readPendingGithubReconnect(undefined)).toBeUndefined();
     expect(readPendingGithubReconnect('state-expected')).toBeUndefined();
-    expect(readPendingGithubReconnect(await digestOAuthState('state-expected'))).toMatchObject({
+    expect(readPendingGithubReconnect(await hashOAuthState('state-expected'))).toMatchObject({
       firebaseUID: 'firebase-actor',
       returnUrl: '/projects/repo?branch=work',
       requiredScopes: ['repo'],
@@ -105,7 +105,7 @@ describe('GitHub reauthorization handoff', () => {
     expect(stored).not.toContain('expected-state');
     expect(JSON.parse(stored)).toMatchObject({
       firebaseUID: 'firebase-actor',
-      oauthStateDigest: await digestOAuthState('expected-state'),
+      oauthStateHash: await hashOAuthState('expected-state'),
       returnUrl: '/new-project?store=github',
       requiredScopes: ['repo', 'workflow'],
     });

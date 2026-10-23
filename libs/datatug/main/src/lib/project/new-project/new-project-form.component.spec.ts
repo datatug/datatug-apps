@@ -14,7 +14,7 @@ import type { IProjectRef } from '../../core/project-context';
 import { isValidProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
-import { digestOAuthState } from './oauth-state-digest';
+import { hashOAuthState } from './oauth-state-hash';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
@@ -1127,7 +1127,7 @@ describe('New project through authenticated common API', () => {
     h.component.create();
 
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
-    expect(h.component['oauthStateDigest']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['oauthResumePending']()).toBe(false);
     expect(h.connection.startOAuth).not.toHaveBeenCalled();
     setItem.mockRestore();
@@ -1153,12 +1153,12 @@ describe('New project through authenticated common API', () => {
 
     await vi.waitFor(() => expect(writes).toBe(4));
     expect(h.component['isCreating']()).toBe(false);
-    expect(h.component['oauthStateDigest']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
     setItem.mockRestore();
   });
 
-  it('stores only a digest of the OAuth state before redirecting to GitHub', async () => {
+  it('stores only a hash of the OAuth state before redirecting to GitHub', async () => {
     const h = await harness();
     h.select();
     h.connection.resolveOAuthRepository.mockReturnValue(
@@ -1174,7 +1174,7 @@ describe('New project through authenticated common API', () => {
     expect(stored).not.toContain('secure-state');
     expect(JSON.parse(stored)).toMatchObject({
       oauthResumePending: true,
-      oauthStateDigest: await digestOAuthState('secure-state'),
+      oauthStateHash: await hashOAuthState('secure-state'),
     });
     expect(JSON.parse(stored)).not.toHaveProperty('oauthState');
     assign.mockRestore();
@@ -1196,7 +1196,7 @@ describe('New project through authenticated common API', () => {
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    expect(h.component['oauthStateDigest']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['isCreating']()).toBe(false);
     expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
   });

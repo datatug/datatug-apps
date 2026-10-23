@@ -8,13 +8,13 @@ import { readGithubProjectId } from '@datatug/project-address';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { Router } from '@angular/router';
-import { digestOAuthState, isOAuthStateDigest } from './oauth-state-digest';
+import { hashOAuthState, isOAuthStateHash } from './oauth-state-hash';
 
 export interface PendingGithubReconnect {
   readonly operationID: string;
   readonly firebaseUID: string;
-  /** SHA-256 digest of the OAuth state; the state itself is never stored. */
-  readonly oauthStateDigest: string;
+  /** SHA-256 hash of the OAuth state; the state itself is never stored. */
+  readonly oauthStateHash: string;
   readonly returnUrl: string;
   readonly requiredScopes: readonly ('repo' | 'workflow')[];
 }
@@ -142,14 +142,14 @@ export class GitHubReauthorizationBannerComponent {
               throw new Error('Missing authorization state');
             }
             const requiredScopes = this.requiredScopes();
-            digestOAuthState(oauthState).then(
-              (oauthStateDigest) => {
+            hashOAuthState(oauthState).then(
+              (oauthStateHash) => {
                 if (!isCurrent()) return;
                 try {
                   const pending: PendingGithubReconnect = {
                     operationID,
                     firebaseUID,
-                    oauthStateDigest,
+                    oauthStateHash,
                     returnUrl,
                     requiredScopes,
                   };
@@ -207,7 +207,7 @@ export function safeGitHubReconnectReturnUrl(value: string | null | undefined): 
 }
 
 export function readPendingGithubReconnect(
-  returnedStateDigest: string | undefined,
+  returnedStateHash: string | undefined,
 ): PendingGithubReconnect | undefined {
   try {
     const raw = sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY);
@@ -219,9 +219,9 @@ export function readPendingGithubReconnect(
       typeof pending.operationID !== 'string' ||
       !/^[0-9a-f-]{36}$/i.test(pending.operationID) ||
       typeof pending.firebaseUID !== 'string' ||
-      !returnedStateDigest ||
-      !isOAuthStateDigest(pending.oauthStateDigest) ||
-      pending.oauthStateDigest !== returnedStateDigest ||
+      !returnedStateHash ||
+      !isOAuthStateHash(pending.oauthStateHash) ||
+      pending.oauthStateHash !== returnedStateHash ||
       typeof pending.returnUrl !== 'string' ||
       !Array.isArray(pending.requiredScopes) ||
       !pending.requiredScopes.includes('repo') ||
