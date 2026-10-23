@@ -324,8 +324,49 @@ const VIEWPORTS = [
 ];
 
 test.describe('the hand-off holding page', () => {
+  // Founder 2026-10-23: "make datatug.app/demo open the demo project". `/demo` without a question is a replacing
+  // redirect to the demo project (the next test); only a question still gets the holding page, which shows it back.
+  test('/demo without a question opens the demo project, keeps the query (utm_…), and replaces itself in the history', async ({
+    page,
+    context,
+    baseURL,
+  }) => {
+    const origin = new URL(baseURL ?? '').origin;
+    const external = await stubExternal(context, (o) => o === origin);
+    const errors = consoleErrors(page);
+    await page.goto('/debug');
+    await page.goto('/demo?utm_source=landing&utm_medium=cta&lang=en');
+    await expect
+      .poll(() => new URL(page.url()).pathname + new URL(page.url()).search, { timeout: 20_000 })
+      .toBe(`${CANONICAL_PROJECT}?utm_source=landing&utm_medium=cta&lang=en`);
+    await expect(page.locator('#demo-holding-message')).toHaveCount(0);
+    const entries = await page.evaluate(() =>
+      (window as unknown as { navigation: { entries: () => { url: string }[] } }).navigation
+        .entries()
+        .map((entry) => new URL(entry.url).pathname),
+    );
+    expect(entries).not.toContain('/demo');
+    await page.goBack();
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/debug');
+    await settle(page); // Sentry injects its dialog asynchronously
+    await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
+    expect(dialogRequested(external)).toBe(false);
+    expect(errors).toEqual([]);
+  });
+
+  for (const path of ['/demo', '/Demo', '/demo;x=1']) {
+    test(`${path} without any query opens the demo project`, async ({ page, context, baseURL }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      await stubExternal(context, (o) => o === origin);
+      await page.goto(path);
+      await expect
+        .poll(() => new URL(page.url()).pathname + new URL(page.url()).search, { timeout: 20_000 })
+        .toBe(CANONICAL_PROJECT);
+    });
+  }
+
   for (const lang of ['en', 'ru'] as const) {
-    for (const withQuestion of [true, false]) {
+    for (const withQuestion of [true]) {
       for (const viewport of VIEWPORTS) {
         const question = lang === 'en' ? EN_QUESTION : RU_QUESTION;
         const label = `${lang}, ${withQuestion ? 'with' : 'without'} a question, ${viewport.name} px`;
@@ -432,7 +473,7 @@ test.describe('the hand-off holding page', () => {
     }
   }
 
-  test('/demo?q=… with sessionStorage and localStorage blocked: the question is shown, the URL is clean, a reload shows the no-question copy', async ({
+  test('/demo?q=… with sessionStorage and localStorage blocked: the question is shown, the URL is clean, a reload (no question left) opens the demo project', async ({
     page,
     context,
     baseURL,
@@ -464,12 +505,9 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
 
     await page.reload();
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible({
-      timeout: 20_000,
-    });
-    await expect(page.locator('#demo-holding-message')).toContainText(
-      SENTENCE.en.without,
-    );
+    await expect
+      .poll(() => new URL(page.url()).pathname + new URL(page.url()).search, { timeout: 20_000 })
+      .toBe(CANONICAL_PROJECT);
     await expect(page.locator('blockquote')).toHaveCount(0);
     await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
     expect(dialogRequested(external)).toBe(false);
@@ -1057,14 +1095,14 @@ test.describe('the hand-off holding page', () => {
     }) => {
       const origin = new URL(baseURL ?? '').origin;
       await stubExternal(context, (o) => o === origin);
-      await page.goto('/demo');
+      await page.goto(CANONICAL_START_CHAT);
       await page.goto(legacy);
       await expect
         .poll(() => new URL(page.url()).pathname + new URL(page.url()).search, { timeout: 20_000 })
         .toBe(canonical);
       // Replaced, not pushed: Back leaves the project instead of returning to the legacy spelling.
       await page.goBack();
-      await expect.poll(() => new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/demo');
+      await expect.poll(() => new URL(page.url()).pathname, { timeout: 20_000 }).toBe(CANONICAL_START_CHAT);
     });
   }
 
@@ -1325,7 +1363,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
   test('the old chat address with a question is replaced by start-chat: Back does not return to it', async ({ page, context, baseURL }) => {
     const origin = new URL(baseURL ?? '').origin;
     await stubExternal(context, (o) => o === origin);
-    await page.goto('/demo');
+    await page.goto(CANONICAL_START_CHAT);
     await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
     await page.goto(`${TRUSTED_ROOT}/chat?msg=${enc}`);
     await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
