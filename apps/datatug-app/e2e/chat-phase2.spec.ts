@@ -202,7 +202,24 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   expect(providerCalls).toBe(1);
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByRole('alertdialog')).toBeHidden();
+  await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeVisible();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.evaluate(() => {
+    const order: string[] = [];
+    (window as unknown as { chatOverlayOrder: string[] }).chatOverlayOrder = order;
+    document.addEventListener('ionPopoverDidDismiss', () => order.push('menu dismissed'), { once: true });
+    document.addEventListener('ionAlertWillPresent', () => order.push('confirmation opening'), { once: true });
+  });
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
+  await expect.poll(() => page.evaluate(() =>
+    (window as unknown as { chatOverlayOrder: string[] }).chatOverlayOrder,
+  )).toEqual(['menu dismissed', 'confirmation opening']);
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeHidden();
   await expect(page.getByRole('button', { name: /Chat session, New chat/ })).toBeVisible();
+  await expect(page.locator('ion-router-outlet#main-content')).not.toHaveAttribute('aria-hidden', 'true');
+  await expect(page.locator('body')).not.toHaveClass(/backdrop-no-scroll/);
+  expect(providerCalls).toBe(1);
 });
