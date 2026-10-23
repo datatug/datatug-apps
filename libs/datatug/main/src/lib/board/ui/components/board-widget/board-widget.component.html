@@ -77,7 +77,8 @@
   </section>
 } @else if (independent()) {
   <section class="ion-padding" aria-label="Independent chart sources">
-    @if (!embedded()) { @if (chartWidgetDef()?.title; as title) { <p>{{ title }}</p> } }
+    <!-- The chart's own title carries its dated null/unit disclosure; inside a card only an exact repeat of the card title is dropped. -->
+    @if (chartWidgetDef()?.title; as title) { @if (!embedded() || title !== cardTitle()) { <p class="chart-disclosure">{{ title }}</p> } }
     <div class="chart-view-switch" role="group" aria-label="Independent result view">
       <button type="button" [attr.aria-pressed]="chartView() === 'chart'" (click)="setChartView('chart')">Chart</button>
       <button type="button" [attr.aria-pressed]="chartView() === 'grid'" (click)="setChartView('grid')">Source rows</button>

@@ -282,6 +282,31 @@ test.describe('results grid toolbar', () => {
       ['cols', 'density', 'sig', 'v'].sort(),
     );
 
+    // AG reports the move a moment after the headers repaint, and only then is
+    // it stored: reload once the stored layout holds the order on screen.
+    const shownIds = await grid
+      .locator('.ag-header-cell:has([data-testid="header-name"])')
+      .evaluateAll((els) =>
+        els
+          .map((el) => ({
+            left: el.getBoundingClientRect().left,
+            id: el.getAttribute('col-id') ?? '',
+          }))
+          .sort((a, b) => a.left - b.left)
+          .map((c) => c.id),
+      );
+    expect(shownIds).toHaveLength(expected.length);
+    await expect
+      .poll(async () => {
+        const [entry] = await gridStorage(page);
+        const cols = (JSON.parse(entry?.value ?? '{}').cols ?? []) as {
+          colId: string;
+          hide: boolean;
+        }[];
+        return cols.filter((c) => !c.hide).map((c) => c.colId);
+      })
+      .toEqual(shownIds);
+
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
     // The remembered order is applied a moment after the rows, so wait for it.

@@ -38,9 +38,9 @@ test('server showcase and tutorial hold complete results without SQLite download
     await Promise.all([
       page.waitForResponse(response => response.request().method() === 'POST' &&
         response.url() === `https://ovdb.demodb.dev/v1/databases/${database}/dtql`, { timeout: 30_000 }),
-      inspector.getByRole('button', { name: 'Run on board', exact: true }).click(),
+      inspector.getByRole('button', { name: /^Refresh on board · / }).click(),
     ]);
-    await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+    await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
     await expect(inspector).toContainText(summary, { timeout: 30_000 });
     await expect(inspector.locator('table tbody tr')).toHaveCount(rowCount);
     expect(queries().length).toBeGreaterThan(before);
@@ -128,7 +128,7 @@ test('cross-database comparison runs one native server query and displays source
       (localProxy ? new URL(response.url()).pathname === endpoint : response.url() === endpoint),
   );
   await inspector
-    .getByRole('button', { name: 'Run on board', exact: true })
+    .getByRole('button', { name: /^Refresh on board · / })
     .click();
   const answered = await response;
   expect(answered.status()).toBe(200);

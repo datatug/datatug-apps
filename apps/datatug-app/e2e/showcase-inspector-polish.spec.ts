@@ -75,7 +75,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       });
       // Selecting this showcase tab auto-runs it; do not accidentally request an explicit second run.
       await expect(inspector).toContainText('17 rows · 3 columns');
-      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+      await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
       const details = inspector.locator('.source-details');
       await details.locator('summary').click();
       await expect(details).toContainText('live · OVDB server');
@@ -87,10 +87,10 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await tabs.nth(1).click();
       await tabs.nth(2).click();
       await expect(inspector).toContainText('17 rows · 3 columns');
-      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+      await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
       expect(posts).toBe(1);
-      await Promise.all([page.waitForResponse(response => isCloudRead(new URL(response.url())) && new URL(response.url()).pathname.replace(cloudPrefix, '') === '/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: 'Run on board', exact: true }).click()]);
-      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+      await Promise.all([page.waitForResponse(response => isCloudRead(new URL(response.url())) && new URL(response.url()).pathname.replace(cloudPrefix, '') === '/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: /^Refresh on board · / }).click()]);
+      await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
       expect(posts).toBe(2);
       await inspector.scrollIntoViewIfNeeded();
       await inspector.screenshot({ path: testInfo.outputPath(`inspector-${name}.png`) });

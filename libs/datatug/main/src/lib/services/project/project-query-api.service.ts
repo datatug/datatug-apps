@@ -416,6 +416,11 @@ export class ProjectQueryApiService {
     );
   }
 
+  /** The local agent's own identity endpoint: answers whenever the agent is reachable. */
+  agentInfo(ref: IProjectRef): Observable<unknown> {
+    return defer(() => this.storeApi.get<unknown>(ref.storeId, '/agent-info'));
+  }
+
   environmentReference(ref: IProjectRef): IProjectRef {
     const wire = this.reference(ref);
     return {

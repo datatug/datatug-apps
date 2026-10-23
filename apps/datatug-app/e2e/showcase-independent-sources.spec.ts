@@ -151,7 +151,7 @@ test(`ordinary source editing constructs a truthful two-source chart with ${tran
     .locator('sneat-datatug-board-card > ion-card')
     .filter({ hasText: 'Customer records by shared country' });
   await expect(
-    federationCard.getByRole('button', { name: 'Retry chart', exact: true }),
+    federationCard.getByRole('button', { name: /^Retry chart · / }),
   ).toHaveCount(0);
   await expect(federationCard).toContainText('17');
   expect(await renderedBoard(page)).toEqual(JSON.parse(before));

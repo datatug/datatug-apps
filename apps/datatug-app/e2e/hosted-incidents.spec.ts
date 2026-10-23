@@ -85,7 +85,10 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
       await route.fulfill({status: 200, json: {incident: savedIncident, event, receipt: body['operationId']}});
     } else if (endpoint === 'incident_action' && body?.['type'] === 'create') {
       expect(body['caseId']).toBeUndefined();
-      expect(body['context']).toEqual({ OrderID: { type: 'number', value: 11039 } });
+      // ea440351 removed the legacy free-typed Order ID field: context comes only from
+      // inputs mapped in the project (covered by the page's unit specs), so a plain
+      // report carries none.
+      expect(body['context']).toBeUndefined();
       expect(body['operationId']).toEqual(expect.stringMatching(/^operation-/));
       savedIncident = {
         ref: incidentRef, uid: 'INC-1', title: 'Order 11039 is missing',
@@ -111,12 +114,19 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await page.getByRole('button', { name: 'Set up private project for Incidents' }).click();
   const list = `/space/${spaceID}/store/firestore/project/${projectId}/incidents`;
   await expect(page).toHaveURL(new RegExp(`${list}$`));
-  await expect(page.getByRole('heading', { name: 'Incidents' })).toBeVisible();
-  await page.getByRole('link', { name: 'Create Incident' }).click();
+  // A new private project has no Incidents yet: its list opens on the
+  // empty-state welcome, whose primary action reports the first Incident.
+  // The /incidents page that set up the project stays in the DOM (and is still
+  // visible while Ionic animates the transition): read the project's own list page.
+  const shown = page.locator('sneat-datatug-hosted-incidents-page');
+  await expect(shown.getByRole('banner')).toContainText('Incidents');
+  await expect(shown.getByRole('heading', { name: 'Follow the evidence. Find the cause.', level: 1 })).toBeVisible();
+  await shown.getByRole('link', { name: 'Report an incident', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${list}/new\\?environment=demo$`));
   await page.getByRole('textbox', { name: 'Incident title' }).fill('Order 11039 is missing');
   await page.getByRole('textbox', { name: 'Incident description' }).fill('Customer reported a missing order.');
-  await page.getByRole('spinbutton', { name: 'Order ID' }).fill('11039');
+  await expect(page.getByRole('spinbutton', { name: 'Order ID' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Choose mapped incident inputs' })).toBeVisible();
   await page.getByRole('button', { name: 'Create incident' }).click();
   const detail = `${list}/${incidentRef.storeId}/${incidentRef.incidentId}?environment=demo`;
   await expect(page).toHaveURL(detail);
