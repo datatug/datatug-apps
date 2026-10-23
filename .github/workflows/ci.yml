@@ -18,6 +18,7 @@ on:
 
 permissions:
   actions: read
+  contents: read
 
 # Superseded PR runs are cancelled (a force-push or a new commit on the same pull request, a Renovate rebase), so they
 # stop spending runner time and network. Every other event gets a group of its own (the run id), so nothing else is
