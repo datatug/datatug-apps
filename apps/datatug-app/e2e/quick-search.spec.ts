@@ -89,7 +89,20 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     )
       return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
-      return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+      return route.fulfill({
+        json: {
+          id: '~',
+          folders: [],
+          items: [
+            {
+              id: 'top-customers',
+              title: 'Top Customers',
+              type: 'SQL',
+              createdAt: '2026-01-05T10:00:00Z',
+            },
+          ],
+        },
+      });
     // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
     // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
     if (path.endsWith('/agent-info'))
@@ -143,12 +156,12 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     return route.fulfill({ status: 404 });
   });
   await page.goto(projectPath + '/overview');
-  const overviewSearch = page.getByRole('searchbox', {
+  const overviewSearch = page.getByRole('combobox', {
     name: 'Quick Search',
     exact: true,
   });
   const overviewRows = page.locator(
-    'sneat-datatug-project:not(.ion-page-hidden) ion-card > ion-list > ion-item',
+    'sneat-datatug-project:not(.ion-page-hidden) section.overview-tab-panel > ion-list > ion-item',
   );
   await expect(overviewRows).toHaveCount(2);
   const rowBorders = await overviewRows.evaluateAll((rows) =>
@@ -164,13 +177,78 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   expect(rowBorders[0]).toBeGreaterThan(0);
   expect(rowBorders[1]).toBe(0);
   await overviewSearch.fill('Customers');
+  // Instant suggestions under the field; a saved query is the shared query row with its type badge.
+  const suggestions = page.getByRole('listbox', {
+    name: 'Quick Search suggestions',
+  });
+  await expect(suggestions).toBeVisible();
+  await expect(overviewSearch).toHaveAttribute('aria-expanded', 'true');
+  const querySuggestion = suggestions.getByRole('option', {
+    name: /Top Customers, SQL query/,
+  });
+  await expect(querySuggestion).toBeVisible();
+  await expect(
+    suggestions.locator('sneat-datatug-query-list-item .query-type-badge'),
+  ).toHaveText('SQL');
+  await expect(querySuggestion.locator('mark')).toHaveText('Customers');
+  await expect(
+    suggestions.getByRole('option', { name: /See all \d+ results/ }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('quick-search-overview-input.png'),
     fullPage: true,
   });
+  // At phone width the suggestions stay inside the page: no horizontal scroll.
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(querySuggestion).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('quick-search-overview-input-mobile.png'),
+  });
+  if (desktopViewport) await page.setViewportSize(desktopViewport);
   await overviewSearch.press('Enter');
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await page.locator('sneat-datatug-quick-search').waitFor();
+  const main = page.locator(
+    'sneat-datatug-quick-search[data-search-view=search]:not(.ion-page-hidden)',
+  );
+  const schemaPage = page.locator(
+    'sneat-datatug-quick-search[data-search-view=schema]:not(.ion-page-hidden)',
+  );
+  const tagPage = page.locator(
+    'sneat-datatug-quick-search[data-search-view=tags]:not(.ion-page-hidden)',
+  );
+  // Quick Search answers at once from the metadata the app already reads: no index, consent or upload.
+  const results = main.locator('ion-card.results-card');
+  await expect(
+    results.locator('ion-item-group > ion-item-divider h3'),
+  ).toHaveText(['Queries', 'Boards', 'Tables', 'Tags']);
+  // Results list the saved query with the same shared row and type badge as the suggestions.
+  await expect(
+    results.locator('sneat-datatug-query-list-item .query-type-badge'),
+  ).toHaveText('SQL');
+  await expect(
+    main.getByText('no search index yet', { exact: false }),
+  ).toHaveCount(0);
+  const chinookTable = results.locator('ion-item', {
+    hasText: 'Table · Chinook · dbo',
+  });
+  await expect(chinookTable).toBeVisible();
+  await expect(results.locator('mark').first()).toHaveText('Customers');
+  expect(uploads).toBe(0);
+
+  const settingsButton = main.getByRole('button', {
+    name: 'Index settings',
+    exact: true,
+  });
+  await settingsButton.click();
+  const settings = main.locator('#quick-search-index-settings');
+  await expect(settings).toBeVisible();
   // Development-only Angular debug API supplies the controlled HTTP fixture's
   // bearer token through the real auth bridge; no application test hook ships.
   await page.evaluate(() => {
@@ -187,85 +265,40 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       )
       .api.api.setApiAuthToken('quick-search-http-fixture');
   });
-  await page
-    .locator('sneat-datatug-quick-search')
-    .getByRole('button', { name: 'Retry status' })
+  await settings.getByRole('button', { name: 'Retry status' }).click();
+  await settings
+    .getByRole('button', { name: 'Preview selected metadata' })
     .click();
-  const main = page.locator(
-    'sneat-datatug-quick-search[data-search-view=search]:not(.ion-page-hidden)',
-  );
-  const schemaPage = page.locator(
-    'sneat-datatug-quick-search[data-search-view=schema]:not(.ion-page-hidden)',
-  );
-  const tagPage = page.locator(
-    'sneat-datatug-quick-search[data-search-view=tags]:not(.ion-page-hidden)',
-  );
   await expect(
-    main.getByText('no search index yet', { exact: false }),
-  ).toBeVisible();
-  await main
-    .getByRole('button', { name: 'Index settings', exact: true })
-    .click();
-  expect(uploads).toBe(0);
-  await main.getByRole('button', { name: 'Preview selected metadata' }).click();
-  await expect(
-    main.getByText('selected items.', { exact: false }),
+    settings.getByText('selected items.', { exact: false }),
   ).toBeVisible();
   await expect(
-    main.getByRole('button', { name: 'Enable and index', exact: true }),
+    settings.getByRole('button', { name: 'Enable and index', exact: true }),
   ).toBeDisabled();
   expect(uploads).toBe(0);
-  await main.locator('ion-checkbox').click();
+  await settings.locator('ion-checkbox').click();
   expect(uploads).toBe(0);
-  await main
+  await settings
     .getByRole('button', { name: 'Enable and index', exact: true })
     .click();
   await expect.poll(() => uploads).toBe(1);
-  await main
-    .getByRole('textbox', {
-      name: 'Search project names and tags',
-      exact: true,
-    })
-    .fill('Customers');
-  await main.getByRole('button', { name: 'Search', exact: true }).click();
-  await expect(main.locator('.results > li')).toHaveCount(1);
-  await expect(main.locator('.results > li').last()).toHaveCSS(
-    'border-bottom-width',
-    '0px',
-  );
+  // The ready index adds the Northwind table; every result row is a real link.
+  const northwind = results.getByRole('link', {
+    name: /Customers Table · Northwind · dbo/,
+  });
+  await expect(northwind).toBeVisible();
   await expect(
-    main.getByRole('link', { name: 'Table@Chinook', exact: true }),
-  ).toBeVisible();
-  await expect(
-    main.getByRole('link', { name: 'Table@Northwind', exact: true }),
-  ).toBeVisible();
-  await expect(
-    main.getByRole('link', { name: 'Table@Northwind', exact: true }),
+    results.locator('ion-item', { hasText: 'Table · Northwind · dbo' }),
   ).toHaveAttribute(
     'href',
     /search-schema\/Northwind\?schema=dbo&table=Customers/,
   );
-  await main
-    .getByRole('button', { name: 'Index settings', exact: true })
-    .click();
   await page.screenshot({
     path: testInfo.outputPath('quick-search-grouped-desktop.png'),
     fullPage: true,
   });
-  await page.getByRole('link', { name: 'Overview', exact: true }).click();
-  await page
-    .getByRole('searchbox', { name: 'Quick Search', exact: true })
-    .fill('Customers');
-  await page
-    .getByRole('searchbox', { name: 'Quick Search', exact: true })
-    .press('Enter');
-  await expect(page).toHaveURL(/quick-search\?q=Customers$/);
-  await expect(main.locator('.results > li')).toHaveCount(1);
+
   await page.setViewportSize({ width: 390, height: 844 });
-  await main.getByRole('link', { name: 'Table@Chinook', exact: true }).focus();
-  await expect(
-    main.getByRole('link', { name: 'Table@Chinook', exact: true }),
-  ).toBeFocused();
   await page.screenshot({
     path: testInfo.outputPath('quick-search-grouped-mobile.png'),
     fullPage: true,
@@ -275,9 +308,13 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await main
-    .getByRole('link', { name: 'Table@Chinook', exact: true })
-    .press('Enter');
+  // Keyboard: focus a result row and open it with Enter.
+  const chinookLink = results.getByRole('link', {
+    name: /Customers Table · Chinook · dbo/,
+  });
+  await chinookLink.focus();
+  await expect(chinookLink).toBeFocused();
+  await chinookLink.press('Enter');
   await expect(page).toHaveURL(
     /search-schema\/Chinook\?schema=dbo&table=Customers/,
   );
@@ -300,35 +337,36 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   await page.goBack();
   await expect(main).toHaveCount(1);
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
-  await expect(
-    main.getByRole('link', { name: 'Table@Northwind', exact: true }),
-  ).toBeVisible();
-  await main.locator('a.name').click();
+  await results.locator('ion-item', { hasText: 'Tag · ' }).click();
   await expect(page).toHaveURL(/\/tags\?name=Customers/);
   await expect(
     tagPage.getByText('Items explicitly tagged', { exact: false }),
   ).toBeVisible();
-  await expect(tagPage.locator('.results > li')).toHaveCount(1);
+  // The board and tables carry the tag only in their full files, which the ready index holds.
+  await expect(
+    tagPage.locator('ion-item-group > ion-item-divider h3'),
+  ).toHaveText(['Boards', 'Tables']);
   await page.goBack();
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
-  await main
-    .getByRole('button', { name: 'Index settings', exact: true })
-    .click();
-  await main
+  if (!(await settings.isVisible())) await settingsButton.click();
+  await settings
     .getByRole('button', { name: 'Disable and delete index', exact: true })
     .click();
-  await main
+  await settings
     .getByRole('button', { name: 'Confirm disable and delete', exact: true })
     .click();
-  await expect(main.getByRole('alert')).toContainText('Index operation failed');
-  await main
+  await expect(settings.getByRole('alert')).toContainText(
+    'Index operation failed',
+  );
+  await settings
     .getByRole('button', { name: 'Confirm disable and delete', exact: true })
     .click();
   await expect(
-    main.getByText('no search index yet', { exact: false }),
+    settings.getByText('Hosted index: not enabled', { exact: false }),
   ).toBeVisible();
   expect(deletes).toBe(2);
-  await page.setViewportSize({ width: 390, height: 844 });
+  // Search keeps working without the index.
+  await expect(chinookTable).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('quick-search-disabled-mobile.png'),
     fullPage: true,

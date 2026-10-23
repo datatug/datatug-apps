@@ -91,7 +91,7 @@ test('overview query sorting uses persisted creation dates and native Ionic tabs
   await page.goto(PROJECT_URL);
   await page.getByRole('button', { name: 'Queries', exact: true }).click();
   const preview = page.locator('sneat-datatug-project-queries-preview');
-  const rows = preview.locator('ion-item[button] h3');
+  const rows = preview.locator('sneat-datatug-query-list-item h3');
   await expect(rows).not.toHaveCount(0);
   await expect(page.locator('.overview-tabs ion-chip')).toHaveText(String(await rows.count()));
   await expect(preview.locator('ion-card-title')).toHaveCount(0);

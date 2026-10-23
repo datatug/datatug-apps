@@ -167,36 +167,16 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
-  it('submits the overview query to Quick Search while preserving project qualifiers', () => {
+  it('clears the overview Quick Search text when the project changes', () => {
     const page = component as unknown as {
-      setProjRef(ref: {
-        storeId: string;
-        projectId: string;
-        projectApi: 'cloud';
-        branch: string;
-      }): void;
+      setProjRef(ref: { storeId: string; projectId: string }): void;
     };
-    page.setProjRef({
-      storeId: 'github.com',
-      projectId: 'repo@owner@',
-      projectApi: 'cloud',
-      branch: 'main',
-    });
-    component.quickSearchQuery.set(' Customers ');
-    const event = new Event('submit', { cancelable: true });
-    component.submitQuickSearch(event);
-    expect(event.defaultPrevented).toBe(true);
-    const router = TestBed.inject(Router),
-      navigate = vi.mocked(router.navigateByUrl);
-    expect(navigate).toHaveBeenCalledOnce();
-    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe(
-      '/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers',
-    );
-  });
-  it('does not navigate with an empty overview query', () => {
-    component.quickSearchQuery.set('  ');
-    component.submitQuickSearch(new Event('submit'));
-    expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    component.quickSearchQuery.set('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    expect(component.quickSearchQuery()).toBe('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'other@owner@' });
+    expect(component.quickSearchQuery()).toBe('');
   });
 
   it('offers the private sandbox route only for the canonical DemoDB project', () => {
@@ -477,6 +457,19 @@ describe('ProjectPage rendering a local-agent store project', () => {
     },
   );
 
+  it('puts the instant Quick Search box on the overview, bound to the project', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const box = fixture.nativeElement.querySelector(
+      'sneat-datatug-project-quick-search-box.overview-quick-search',
+    );
+    expect(box).not.toBeNull();
+    // The old submit-only form is gone: suggestions come from the shared box.
+    expect(
+      fixture.nativeElement.querySelector('form.overview-quick-search'),
+    ).toBeNull();
+  });
+
   it('shows one set of four overview tabs and opens the selected content', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
@@ -593,6 +586,90 @@ describe('ProjectPage rendering a local-agent store project', () => {
     await expectSandboxSignInCopy(
       of({ status: 'authenticating', user: { uid: 'pending-user' } }),
     );
+  });
+
+  it('heads each overview card with a link to its full page and filters Boards and Entities client-side', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const assets = TestBed.inject(ProjectAssetsReadService);
+    vi.mocked(assets.boards).mockReturnValue(
+      of([
+        { id: 'sales', title: 'Sales board' },
+        { id: 'ops', title: 'Operations' },
+      ]) as never,
+    );
+    vi.mocked(assets.entities).mockReturnValue(
+      of([
+        { id: 'customer', title: 'Customer' },
+        { id: 'invoice', title: 'Invoice' },
+      ]) as never,
+    );
+    const page = fixture.componentInstance as unknown as {
+      retryMetadata(): void;
+      selectTab(tab: string): void;
+    };
+    page.retryMetadata();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const base = `/store/localhost:8989/project/${summary.id}`;
+    const card = () =>
+      el.querySelector('sneat-datatug-project-tab-panel') as HTMLElement & {
+        titleHref?: string;
+      };
+    // happy-dom can report a stale empty textContent for projected nodes, so
+    // read the rendered markup instead.
+    const rows = () =>
+      [...card().querySelectorAll('ion-list ion-label')].map((label) =>
+        label.innerHTML.replace(/<[^>]*>/g, '').trim(),
+      );
+    expect(card().getAttribute('panelTitle')).toBe('Boards');
+    expect(card().titleHref).toBe(`${base}/boards`);
+    expect(rows()).toEqual(['Sales board', 'Operations']);
+    fixture.componentInstance.boardFilter.set('SALES');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Sales board']);
+    fixture.componentInstance.boardFilter.set('zzz');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['No boards match “zzz”.']);
+
+    page.selectTab('entities');
+    await fixture.whenStable();
+    expect(card().getAttribute('panelTitle')).toBe('Entities');
+    expect(card().titleHref).toBe(`${base}/entities`);
+    fixture.componentInstance.entityFilter.set('inv');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Invoice']);
+
+    page.selectTab('databases');
+    await fixture.whenStable();
+    const servers = el.querySelector(
+      'sneat-datatug-project-database-servers-preview',
+    );
+    expect(servers).not.toBeNull();
+  });
+
+  it('places the DemoDB sandbox card above the environments and the tabs', async () => {
+    const fixture = await createPage(
+      'github.com',
+      'datatug-demo-project@datatug@demo-project-1',
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const sandbox = el.querySelector('.sandbox-summary');
+    const environments = el.querySelector('.overview-environments');
+    const tabs = el.querySelector('.overview-tabs');
+    if (!sandbox || !environments || !tabs)
+      throw new Error('The sandbox card, environments and tabs must render.');
+    expect(sandbox.getAttribute('cardTitle')).toBe('Private DemoDB sandbox');
+    expect(
+      sandbox.compareDocumentPosition(environments) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sandbox.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('settles the Boards asset list out of its loading state for a local agent', async () => {
@@ -933,38 +1010,58 @@ describe('ProjectPage overview lists', () => {
 
   it.each([
     ['a 401', { status: 401 }, 'Sign in to see environments.', false],
-    ['a 403', { status: 403 }, 'Seeing environments needs access to this project in DataTug.', true],
+    [
+      'a 403',
+      { status: 403 },
+      'Seeing environments needs access to this project in DataTug.',
+      true,
+    ],
     ['an outage', { status: 503 }, undefined, true],
-  ])('words %s on the overview environments read before the shared mapping, and logs only real failures', async (_name, error, hint, logged) => {
-    const logError = vi.fn();
-    await TestBed.configureTestingModule({
-      imports: [ProjectPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [
-        ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
-        {
-          provide: ProjectAssetsReadService,
-          useValue: {
-            boards: vi.fn(() => of([])),
-            environments: vi.fn(() => throwError(() => error)),
-            entities: vi.fn(() => of([])),
+  ])(
+    'words %s on the overview environments read before the shared mapping, and logs only real failures',
+    async (_name, error, hint, logged) => {
+      const logError = vi.fn();
+      await TestBed.configureTestingModule({
+        imports: [ProjectPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          ...baseProviders({
+            logError,
+            watchProjectSummary: vi.fn(() => of()),
+          }),
+          {
+            provide: ProjectAssetsReadService,
+            useValue: {
+              boards: vi.fn(() => of([])),
+              environments: vi.fn(() => throwError(() => error)),
+              entities: vi.fn(() => of([])),
+            },
           },
-        },
-      ],
-    })
-      .overrideComponent(ProjectPageComponent, {
-        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        ],
       })
-      .compileComponents();
-    const page = TestBed.createComponent(ProjectPageComponent)
-      .componentInstance as unknown as {
-      setProjRef(ref: { storeId: string; projectId: string }): void;
-      environmentErrorMessage: { (): string | undefined };
-    };
-    page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
-    expect(page.environmentErrorMessage()).toBe(hint);
-    expect(logError.mock.calls.some(([, what]) => what === 'Failed to load overview environments')).toBe(logged);
-  });
+        .overrideComponent(ProjectPageComponent, {
+          set: {
+            imports: [],
+            template: '',
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
+      const page = TestBed.createComponent(ProjectPageComponent)
+        .componentInstance as unknown as {
+        setProjRef(ref: { storeId: string; projectId: string }): void;
+        environmentErrorMessage: { (): string | undefined };
+      };
+      page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+      expect(page.environmentErrorMessage()).toBe(hint);
+      expect(
+        logError.mock.calls.some(
+          ([, what]) => what === 'Failed to load overview environments',
+        ),
+      ).toBe(logged);
+    },
+  );
 
   it('drops delayed data from the previous project and navigates using the current project', async () => {
     const oldEnvironments = new Subject<{ id: string; title: string }[]>();

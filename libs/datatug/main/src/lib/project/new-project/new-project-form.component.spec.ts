@@ -1,3 +1,4 @@
+import type { GithubReauthorizationReason } from '../../services/project/project-query-api.service';
 import { DemoProjectContinuationService } from './demo-project-continuation.service';
 import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
@@ -94,9 +95,15 @@ async function harness(
   const createCloud = vi.fn(() => of('cloud-id'));
   const createStatus = vi.fn(() => of({ ...created, status: 'pending_merge' }));
   const pendingGithubProjectSetups = vi.fn(() => of({ setups: [] as PendingGithubProjectSetup[], truncated: false }));
-  const githubReauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
-  const reportGithubReauthorizationRequired = vi.fn((ref: IProjectRef, requiredScopes: readonly ('repo' | 'workflow')[] = ['repo']) =>
-    githubReauthorizationRequired.next({ ref, requiredScopes }));
+  const githubReauthorizationRequired = new Subject<{
+    ref: IProjectRef;
+    requiredScopes: readonly ('repo' | 'workflow')[];
+    reason: GithubReauthorizationReason;
+  }>();
+  const reportGithubReauthorizationRequired = vi.fn(
+    (ref: IProjectRef, requiredScopes: readonly ('repo' | 'workflow')[], reason: GithubReauthorizationReason) =>
+      githubReauthorizationRequired.next({ ref, requiredScopes, reason }),
+  );
   const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
   const startResult = new Subject<{ authorizationURL: string }>();
   const createSpace = vi.fn(() => spaceResult);
@@ -429,6 +436,18 @@ describe('New project through authenticated common API', () => {
     expect(h.component['pendingGithubSetups']()).toEqual([]);
   });
 
+  it.each([
+    ['authorization_required', 'access_denied'],
+    ['reauthorization_required', 'expired'],
+  ] as const)('reports %s on a replayed setup as %s, never claiming expiry without evidence', async (code, reason) => {
+    const h = await harness();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.create.mockReturnValue(throwError(() => ({ status: 409, error: { error: { code } } })) as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pendingSetup);
+    expect(h.reportGithubReauthorizationRequired).toHaveBeenCalledWith(expect.anything(), ['repo'], reason);
+  });
+
   it('requests combined scopes when replaying a CI setup requires workflow authorization', async () => {
     const h = await harness();
     h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
@@ -442,6 +461,7 @@ describe('New project through authenticated common API', () => {
     expect(h.reportGithubReauthorizationRequired).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: 'github.com', projectId: 'repo@owner@datatug' }),
       ['repo', 'workflow'],
+      'scope_required',
     );
     expect(h.component['isRefreshingPendingSetup'](pendingSetup)).toBe(false);
     const reauthRef = h.reportGithubReauthorizationRequired.mock.calls[0][0];

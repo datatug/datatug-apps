@@ -1,11 +1,15 @@
 import { Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { IonButton, IonCard, IonCardContent } from '@ionic/angular';
+import { IonButton, IonButtons, IonCard, IonCardContent, IonIcon, IonItemDivider, IonLabel } from '@ionic/angular';
+import { closeOutline, logoGithub, warningOutline } from 'ionicons/icons';
 import { filter, switchMap, take, map } from 'rxjs';
 import { IProjectRef, equalProjectRef } from '../../core/project-context';
 import { readGithubProjectId } from '@datatug/project-address';
-import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
+import {
+  GithubReauthorizationReason,
+  ProjectQueryApiService,
+} from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { Router } from '@angular/router';
 import { sha256Hex, isSha256Hex } from './sha256-hex';
@@ -23,25 +27,151 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
 
 @Component({
   selector: 'sneat-datatug-github-reauthorization-banner',
-  imports: [IonButton, IonCard, IonCardContent],
+  imports: [IonButton, IonButtons, IonCard, IonCardContent, IonIcon, IonItemDivider, IonLabel],
+  styles: `
+    /* The app's global divider rule (styles.scss) paints every divider light; this status header keeps Ionic's
+       warning colour, with its own contrast colour for the icon and title in light and dark mode. */
+    .reauthorization-header {
+      --background: var(--ion-color-warning);
+      --color: var(--ion-color-warning-contrast);
+      background: var(--ion-color-warning);
+      color: var(--ion-color-warning-contrast);
+    }
+    .reauthorization-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    /* Message and action share one line on wide screens; the button wraps
+       below, right-aligned, on a narrow one. */
+    .reauthorization-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 16px;
+    }
+    .reauthorization-text {
+      flex: 1 1 18rem;
+    }
+    .reauthorization-text p {
+      margin: 0;
+    }
+    .reauthorization-text p + p {
+      margin-top: 8px;
+    }
+    .reauthorization-row ion-button {
+      flex: 0 0 auto;
+      margin: 0 0 0 auto;
+    }
+  `,
   template: `
     @if (required()) {
-      <ion-card color="warning" data-testid="github-reauthorization">
-        <ion-card-content>
-          <p>GitHub access expired. Reconnect to continue. GitHub authorization applies to your account; it is not limited to this repository.</p>
-          @if (error()) {
-            <p role="alert">{{ error() }}</p>
-          }
-          <ion-button fill="outline" [disabled]="reconnecting()" (click)="reconnect()">
-            {{ reconnecting() ? 'Connecting…' : 'Reconnect GitHub' }}
-          </ion-button>
-        </ion-card-content>
-      </ion-card>
+      @if (reason() === 'expired') {
+        <ion-card data-testid="github-reauthorization">
+          <!-- A status card: the warning header (Ionic warning colour and its contrast colour for the icon and title)
+               marks it as an alert; the body stays neutral. -->
+          <ion-item-divider color="warning" class="reauthorization-header">
+            <ion-icon slot="start" [icon]="warningIcon" aria-hidden="true" />
+            <ion-label><h2 class="reauthorization-title">GitHub access expired.</h2></ion-label>
+          </ion-item-divider>
+          <ion-card-content class="reauthorization-row">
+            <div class="reauthorization-text">
+              <p>Reconnect to continue. GitHub authorization applies to your account; it is not limited to this repository.</p>
+              @if (error()) {
+                <p role="alert">{{ error() }}</p>
+              }
+            </div>
+            <ion-button fill="outline" [disabled]="reconnecting()" (click)="reconnect()">
+              {{ reconnecting() ? 'Connecting…' : 'Reconnect GitHub' }}
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      } @else if (!hintDismissed()) {
+        <!-- Not connected yet, or access refused with no reason given: a neutral card, never "expired" without
+             evidence. On a public repository reads work anonymously, so it is a dismissible hint. -->
+        <ion-card data-testid="github-connect" [attr.data-reason]="reason()">
+          <ion-item-divider color="light">
+            <ion-icon slot="start" [icon]="githubIcon" aria-hidden="true" />
+            <ion-label
+              ><h2 class="reauthorization-title">
+                {{ connectTitle() }}
+              </h2></ion-label
+            >
+            @if (softHint()) {
+              <ion-buttons slot="end">
+                <ion-button color="medium" aria-label="Dismiss" title="Dismiss" (click)="dismissHint()">
+                  <ion-icon [icon]="closeIcon" aria-hidden="true" />
+                </ion-button>
+              </ion-buttons>
+            }
+          </ion-item-divider>
+          <ion-card-content class="reauthorization-row">
+            <div class="reauthorization-text">
+              <p>{{ connectMessage() }}</p>
+              @if (error()) {
+                <p role="alert">{{ error() }}</p>
+              }
+            </div>
+            <ion-button fill="outline" [disabled]="reconnecting()" (click)="reconnect()">
+              {{ reconnecting() ? 'Connecting…' : 'Connect GitHub' }}
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      }
     }
   `,
 })
 export class GitHubReauthorizationBannerComponent {
   readonly projectRef = input.required<IProjectRef>();
+  /** The repository reads anonymously (public): a missing connection is then a soft, dismissible hint. */
+  readonly publicRepository = input(false);
+  protected readonly warningIcon = warningOutline;
+  protected readonly githubIcon = logoGithub;
+  protected readonly closeIcon = closeOutline;
+  readonly reason = signal<GithubReauthorizationReason>('expired');
+  readonly softHint = computed(
+    () => this.reason() === 'not_connected' && this.publicRepository(),
+  );
+  protected readonly connectTitle = computed(() => {
+    switch (this.reason()) {
+      case 'access_denied':
+        return 'GitHub access needed';
+      case 'scope_required':
+        return 'GitHub permission needed';
+      default:
+        return 'Connect GitHub';
+    }
+  });
+  protected readonly connectMessage = computed(() => {
+    switch (this.reason()) {
+      case 'access_denied':
+        return 'GitHub did not allow DataTug to use this repository with your current access. Connect GitHub to grant access.';
+      case 'scope_required':
+        return this.requiredScopes().includes('workflow')
+          ? "This also needs GitHub's workflow permission. Connect GitHub again to grant it."
+          : 'DataTug needs more GitHub permissions for this repository. Connect GitHub again to grant them.';
+      default:
+        return this.publicRepository()
+          ? 'Connect GitHub to edit this project or open private repositories.'
+          : 'This repository needs GitHub access. Connect GitHub to open it in DataTug.';
+    }
+  });
+  private readonly dismissals = signal<readonly string[]>([]);
+  /** A dismissed public-repository hint stays hidden for this project for the rest of the browser session. */
+  readonly hintDismissed = computed(() => {
+    if (!this.softHint()) return false;
+    const key = connectHintKey(this.projectRef());
+    return this.dismissals().includes(key) || readConnectHintDismissed(key);
+  });
+  dismissHint(): void {
+    const key = connectHintKey(this.projectRef());
+    this.dismissals.update((keys) => [...keys, key]);
+    try {
+      sessionStorage.setItem(key, '1');
+    } catch {
+      // Storage may be unavailable (private mode); the dismissal still holds for this page.
+    }
+  }
   readonly returnUrl = input<string | undefined>();
   private readonly requiredRef = signal<IProjectRef | undefined>(undefined);
   readonly required = computed(() => {
@@ -68,6 +198,8 @@ export class GitHubReauthorizationBannerComponent {
         if (equalProjectRef(request.ref, this.projectRef())) {
           this.requiredRef.set(request.ref);
           this.requiredScopes.set(request.requiredScopes);
+          // Without a typed reason there is no evidence of expiry.
+          this.reason.set(request.reason ?? 'access_denied');
         }
       });
     this.auth.authState
@@ -178,6 +310,20 @@ export class GitHubReauthorizationBannerComponent {
           );
         },
       });
+  }
+}
+
+const CONNECT_HINT_KEY_PREFIX = 'datatug:github:connect-hint-dismissed:';
+
+function connectHintKey(ref: IProjectRef): string {
+  return `${CONNECT_HINT_KEY_PREFIX}${ref.storeId}/${ref.projectId}`;
+}
+
+function readConnectHintDismissed(key: string): boolean {
+  try {
+    return sessionStorage.getItem(key) === '1';
+  } catch {
+    return false;
   }
 }
 
