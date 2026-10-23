@@ -25,6 +25,7 @@ const mutations = [
   { name: 'dropped memo lookup', file: logic, from: 'const cached = hasRange ? undefined : memoGet(key);', to: 'const cached = undefined as Stored | undefined;' },
   { name: '52x treated as non-blocking', file: state, from: '[403, 503, 520, 521, 522, 523, 524, 525, 526, 527, 530]', to: '[403, 503]' },
   { name: '429 treated as non-blocking', file: state, from: 'if (status === 429) return true;', to: 'if (status === 429) return false;' },
+  { name: 'GitHub quota 403 treated as non-blocking', file: state, from: "if (status === 403 && headers['x-ratelimit-remaining'] === '0') return true;", to: '' },
 ];
 
 let bad = 0;

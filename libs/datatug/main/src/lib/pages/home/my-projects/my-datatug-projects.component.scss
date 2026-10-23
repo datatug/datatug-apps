@@ -36,7 +36,7 @@
   align-items: center;
   padding: 20px 0;
 
-  & + & { border-top: 1px solid var(--ion-color-step-150, #e3e8ef); }
+  & + & { border-top: 1px solid var(--ion-background-color-step-150, #e3e8ef); }
 }
 
 .demo-overview, .demo-copy { min-width: 0; }
@@ -53,7 +53,7 @@
 
   p {
     margin: 0 0 14px;
-    color: var(--ion-color-step-600, #586779);
+    color: var(--dt-text-muted);
     font-size: 0.875rem;
     line-height: 1.55;
   }
@@ -127,4 +127,11 @@ ion-item-divider h3 {
   .demo-copy h3 { font-size: 1rem; }
 
   .empty-project-visual { height: 90px; }
+}
+
+// The pencil sketches are dark line art on white paper, drawn with multiply; on a dark surface invert them
+// to light lines (screen drops the now-black paper).
+:host-context(.ion-palette-dark) .empty-project-visual, :host-context(.ion-palette-dark) .demo-visual {
+  mix-blend-mode: screen;
+  filter: grayscale(1) invert(1);
 }

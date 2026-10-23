@@ -1,6 +1,7 @@
 import { IRecordsetCheckResults, IRecordsetResult } from '../dto/execute';
 import {
   IRecordsetCheckDef,
+  IRecordsetMaxCountCheckDef,
   IRecordsetMinCountCheckDef,
 } from '../models/definition/checks/recordset-checks';
 import { IRecordsetDef } from '../models/definition/recordset';
@@ -59,7 +60,7 @@ export const newRecordsetCheckFromDef = (
     case 'min':
       return new RecordsetMinCountCheck(def as IRecordsetMinCountCheckDef);
     case 'max':
-      return new RecordsetMaxCountCheck(def as IRecordsetMinCountCheckDef);
+      return new RecordsetMaxCountCheck(def as IRecordsetMaxCountCheckDef);
     default:
       throw new Error(`unknown recordset check type: ${def.type}`);
   }

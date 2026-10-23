@@ -16,7 +16,9 @@ export interface NativeSourceInvalidation {
 }
 export interface NativeSourceInterest {
   readonly environment: string;
-  readonly sourceId: string;
+  /** Omit when no admitted source binding is available: conservatively watch
+   * every source in this actor/project/environment. This grants no access. */
+  readonly sourceId?: string;
 }
 export function matchesNativeSourceInvalidation(
   event: NativeSourceInvalidation,
@@ -28,7 +30,7 @@ export function matchesNativeSourceInvalidation(
     !!interest &&
     event.actor === actor &&
     equalProjectRef(event.projectRef, ref) &&
-    event.sourceId === interest.sourceId &&
+    (interest.sourceId === undefined || event.sourceId === interest.sourceId) &&
     (event.environment === undefined ||
       event.environment === interest.environment)
   );

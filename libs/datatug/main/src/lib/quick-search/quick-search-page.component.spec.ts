@@ -116,7 +116,7 @@ describe('Quick Search consent and async state', () => {
     api.status.mockReturnValue(of({...ready,state:'disabled'}));
     const fixture=TestBed.createComponent(QuickSearchPageComponent);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Quick Search is disabled');
+    expect(fixture.nativeElement.textContent).toContain('no search index yet');
     expect(fixture.nativeElement.textContent).not.toContain('0 names');
     const button=[...fixture.nativeElement.querySelectorAll('ion-button')].find((b:unknown)=>(b as HTMLElement).textContent?.trim()==='Open Index settings') as HTMLElement;
     expect(button).toBeTruthy();button.click();

@@ -1,8 +1,7 @@
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { Component, CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
@@ -13,6 +12,7 @@ import { DatatugUserService } from '../../../services/base/datatug-user-service'
 import { datatugProjectRoutes } from '../../../routes/datatug-routing-proj';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuTopComponent;
@@ -34,13 +34,7 @@ describe('ProjectContextMenuComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: Router, useValue: router },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -122,10 +116,29 @@ describe('ProjectContextMenuComponent', () => {
   });
 
   it('places Meanings alphabetically after the fixed Overview entry', () => {
-    const titles = component.projTopLevelPages.map(page => page.title);
+    const titles = component.projTopLevelPages.map((page) => page.title);
     expect(titles[0]).toBe('Overview');
-    expect(titles.slice(1)).toEqual(titles.slice(1).toSorted((a,b) => a.localeCompare(b)));
-    expect(component.projTopLevelPages.find(page => page.path === 'meanings')?.title).toBe('Meanings');
+    expect(titles.slice(1)).toEqual(
+      titles.slice(1).toSorted((a, b) => a.localeCompare(b)),
+    );
+    expect(
+      component.projTopLevelPages.find((page) => page.path === 'meanings')
+        ?.title,
+    ).toBe('Meanings');
+  });
+  it('places Cards alphabetically between Boards and Chat, with routes for the list, new card and a card', () => {
+    const titles = component.projTopLevelPages.map((page) => page.title);
+    const cards = titles.indexOf('Cards');
+    expect(cards).toBeGreaterThan(0);
+    expect(titles[cards - 1]).toBe('Boards');
+    expect(titles[cards + 1]).toBe('Chat');
+    const page = component.projTopLevelPages[cards];
+    expect(page.path).toBe('cards');
+    expect(page.icon).toBe('id-card-outline');
+    const paths = datatugProjectRoutes.map((route) => route.path);
+    expect(paths).toEqual(
+      expect.arrayContaining(['cards', 'cards/new', 'card/:cardId']),
+    );
   });
   it('keeps the Sandbox route for deep links without duplicating it in the project menu', () => {
     expect(
@@ -173,6 +186,8 @@ describe('ProjectContextMenuComponent', () => {
 });
 
 describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
+  @Component({ selector: 'sneat-menu-route-test', template: '' })
+  class MenuRoutePage {}
   let storeId$: Subject<string | undefined>;
   let project$: Subject<unknown>;
   let env$: Subject<unknown>;
@@ -192,13 +207,7 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
         // Real Router (no override): the Investigation Context child reads
         // RouterSnapshotService, which a stubbed Router token would break.
         provideRouter([]),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -267,6 +276,38 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
     });
   });
 
+  it('preserves an explicit independent Incident store and project transport after real navigation', async () => {
+    const fixture = render(PRODUCT_PROFILES.datatug);
+    const router = TestBed.inject(Router);
+    router.resetConfig([{ path: '**', component: MenuRoutePage }]);
+    storeId$.next('http-localhost:8989');
+    project$.next({
+      ref: {
+        storeId: 'http-localhost:8989',
+        projectId: 'billing',
+        projectApi: 'local',
+        branch: 'develop',
+      },
+    });
+    env$.next({ id: 'prod' });
+    await router.navigateByUrl(
+      '/store/http-localhost:8989/project/billing/incidents/ops/INC-1?agent=http-localhost:8989&storeId=ops&project=billing&environment=prod&projectApi=local&branch=develop',
+    );
+    const internals = fixture.componentInstance as unknown as IncidentInternals;
+    expect(internals.incidentQueryParams()).toEqual({
+      agent: 'http-localhost:8989',
+      storeId: 'ops',
+      project: 'billing',
+      environment: 'prod',
+      projectApi: 'local',
+      branch: 'develop',
+    });
+    await router.navigateByUrl(
+      '/store/http-localhost:8989/project/billing/incidents/ops/INC-1?agent=http-other:8989&storeId=ops&project=billing&environment=prod',
+    );
+    expect(internals.incidentQueryParams()).toBeUndefined();
+  });
+
   it('drops the context params when any part of the scope is unknown', () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     storeId$.next('localhost:8989');
@@ -298,24 +339,53 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
       branch: 'release/context',
     });
     expect(tree?.toString()).not.toContain('%3F');
+
+    storeId$.next('github.com');
+    env$.next({ id: 'prod' });
+    const internals = fixture.componentInstance as unknown as IncidentInternals;
+    expect(fixture.componentInstance.incidentsProjectRoute()).not.toContain(
+      '?',
+    );
+    expect(internals.incidentQueryParams()).toEqual({
+      projectApi: 'cloud',
+      branch: 'release/context',
+      agent: 'github.com',
+      storeId: 'repo@owner@datatug',
+      project: 'repo@owner@datatug',
+      environment: 'prod',
+    });
   });
 
-  it('keeps canonical demo and private hosted Incident links project-qualified', () => {
+  it('keeps every project Incident link project-qualified, including an agent project without an environment', () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     project$.next({ ref: DEMO_PROJECT_REF });
     expect(fixture.componentInstance.isDemoProject()).toBe(true);
     expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
       projectPageHref(DEMO_PROJECT_REF, 'incidents'),
     );
-    const privateRef = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
+    const privateRef = {
+      storeId: 'firestore',
+      spaceID: 'private-space',
+      projectId: 'private-project',
+    };
     project$.next({ ref: privateRef });
-    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(projectPageHref(privateRef, 'incidents'));
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
+      projectPageHref(privateRef, 'incidents'),
+    );
     project$.next({
       ref: { storeId: 'localhost:8989', projectId: 'shop' },
     });
     expect(fixture.componentInstance.isDemoProject()).toBe(false);
-    expect(fixture.componentInstance.incidentsProjectRoute()).toBe(
-      '/incidents',
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
+      projectPageHref(
+        { storeId: 'localhost:8989', projectId: 'shop' },
+        'incidents',
+      ),
     );
+    expect(
+      (
+        fixture.componentInstance as unknown as IncidentInternals
+      ).incidentQueryParams(),
+    ).toBeUndefined();
   });
 });

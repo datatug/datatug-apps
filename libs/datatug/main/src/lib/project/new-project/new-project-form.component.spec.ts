@@ -6,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { addIcons } from 'ionicons';
 import { closeOutline, saveOutline } from 'ionicons/icons';
-import { ErrorLogger, type SpaceType } from '@sneat/core';
+import { type SpaceType } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -14,6 +14,7 @@ import type { IProjectRef } from '../../core/project-context';
 import { isValidProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
+import { sha256Hex } from './sha256-hex';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
@@ -26,6 +27,8 @@ import {
   saveBusinessGithubContinuation,
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
+
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
@@ -154,10 +157,7 @@ async function harness(
           },
         },
       },
-      {
-        provide: ErrorLogger,
-        useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
-      },
+      provideMockErrorLogger(),
     ],
   }).overrideComponent(NewProjectFormComponent, {
     set: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
@@ -1153,7 +1153,7 @@ describe('New project through authenticated common API', () => {
     h.component.create();
 
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['oauthResumePending']()).toBe(false);
     expect(h.connection.startOAuth).not.toHaveBeenCalled();
     setItem.mockRestore();
@@ -1177,11 +1177,33 @@ describe('New project through authenticated common API', () => {
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    expect(writes).toBe(4);
+    await vi.waitFor(() => expect(writes).toBe(4));
     expect(h.component['isCreating']()).toBe(false);
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
     setItem.mockRestore();
+  });
+
+  it('stores only a hash of the OAuth state before redirecting to GitHub', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    const authorizationURL = 'https://github.com/login/oauth/authorize?state=secure-state';
+    h.component.create();
+    h.startResult.next({ authorizationURL });
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(authorizationURL));
+    const stored = sessionStorage.getItem('datatug:new-project:draft') ?? '';
+    expect(stored).not.toContain('secure-state');
+    expect(JSON.parse(stored)).toMatchObject({
+      oauthResumePending: true,
+      oauthStateHash: await sha256Hex('secure-state'),
+    });
+    expect(JSON.parse(stored)).not.toHaveProperty('oauthState');
+    assign.mockRestore();
   });
 
   it('ignores a delayed OAuth start response after the Firebase actor changes', async () => {
@@ -1200,7 +1222,7 @@ describe('New project through authenticated common API', () => {
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['isCreating']()).toBe(false);
     expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
   });
@@ -1729,11 +1751,17 @@ describe('New project through authenticated common API', () => {
     const legacyIntent = JSON.parse(saved.operationPayload);
     delete legacyIntent.selectedBranch;
     saved.operationPayload = JSON.stringify(legacyIntent);
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify(saved));
+    // The restoring page reads the pre-branch-identity draft; serve it from the read, not a second write to storage.
+    const legacyDraft = JSON.stringify(saved);
+    const readStorage = sessionStorage.getItem.bind(sessionStorage);
+    const legacyRead = vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
+      key === 'datatug:new-project:draft' ? legacyDraft : readStorage(key),
+    );
 
     const restored = await harness(false, {}, true, true);
     restored.fixture.detectChanges();
     await restored.fixture.whenStable();
+    legacyRead.mockRestore();
     restored.component.create();
 
     expect(restored.create).toHaveBeenCalledTimes(1);

@@ -1,3 +1,4 @@
+import { validateQueryComparison } from './query-comparison';
 import { DevicePersonalQueries, isDevicePersonalQuery } from './device-personal-queries';
 import {
   ProjectQueryApiService,
@@ -92,6 +93,7 @@ export const AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE =
  * `undefined.queryType`.
  */
 interface IWireQueryItem {
+  readonly comparison?: IQueryDef['comparison'];
   readonly createdAt?: string;
   id: string;
   title?: string;
@@ -148,7 +150,9 @@ function toQueryRequest(type: string, text: string | undefined): IQueryRequest {
 
 function toQueryDef(item: IWireQueryItem): IQueryDef {
   const { type, text, ...rest } = item;
-  return { ...rest, request: toQueryRequest(type, text) };
+  const query = { ...rest, request: toQueryRequest(type, text) };
+  validateQueryComparison(query);
+  return query;
 }
 
 function toQueryFolder(folder: IWireQueryFolder): IQueryFolder {

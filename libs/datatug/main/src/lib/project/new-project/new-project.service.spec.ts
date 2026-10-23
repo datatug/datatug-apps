@@ -1,11 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { ErrorLogger } from '@sneat/core';
 
 import {
   NewProjectService,
   safeNewProjectReturnUrl,
 } from './new-project.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('NewProjectService', () => {
   let service: NewProjectService;
@@ -17,13 +17,7 @@ describe('NewProjectService', () => {
       providers: [
         NewProjectService,
         { provide: Router, useValue: { url: '/store/firestore', navigate } },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     service = TestBed.inject(NewProjectService);

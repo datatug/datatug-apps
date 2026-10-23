@@ -1,8 +1,21 @@
 import type { AnalyticsConsent } from './analytics-consent';
 
 export const PRIVACY_NOTICE_URL = 'https://datatug.app/en/privacy/#analytics';
+/** What runs on datatug.app today: Google Analytics only. */
 export const BANNER_TEXT =
   "We'd like to use Google Analytics to count visits and see which pages help. It sets cookies only if you accept.";
+/** Where DataTug's anonymous usage PostHog is configured too (public-demo REQ:demo-usage-analytics). */
+export const BANNER_TEXT_WITH_USAGE =
+  "We'd like to use Google Analytics and PostHog to count visits and anonymous steps, such as which demo pages are opened and whether a query run worked. Never your account, repository names, queries or results. They set cookies only if you accept.";
+
+/** Incidentius (app.incidentius.com): PostHog is the only analytics tool there. */
+export const BANNER_TEXT_USAGE_ONLY =
+  "We'd like to use PostHog to count anonymous steps, such as which pages are opened and whether a query run worked. Never your account, repository names, queries or results. It sets cookies only if you accept.";
+
+/** The banner names exactly the tools that run after a yes. */
+export function bannerText(usagePosthog: boolean): string {
+  return usagePosthog ? BANNER_TEXT_WITH_USAGE : BANNER_TEXT;
+}
 
 const STYLE_ID = 'datatug-analytics-consent-style';
 const OPEN_CLASS = 'datatug-analytics-consent-open';
@@ -17,7 +30,7 @@ const STYLE = `
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   background: var(--ion-background-color, #fff); color: var(--ion-text-color, #000);
-  border-top: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.2));
+  border-top: 1px solid var(--ion-background-color-step-150, rgba(0, 0, 0, 0.2));
   font: 14px/1.4 var(--ion-font-family, system-ui, sans-serif);
 }
 .datatug-analytics-consent p { flex: 1 1 280px; margin: 0; }
@@ -40,6 +53,7 @@ export function mountAnalyticsConsentBanner(
   consent: AnalyticsConsent,
   doc: Document,
   win: Window,
+  bannerCopy: string = BANNER_TEXT,
 ): () => void {
   let banner: HTMLElement | undefined;
 
@@ -70,7 +84,7 @@ export function mountAnalyticsConsentBanner(
     element.setAttribute('role', 'region');
     element.setAttribute('aria-label', 'Analytics choice');
     const text = doc.createElement('p');
-    text.append(BANNER_TEXT + ' ');
+    text.append(bannerCopy + ' ');
     const link = doc.createElement('a');
     link.href = PRIVACY_NOTICE_URL;
     link.target = '_blank';

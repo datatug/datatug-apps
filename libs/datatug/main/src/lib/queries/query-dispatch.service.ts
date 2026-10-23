@@ -1,3 +1,4 @@
+import { frozenComparison } from '../evidence/retained-comparison-contract';
 import { readRetainedQueryResponse } from '../evidence/retained-evidence-contract';
 import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
@@ -92,9 +93,8 @@ export class QueryDispatchService {
     return declaration ? this.queryRuntimes.candidates(declaration).map(({ selectionId, title }) => ({ selectionId, title })) : [];
   }
 
-  private async connectionDeclaration(request: Pick<QueryDispatchRequest, 'projectRef' | 'definition' | 'environment' | 'signal'>): Promise<QueryConnectionDescriptor | undefined> {
-    const connectionId = request.definition.connectionId;
-    if (!connectionId) return undefined;
+  /** Every connection the project's catalog declares (the same read a saved query's connection uses). */
+  async connectionCatalog(request: Pick<QueryDispatchRequest, 'projectRef' | 'signal'>): Promise<readonly QueryConnectionDescriptor[]> {
     const source = usesProjectApi(request.projectRef)
       ? this.projectApi.connectionCatalog<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(request.projectRef)
       : this.github.getRawJson<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(
@@ -104,7 +104,13 @@ export class QueryDispatchService {
       ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
       : source).pipe(timeout({ first: 10_000 })));
     if (request.signal?.aborted) throw abortError();
-    const matches = catalog?.connections?.filter((item) => item.id === connectionId) ?? [];
+    return catalog?.connections ?? [];
+  }
+
+  private async connectionDeclaration(request: Pick<QueryDispatchRequest, 'projectRef' | 'definition' | 'environment' | 'signal'>): Promise<QueryConnectionDescriptor | undefined> {
+    const connectionId = request.definition.connectionId;
+    if (!connectionId) return undefined;
+    const matches = (await this.connectionCatalog(request)).filter((item) => item.id === connectionId);
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
     const environment = request.environment ?? (declaration.storage === 'sqlite' && declaration.browserFixture &&
@@ -345,9 +351,11 @@ export class QueryDispatchService {
     };
     if (request.hostedInputs && request.parameters && JSON.stringify(request.hostedInputs) !== JSON.stringify(request.parameters))
       throw new QueryDispatchError('Hosted inputs differ from the displayed parameter bindings.');
+    const comparison = frozenComparison(request.definition, request.hostedInputs ?? request.parameters ?? {});
+    if (comparison && !request.evidence) throw new QueryDispatchError('Comparison requires an explicit applied evidence selection.');
     const source = this.detectiveClient.runHostedQuery(context, request.queryId, request.environment, {
       ...(request.hostedInputs ?? request.parameters ?? {}),
-    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal });
+    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal, ...(comparison ? { comparison } : {}) });
     try {
       const response = await firstValueFrom((request.signal
         ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
@@ -357,7 +365,7 @@ export class QueryDispatchService {
         response.result.execution.projectId !== request.projectRef.projectId ||
         response.result.provenance.queryId !== request.queryId)
         throw new QueryDispatchError('The hosted query returned no matching retained execution receipt.');
-      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence);
+      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence, comparison ? { declaration: comparison, inputs: request.hostedInputs ?? request.parameters ?? {} } : undefined);
       if (request.signal?.aborted) throw abortError();
       return admitted;
     } catch (error) {

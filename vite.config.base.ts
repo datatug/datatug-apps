@@ -1,18 +1,50 @@
 import { ViteUserConfig } from 'vitest/config';
 import angular from '@analogjs/vite-plugin-angular';
 import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
-import { join } from 'path';
+import { readdirSync, readFileSync } from 'fs';
+import { join, relative } from 'path';
 
 export interface BaseViteConfigOptions {
   dirname: string;
   name: string;
   reportsDirectory?: string;
+  /**
+   * `shared`: run spec files without a fresh module graph per file (`isolate: false`), so Angular, Ionic and
+   * the app's own modules are evaluated once per worker instead of once per file, which is most of a TestBed
+   * spec's run time. `src/test-setup.ts` must reset shared globals per file (see `resetSharedGlobals` in
+   * libs/testing). Files that call `vi.mock`/`vi.doMock`/`vi.doUnmock`/`vi.resetModules` are left out: a module
+   * mock cannot apply to a module an earlier file in the same worker already loaded, and a reset reloads Angular
+   * itself for every later file (no test environment). `mocking-only` runs just those files, isolated.
+   * They are two runs, not two Vitest projects: each project starts its own Vite server and Angular compiler,
+   * which doubles the main process's memory past Node's default heap.
+   */
+  moduleSharing?: 'shared' | 'mocking-only';
+}
+
+const SPEC_FILES = ['src/**/*.spec.ts'];
+const SPEC_FILE = /\.spec\.ts$/;
+// A module mock, or a reset of the module registry: either changes the module graph that later files would share.
+const MODULE_MOCK = /\bvi\.((do)?[mM]ock|doUnmock|resetModules)\(/;
+
+/** The spec files under `src` (relative to `dirname`) that mock or reset modules, and so need a module graph of their own. */
+export function specFilesMockingModules(dirname: string): string[] {
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (SPEC_FILE.test(entry.name) && MODULE_MOCK.test(readFileSync(path, 'utf8')))
+        files.push(relative(dirname, path));
+    }
+  };
+  walk(join(dirname, 'src'));
+  return files.sort();
 }
 
 export function createBaseViteConfig(
   options: BaseViteConfigOptions,
 ): ViteUserConfig {
-  const { dirname, name, reportsDirectory } = options;
+  const { dirname, name, reportsDirectory, moduleSharing } = options;
 
   const rootPath = process.cwd();
   const relativeToRoot = join(
@@ -58,9 +90,17 @@ export function createBaseViteConfig(
       name,
       watch: false,
       globals: true,
-      pool: 'vmThreads',
+      // vmThreads gives every file a fresh VM context, so sharing modules needs forks.
+      pool: moduleSharing === 'shared' ? 'forks' : 'vmThreads',
+      isolate: moduleSharing !== 'shared',
       environment: 'happy-dom',
-      include: ['src/**/*.spec.ts'],
+      include:
+        moduleSharing === 'mocking-only'
+          ? specFilesMockingModules(dirname)
+          : SPEC_FILES,
+      ...(moduleSharing === 'shared' && {
+        exclude: specFilesMockingModules(dirname),
+      }),
       setupFiles: [join(dirname, 'src/test-setup.ts')],
       reporters: ['default'],
       printConsoleTrace: false,

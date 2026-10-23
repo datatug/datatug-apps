@@ -13,8 +13,10 @@ import { ProjectAssetsReadService } from '../../../../services/project/project-a
 import { IProjectContext } from '../../../../nav/nav-models';
 import { IFolder } from '../../../../models/definition/folder';
 import { folderItemsAsList } from '../../../../models/definition/folder';
+import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import { IProjectRef } from '../../../../core/project-context';
 import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 const projectAssetsFromFolderReader = (
   watchFolder: (
@@ -48,13 +50,7 @@ describe('DataboardsPage', () => {
       imports: [BoardsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -137,13 +133,7 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
       imports: [BoardsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -364,7 +354,11 @@ describe('BoardsPage read errors', () => {
       ],
     })
       .overrideComponent(BoardsPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        set: {
+          imports: [ErrorStateComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
       })
       .compileComponents();
 
@@ -375,9 +369,10 @@ describe('BoardsPage read errors', () => {
     await fixture.whenStable();
 
     expect(logError).toHaveBeenCalledOnce();
+    expect(logError.mock.calls[0][2]).toEqual({ show: false });
     expect(
       fixture.nativeElement.querySelector('[role="alert"]').textContent,
-    ).toContain('Boards could not be loaded');
+    ).toContain('Something went wrong');
     expect(fixture.nativeElement.querySelector('sneat-card-list')).toBeNull();
 
     (fixture.nativeElement.querySelector('ion-button') as HTMLElement).click();
@@ -422,7 +417,11 @@ describe('BoardsPage read errors', () => {
       ],
     })
       .overrideComponent(BoardsPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        set: {
+          imports: [ErrorStateComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
       })
       .compileComponents();
 

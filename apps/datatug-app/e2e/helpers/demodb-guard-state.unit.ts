@@ -44,6 +44,9 @@ test('rate limits are recognised: 429, and Cloudflare block pages on 403/503', (
   assert.equal(isRateLimited(200, {}), false);
   assert.equal(isRateLimited(404, {}), false);
   assert.equal(isRateLimited(403, { 'cf-mitigated': 'challenge' }), true);
+  // GitHub's anonymous API quota: 403 with no requests left; a plain 403 (e.g. a private repository) is not a block.
+  assert.equal(isRateLimited(403, { 'x-ratelimit-remaining': '0' }), true);
+  assert.equal(isRateLimited(403, { 'x-ratelimit-remaining': '12' }), false);
   assert.equal(isRateLimited(403, { server: 'cloudflare' }, '<title>Error 1027</title> You are being rate limited'), true);
   assert.equal(isRateLimited(503, { server: 'cloudflare' }, '<h1>Error 1015</h1> rate limited'), true);
   for (const status of [520, 522, 525, 530]) assert.equal(isRateLimited(status, { 'cf-mitigated': 'block' }), true, `HTTP ${status}`);

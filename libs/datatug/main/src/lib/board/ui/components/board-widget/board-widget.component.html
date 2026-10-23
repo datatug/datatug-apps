@@ -1,10 +1,104 @@
+<ng-template #widgetHeaderActions>
+  @if (widgetDef()?.name === 'chart' && !executionOnly() && !independent()) {
+    <ion-button
+      size="small"
+      fill="solid"
+      [disabled]="
+        running() ||
+        definitionLoading() ||
+        !definition() ||
+        !!unsupportedReason()
+      "
+      [attr.aria-label]="primaryActionLabel() + ' · ' + displayTitle()"
+      [title]="primaryActionLabel()"
+      (click)="run()"
+    >
+      <ion-icon [icon]="playIcon" aria-hidden="true" />
+      <span class="header-action-text">{{ primaryActionLabel() }}</span>
+    </ion-button>
+  } @else if (
+    widgetDef()?.name === 'SQL' &&
+    !definitionLoading() &&
+    !unsupportedReason() &&
+    definition()
+  ) {
+    <ion-button
+      size="small"
+      fill="solid"
+      [disabled]="running()"
+      [attr.aria-label]="primaryActionLabel() + ' · ' + displayTitle()"
+      [title]="primaryActionLabel()"
+      (click)="run()"
+    >
+      <ion-icon [icon]="playIcon" aria-hidden="true" />
+      <span class="header-action-text">{{ primaryActionLabel() }}</span>
+    </ion-button>
+  }
+  @if (hasHeaderActions()) {
+    @if (queryUrlTree(); as tree) {
+      <ion-button
+        size="small"
+        fill="clear"
+        [routerLink]="tree"
+        [attr.aria-label]="'Open saved query · ' + displayTitle()"
+        title="Open saved query"
+        (click)="widgetDef()?.name === 'SQL' && rememberChoice()"
+      >
+        <ion-icon [icon]="openIcon" aria-hidden="true" />
+        <span class="header-action-text">Open saved query</span>
+      </ion-button>
+    }
+  }
+</ng-template>
+@if (!embedded() && hasHeaderActions()) {
+  <ion-toolbar color="light" class="widget-header">
+    <ion-title size="small">{{ displayTitle() }}</ion-title>
+    <ion-buttons slot="end"
+      ><ng-container [ngTemplateOutlet]="widgetHeaderActions"
+    /></ion-buttons>
+  </ion-toolbar>
+}
+@if (executionOnly()) {
+  <section [attr.aria-label]="'Source ' + sourceBindingId()">
+    <h4>{{ sourceBindingId() }} · {{ definition()?.title || sourceBinding()?.queryId }}</h4>
+    @if (definitionLoading() || running()) { <p role="status">Loading source…</p> }
+    @if (runError() || unsupportedReason() || sourceAdmissionError(); as error) { <p role="alert">{{ error }}</p> }
+    @if (unsupportedReason()) { <ion-button size="small" fill="outline" [disabled]="definitionLoading() || running()" (click)="retrySourceDefinition()">Retry source definition</ion-button> }
+    @if (running()) { <ion-button size="small" fill="clear" (click)="cancelSource()">Cancel source run</ion-button> }
+    <ion-button size="small" fill="outline" [disabled]="running() || definitionLoading() || !definition() || !!unsupportedReason()" (click)="run()">{{ runError() ? 'Retry source' : result() ? 'Refresh source' : 'Run source' }}</ion-button>
+    @if (queryUrlTree(); as tree) { <ion-button size="small" fill="clear" [routerLink]="tree">Open saved query</ion-button> }
+    @if (result(); as held) {
+      <p>{{ held.provenance.source }} · {{ held.recordset.rows.length }} source rows</p>
+      <details [open]="sourceRowsVisible()"><summary>Inspect {{ sourceBindingId() }} source rows and terms</summary>
+        <sneat-datatug-source-rights-notice [evidence]="held" />
+        <sneat-datatug-held-result-presentation [embedded]="true" [result]="held" [loading]="running()" [error]="runError() ?? null" />
+      </details>
+    }
+  </section>
+} @else if (independent()) {
+  <section class="ion-padding" aria-label="Independent chart sources">
+    <!-- The chart's own title carries its dated null/unit disclosure; inside a card only an exact repeat of the card title is dropped. -->
+    @if (chartWidgetDef()?.title; as title) { @if (!embedded() || title !== cardTitle()) { <p class="chart-disclosure">{{ title }}</p> } }
+    <div class="chart-view-switch" role="group" aria-label="Independent result view">
+      <button type="button" [attr.aria-pressed]="chartView() === 'chart'" (click)="setChartView('chart')">Chart</button>
+      <button type="button" [attr.aria-pressed]="chartView() === 'grid'" (click)="setChartView('grid')">Source rows</button>
+    </div>
+    @if (chartView() === 'chart') {
+    @if (independentBars().data; as data) { <sneat-datatug-independent-bars [data]="data" [unit]="chartWidgetDef()?.chart?.unit || ''" /> }
+    @else { <p role="status">{{ independentBars().error }}</p> }
+    }
+    @for (source of sourceControllers(); track source.id) {
+      <ng-container *ngComponentOutlet="nestedWidgetComponent; inputs: source.inputs" />
+    }
+  </section>
+} @else {
 @if(retainedPending()) {
   <p role="status">The previous retained run has no confirmed outcome and may already be attached. Retry the unchanged card, or review current board access before abandoning it.</p>
   <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="running()">Review current board access</ion-button>
   @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
 }
 @let widget = widgetDef();
-@switch (widget?.name) {
+@switch (widgetCase()) {
   @case ('tabs') {
     <sneat-datatug-tabs-widget
       [level]="level() ?? 0"
@@ -16,14 +110,61 @@
       [readBoardForRun]="readBoardForRun()"
       [widgetPath]="widgetPath()"
       [boardWidgetComponent]="nestedWidgetComponent"
+      [cardMode]="cardMode()"
+      [resultCache]="resultCache()"
       [resultSnapshot]="snapshotStore()"
       [autoRunAttempts]="attemptsStore()"
     />
   }
+  @case ('text') {
+    <sneat-datatug-text-widget
+      [def]="textWidgetDef()"
+      [values]="parameterValues()"
+    />
+  }
+  @case ('fields') {
+    <div class="ion-padding card-widget" data-widget="fields">
+      @if (fieldsSourceIsParameter()) {
+        @if (fieldPairs(); as pairs) {
+          <sneat-datatug-fields-view
+            [title]="fieldsWidgetDef()?.title"
+            [pairs]="pairs"
+          />
+        } @else {
+          <p role="status">No data</p>
+        }
+      } @else if (definitionLoading() || running()) {
+        <ion-skeleton-text [animated]="true" style="width: 60%" />
+        <ion-skeleton-text [animated]="true" style="width: 40%" />
+        <p role="status" class="visually-hidden">Loading…</p>
+      } @else if (unsupportedReason(); as reason) {
+        <p role="alert">{{ reason }}</p>
+      } @else if (runError(); as error) {
+        <p role="alert">{{ error }}</p>
+        <ion-button size="small" fill="outline" (click)="retry()"
+          >Retry</ion-button
+        >
+      } @else if (fieldPairs(); as pairs) {
+        <sneat-datatug-fields-view
+          [title]="fieldsWidgetDef()?.title"
+          [pairs]="pairs"
+        />
+      } @else if (result()) {
+        <p role="status">No data</p>
+      } @else {
+        <ion-skeleton-text [animated]="true" style="width: 60%" />
+      }
+    </div>
+  }
   @case ('chart') {
     <div class="ion-padding">
       <div class="chart-heading">
-        <p>{{ chartWidgetDef()?.title }}</p>
+        @if (cardMode() && chartWidgetDef()?.title; as title) {
+          <!-- Card mode has no header toolbar; repeat the chart title only when the card title differs. -->
+          @if (title !== cardTitle()) {
+            <p>{{ title }}</p>
+          }
+        }
         @if (chartWidgetDef()?.chart?.type === 'bar-race') {
           <div
             class="chart-view-switch"
@@ -56,36 +197,66 @@
           </div>
         }
       </div>
-      @if (definitionLoading() || running()) {
-        <p role="status">Loading saved chart…</p>
+      @if (!evidenceKind()) {
+        @if (definitionLoading() || running()) {
+          <p role="status">Loading chart…</p>
+        }
+        @if (runError() || unsupportedReason(); as error) {
+          <p role="alert">{{ error }}</p>
+        }
       }
-      @if (runError() || unsupportedReason(); as error) {
-        <p role="alert">{{ error }}</p>
+      @if (cardMode() && !independent()) {
+        <!-- Card mode has no header toolbar, so the chart keeps its run and open actions in the body. Independent charts run their sources separately and have neither. -->
+        <div class="card-chart-actions">
+          <ion-button
+            size="small"
+            fill="outline"
+            color="medium"
+            [disabled]="
+              running() ||
+              definitionLoading() ||
+              !definition() ||
+              !!unsupportedReason()
+            "
+            [attr.aria-label]="primaryActionLabel() + ' · ' + displayTitle()"
+            (click)="runError() ? retry() : run()"
+            >{{ primaryActionLabel() }}</ion-button
+          >
+          @if (queryUrlTree(); as tree) {
+            <ion-button
+              size="small"
+              fill="clear"
+              color="medium"
+              [routerLink]="tree"
+              [attr.aria-label]="'Open saved query · ' + displayTitle()"
+              >Open saved query</ion-button
+            >
+          }
+        </div>
       }
+      @if (comparisonCaption(); as caption) { <p class="comparison-caption">{{ displayTitle() }} · {{ caption }}</p> }
       @if (evidenceKind()) {
         <datatug-evidence-chart
           [data]="preparedEvidence()"
-          [loading]="running() || preparingEvidence()"
-          [error]="evidenceError() || runError() || null"
+          [heading]="displayTitle()"
+          [embedded]="true"
+          [showHeader]="false"
+          [loading]="definitionLoading() || running() || preparingEvidence()"
+          [error]="
+            unsupportedReason() || runError() || evidenceError() || null
+          "
           (inspect)="inspectHeldEvidence($event)"
         />
-        @if (inspectedEvidence(); as selection) {
-          <sneat-datatug-retained-evidence-viewer [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [selector]="selection.selector" [heldResult]="result()" />
+        @if (evidenceError() && result()) {
+          <sneat-datatug-held-result-presentation [embedded]="true" [result]="result() ?? null" defaultView="grid" />
         }
-        <ion-button
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{boardContext()?.evidenceSelection ? 'Run and attach chart' : 'Refresh chart'}}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button fill="clear" [routerLink]="tree"
-            >Open saved query</ion-button
-          >
+        @if (inspectedEvidence(); as selection) {
+          <sneat-datatug-retained-evidence-viewer
+            [projectRef]="projectRef()"
+            [environment]="boardContext()?.environment || ''"
+            [selector]="selection.selector"
+            [heldResult]="result()"
+          />
         }
       } @else if (chartWidgetDef()?.chart?.type === 'bar-race') {
         <div [hidden]="chartView() !== 'chart'">
@@ -128,63 +299,7 @@
             <sneat-datatug-source-rights-notice [evidence]="held" />
           </details>
         }
-        <ion-button
-          size="small"
-          fill="outline"
-          color="medium"
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{
-            running()
-              ? 'Refreshing…'
-              : runError()
-                ? 'Retry chart'
-                : 'Refresh chart'
-          }}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button
-            size="small"
-            fill="clear"
-            color="medium"
-            [routerLink]="tree"
-            >Open saved query</ion-button
-          >
-        }
       } @else {
-        <ion-button
-          size="small"
-          fill="outline"
-          color="medium"
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{
-            running()
-              ? 'Refreshing…'
-              : runError()
-                ? 'Retry chart'
-                : 'Refresh chart'
-          }}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button
-            size="small"
-            fill="clear"
-            color="medium"
-            [routerLink]="tree"
-            >Open saved query</ion-button
-          >
-        }
         <sneat-datatug-held-result-presentation
           [embedded]="true"
           [result]="result() ?? null"
@@ -200,65 +315,110 @@
       }
     </div>
   }
-  @case ('SQL') {
-    <div class="ion-padding">
+  @case ('SQL-parameter') {
+    <div class="ion-padding card-widget" data-widget="SQL-parameter">
       @if (sqlWidgetDef()?.title) {
         <p>{{ sqlWidgetDef()?.title }}</p>
       }
-      @if (remembered()) {
-        <p role="status">Last selected from this board in this browser</p>
-      }
-      @if (sessionOnly()) {
-        <p>Choices stay in this tutorial session.</p>
-      } @else if (!canRemember()) {
-        <p>Choices are not saved for local agent projects.</p>
-      }
-      @if (definitionLoading()) {
-        <p role="status">Checking saved query…</p>
-      } @else if (unsupportedReason(); as reason) {
-        <p role="status">{{ reason }}</p>
-      } @else if (definition()) {
-        <p>
-          Environment:
-          {{ boardContext()?.environment || 'connection default' }}. Runtime:
-          {{
-            selectedRuntimeId() === 'snapshot'
-              ? projectRuntimeLabel()
-              : 'open working copy'
-          }}.
-        </p>
-        @if (workingCopies().length) {
-          <label
-            >Execution runtime
-            <select
-              [value]="selectedRuntimeId()"
-              (change)="selectRuntime($any($event.target).value)"
-            >
-              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
-              @for (runtime of workingCopies(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">
-                  {{ runtime.title }} · working copy
-                </option>
-              }
-            </select>
-          </label>
+      @if (sqlParameterGrid(); as grid) {
+        @if (!grid.rows.length) {
+          <p role="status">No data</p>
+        } @else {
+          <div class="board-result-scroll">
+            <table>
+              <thead>
+                <tr>
+                  @for (column of grid.columns; track column) {
+                    <th scope="col">{{ column }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of grid.rows; track $index) {
+                  <tr>
+                    @for (cell of row; track $index) {
+                      <td>{{ displayParameterCell(cell) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
         }
-        <ion-button [disabled]="running()" (click)="run()">{{
-          running() ? 'Running…' : 'Run on board'
-        }}</ion-button>
       }
-      @if (queryUrlTree(); as urlTree) {
-        <ion-button [routerLink]="urlTree" (click)="rememberChoice()">
-          Open saved query
-        </ion-button>
+    </div>
+  }
+  @case ('SQL') {
+    <div class="ion-padding">
+      @if (cardMode()) {
+        <!-- Card mode has no header toolbar: a title that differs from the card's stays in the body and runs start by themselves. -->
+        @if (sqlWidgetDef()?.title; as title) {
+          @if (title !== cardTitle()) {
+            <p>{{ title }}</p>
+          }
+        }
+        @if (definitionLoading() || running()) {
+          <ion-skeleton-text [animated]="true" style="width: 80%" />
+          <ion-skeleton-text [animated]="true" style="width: 60%" />
+          <ion-skeleton-text [animated]="true" style="width: 70%" />
+          <p role="status" class="visually-hidden">Loading…</p>
+        } @else if (unsupportedReason(); as reason) {
+          <p role="alert">{{ reason }}</p>
+        } @else if (runError(); as error) {
+          <p role="alert">{{ error }}</p>
+          <ion-button size="small" fill="outline" (click)="retry()"
+            >Retry</ion-button
+          >
+        }
       } @else {
-        <p role="status">This saved query is unavailable.</p>
-      }
-      @if (runError(); as error) {
-        <p role="alert">{{ error }}</p>
-      }
-      @if (choiceError(); as error) {
-        <p role="alert">{{ error }}</p>
+        @if (remembered()) {
+          <p role="status">Last selected from this board in this browser</p>
+        }
+        @if (sessionOnly()) {
+          <p>Choices stay in this tutorial session.</p>
+        } @else if (!canRemember()) {
+          <p>Choices are not saved for local agent projects.</p>
+        }
+        @if (definitionLoading()) {
+          <p role="status">Checking saved query…</p>
+        } @else if (unsupportedReason(); as reason) {
+          <p role="status">{{ reason }}</p>
+        } @else if (definition()) {
+          <p>
+            Environment:
+            {{ boardContext()?.environment || 'connection default' }}. Runtime:
+            {{
+              selectedRuntimeId() === 'snapshot'
+                ? projectRuntimeLabel()
+                : 'open working copy'
+            }}.
+          </p>
+          @if (workingCopies().length) {
+            <label
+              >Execution runtime
+              <select
+                [value]="selectedRuntimeId()"
+                (change)="selectRuntime($any($event.target).value)"
+              >
+                <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+                @for (runtime of workingCopies(); track runtime.selectionId) {
+                  <option [value]="runtime.selectionId">
+                    {{ runtime.title }} · working copy
+                  </option>
+                }
+              </select>
+            </label>
+          }
+        }
+        @if (!queryUrlTree() && !definitionLoading() && !unsupportedReason()) {
+          <p role="status">This saved query is unavailable.</p>
+        }
+        @if (runError(); as error) {
+          <p role="alert">{{ error }}</p>
+        }
+        @if (choiceError(); as error) {
+          <p role="alert">{{ error }}</p>
+        }
       }
       @let presentation = filteredPresentation();
       @if (presentation.country !== undefined) {
@@ -291,7 +451,9 @@
           />
         } @else {
           @if (!answer.recordset.rows.length) {
-            <p role="status">Query completed with no rows.</p>
+            <p role="status">{{
+              cardMode() ? 'No data' : 'Query completed with no rows.'
+            }}</p>
           } @else {
             <p role="status">
               {{ answer.recordset.rows.length }} rows returned{{
@@ -349,8 +511,10 @@
       } @else if (!widget.name) {
         No widget name
       } @else {
-        To be implemented: {{ widget.name }}
+        Unsupported widget: {{ widget.name }}
       }
     </div>
   }
+}
+
 }

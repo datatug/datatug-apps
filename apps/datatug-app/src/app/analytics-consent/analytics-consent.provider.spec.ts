@@ -1,11 +1,17 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { ANALYTICS_CONSENT_KEY } from './analytics-consent';
+import {
+  ANALYTICS_CONSENT_KEY,
+  USAGE_ANALYTICS_CONSENT_KEY,
+} from './analytics-consent';
 import {
   browserAnalyticsEnv,
+  POSTHOG_CONSENT_CLIENT,
   provideAnalyticsConsent,
 } from './analytics-consent.provider';
+import { ANALYTICS_CONSENT } from './analytics-consent.token';
+import type { PosthogConsentClient } from './consent-gated-analytics';
 
 const target = window as unknown as Record<string, unknown>;
 
@@ -105,5 +111,94 @@ describe('provideAnalyticsConsent', () => {
     expect(document.querySelector('.datatug-analytics-consent')).not.toBeNull();
     expect(target['dataLayer']).toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+describe('PostHog behind the same consent', () => {
+  function posthogClient() {
+    let started = false;
+    return {
+      start: vi.fn(() => {
+        started = true;
+      }),
+      started: () => started,
+      pause: vi.fn(),
+      resume: vi.fn(),
+    } satisfies PosthogConsentClient;
+  }
+  function setupWithPosthog(client: PosthogConsentClient) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([{ path: '**', children: [] }]),
+        provideAnalyticsConsent(
+          'G-DESWRP39RY',
+          { token: 'public-fixture' },
+          client,
+        ),
+      ],
+    });
+    return TestBed.inject(Router);
+  }
+  function nonLocalHost() {
+    return vi.spyOn(window, 'location', 'get').mockReturnValue({
+      hostname: 'datatug.app',
+      origin: 'https://datatug.app',
+      pathname: '/',
+    } as Location);
+  }
+
+  it('uses the real PostHog switches by default', () => {
+    expect(POSTHOG_CONSENT_CLIENT.started()).toBe(false);
+    expect(typeof POSTHOG_CONSENT_CLIENT.start).toBe('function');
+    expect(typeof POSTHOG_CONSENT_CLIENT.pause).toBe('function');
+    expect(typeof POSTHOG_CONSENT_CLIENT.resume).toBe('function');
+  });
+
+  it('does not start PostHog before the visitor chooses, and starts it on Accept', async () => {
+    const spy = nonLocalHost();
+    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => node);
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    expect(client.start).not.toHaveBeenCalled();
+    TestBed.inject(ANALYTICS_CONSENT).choose('granted');
+    spy.mockRestore();
+    expect(client.start).toHaveBeenCalledExactlyOnceWith({
+      token: 'public-fixture',
+    });
+    vi.restoreAllMocks();
+  });
+
+  it("never starts PostHog on the landing site's Google Analytics yes, only on the app's own", async () => {
+    const spy = nonLocalHost();
+    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => node);
+    // The website banner (Google Analytics only) wrote the shared key.
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'granted');
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    const consent = TestBed.inject(ANALYTICS_CONSENT);
+    expect(client.start).not.toHaveBeenCalled();
+    expect(consent.granted()).toBe(false);
+    // The app asks again: its banner names PostHog.
+    expect(consent.bannerVisible()).toBe(true);
+    expect(localStorage.getItem(USAGE_ANALYTICS_CONSENT_KEY)).toBeNull();
+    consent.choose('granted');
+    expect(localStorage.getItem(USAGE_ANALYTICS_CONSENT_KEY)).toBe('granted');
+    expect(client.start).toHaveBeenCalledOnce();
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('never starts PostHog after a stored rejection', async () => {
+    const spy = nonLocalHost();
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'denied');
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    spy.mockRestore();
+    expect(client.start).not.toHaveBeenCalled();
   });
 });

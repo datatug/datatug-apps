@@ -1,11 +1,11 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 
 import { MyStoresComponent } from './my-stores.component';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('MyStoresComponent', () => {
   let component: MyStoresComponent;
@@ -18,13 +18,7 @@ describe('MyStoresComponent', () => {
       imports: [MyStoresComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: DatatugNavService, useValue: { goStore: vi.fn() } },
         {
           provide: DatatugUserService,

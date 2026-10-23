@@ -3,8 +3,16 @@ import '@angular/compiler';
 import '@analogjs/vitest-angular/setup-snapshots';
 import '@analogjs/vitest-angular/setup-serializers';
 import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
+import { getTestBed } from '@angular/core/testing';
+import { restoreStorageSpies } from './storage-spies';
 
 export function setupAngularTestingEnvironment() {
+  // setupTestBed initialises the test environment once per process, behind a global flag. When spec files share
+  // a worker and one of them reloaded the module registry, this file sees a fresh TestBed with no platform while
+  // the flag is still set: clear the flag so the environment is set up again.
+  if (!getTestBed().platform) {
+    delete (globalThis as any)[Symbol.for('testbed-setup')];
+  }
   try {
     setupTestBed();
   } catch {
@@ -12,7 +20,15 @@ export function setupAngularTestingEnvironment() {
   }
 }
 
+const GLOBAL_MOCKS_INSTALLED = Symbol.for('sneat-testing-global-mocks');
+
 export function setupGlobalMocks() {
+  // Spec files that share a worker (`isolate: false`) also share this window: install the wrappers once, never
+  // around a wrapper installed for an earlier file.
+  if ((globalThis as any)[GLOBAL_MOCKS_INSTALLED]) {
+    return;
+  }
+  (globalThis as any)[GLOBAL_MOCKS_INSTALLED] = true;
   if (typeof window !== 'undefined') {
     // Wrap URL constructor to handle invalid bases gracefully (fixes Ionic/Stencil asset loading in tests)
     const OriginalURL = (window as any).URL;
@@ -234,6 +250,40 @@ export function setupGlobalMocks() {
     (global as any).Response = vi.fn();
     (global as any).Headers = vi.fn();
   }
+}
+
+const PRISTINE_HISTORY = Symbol.for('sneat-testing-pristine-history');
+
+/**
+ * Puts back what an earlier spec file in the same worker may have left behind, so that with `isolate: false`
+ * every file starts from the state a fresh worker would give it: real timers, no stubbed globals or envs, no
+ * active spies, empty storage, the real `window.history` at `/`, and an empty document body.
+ */
+export function resetSharedGlobals() {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const g = globalThis as any;
+  if (!(PRISTINE_HISTORY in g)) {
+    g[PRISTINE_HISTORY] = Object.getOwnPropertyDescriptor(window, 'history');
+  }
+  const pristine: PropertyDescriptor | undefined = g[PRISTINE_HISTORY];
+  if (pristine) {
+    Object.defineProperty(window, 'history', pristine);
+  } else {
+    // `history` lives on the window prototype; an own property is a spec's replacement.
+    delete (window as any).history;
+  }
+  window.history.replaceState(null, '', '/');
+  restoreStorageSpies(window.localStorage);
+  restoreStorageSpies(window.sessionStorage);
+  window.localStorage?.clear();
+  window.sessionStorage?.clear();
+  document.body.innerHTML = '';
 }
 
 export function setupBaseTestEnvironment() {

@@ -3,7 +3,9 @@
     <ion-buttons slot="start"
       ><ion-menu-button /><ion-back-button [defaultHref]="checksUrl()"
     /></ion-buttons>
-    <ion-title>Checks & Validators</ion-title>
+    <ion-title
+      >Checks & Validators<sneat-datatug-business-clock /></ion-title
+    >
   </ion-toolbar>
 </ion-header>
 
@@ -1396,11 +1398,7 @@
                 lines="full"
                 class="detective-card-header check-detail-card-header"
               >
-                <ion-icon
-                  slot="start"
-                  name="play-outline"
-                  aria-hidden="true"
-                />
+                <ion-icon slot="start" name="play-outline" aria-hidden="true" />
                 <ion-label><h2>Run with session</h2></ion-label>
               </ion-item>
             } @else {
@@ -1409,11 +1407,7 @@
                 lines="full"
                 class="detective-card-header check-detail-card-header check-detail-run-header"
               >
-                <ion-icon
-                  slot="start"
-                  name="play-outline"
-                  aria-hidden="true"
-                />
+                <ion-icon slot="start" name="play-outline" aria-hidden="true" />
                 <ion-label><h2>Run manually</h2></ion-label>
                 <ion-buttons slot="end">
                   <ion-button
@@ -1423,6 +1417,9 @@
                     "
                     color="primary"
                     data-testid="run-check-action"
+                    [attr.aria-describedby]="
+                      runCapabilityHint() ? 'check-run-capability-hint' : ''
+                    "
                     [attr.aria-label]="
                       busy()
                         ? 'Running Check'
@@ -1447,11 +1444,9 @@
                       !caseCheckCompatible()
                     "
                     (click)="run()"
-                    >@if (busy()) {
-                      <ion-spinner
-                        name="crescent"
-                        aria-hidden="true"
-                      />
+                  >
+                    @if (busy()) {
+                      <ion-spinner name="crescent" aria-hidden="true" />
                       Running…
                     } @else if (retainedPending()) {
                       Retry original retained run
@@ -1471,8 +1466,8 @@
                       <span class="check-detail-compact-action-label"
                         >Run Check</span
                       >
-                    }</ion-button
-                  >
+                    }
+                  </ion-button>
                 </ion-buttons>
               </ion-item>
             }
@@ -1486,6 +1481,9 @@
                   [caseId]="caseId()"
                 />
               } @else {
+                @if (runCapabilityHint(); as hint) {
+                  <p id="check-run-capability-hint" role="status">{{ hint }}</p>
+                }
                 <p class="check-detail-intro">
                   Choose the logical environment explicitly. A shared physical
                   source does not determine QA or UAT.
@@ -1611,11 +1609,7 @@
               lines="full"
               class="detective-card-header check-detail-card-header"
             >
-              <ion-icon
-                slot="start"
-                name="list-outline"
-                aria-hidden="true"
-              />
+              <ion-icon slot="start" name="list-outline" aria-hidden="true" />
               <ion-label><h2>Run history</h2></ion-label>
               @if (selectedRun(); as selected) {
                 <ion-note
@@ -1663,6 +1657,15 @@
                 <div id="detective-check-run-result" tabindex="-1">
                   @if (runLinkNotice()?.runId === run.id) {
                     <p role="status">{{ runLinkNotice()?.text }}</p>
+                  }
+                  @if (retainedRunLink(); as shared) {
+                    @if (shared.runId === run.id) {
+                      <sneat-datatug-evidence-copy-link
+                        [projectRef]="scope.ref()"
+                        [environment]="shared.environment"
+                        [target]="shared.target"
+                      />
+                    }
                   }
                   <sneat-validation-run-results [run]="run" />
                 </div>

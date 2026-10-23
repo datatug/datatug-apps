@@ -233,8 +233,8 @@
         </h2>
         <sneat-auth-panel
           [returnTo]="authReturnTo()"
-          initialMode="sign-up"
           [showIntro]="false"
+          [initialMode]="returning ? undefined : 'sign-up'"
         />
       </section>
     }

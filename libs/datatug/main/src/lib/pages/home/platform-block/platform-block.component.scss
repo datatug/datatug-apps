@@ -1,7 +1,7 @@
 :host {
   display: block;
-  --muted: var(--ion-color-step-600, #666);
-  --edge: var(--ion-border-color, var(--ion-color-step-150, #d7d8da));
+  --muted: var(--dt-text-muted);
+  --edge: var(--ion-border-color, var(--ion-background-color-step-150, #d7d8da));
 }
 
 * { min-width: 0; }

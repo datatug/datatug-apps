@@ -11,7 +11,7 @@ const keys = (value: Record<string, unknown>, allowed: string[]) =>
 /** Closed new chart branches mirror Core's wire, including null/absent distinctions. */
 export function validChartSpec(value: unknown): value is ChartSpec {
   if (!record(value)) return false;
-  if (['timeline', 'timing-bars', 'heatmap'].includes(String(value['type']))) {
+  if (value['type'] === 'timeline' || value['type'] === 'timing-bars' || value['type'] === 'heatmap') {
     const arm =
       value['type'] === 'timing-bars' ? 'timing' : (value['type'] as string);
     const fields =
@@ -64,7 +64,12 @@ export function validChartSpec(value: unknown): value is ChartSpec {
     )
       return false;
     const mapping = value[arm];
-    if (!record(mapping) || !keys(mapping, fields)) return false;
+    if (!record(mapping) || !keys(mapping, arm === 'timeline' ? [...fields, 'timeMode', 'anchorColumn'] : fields)) return false;
+    if (arm === 'timeline') {
+      if ('timeMode' in mapping && mapping['timeMode'] !== 'absolute' && mapping['timeMode'] !== 'elapsed') return false;
+      if (mapping['timeMode'] === 'elapsed') fields.push('anchorColumn');
+      else if ('anchorColumn' in mapping) return false;
+    }
     const seen = new Set<string>();
     for (const field of fields) {
       const column = mapping[field];
@@ -254,6 +259,14 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
         producers.add(selection);
       }
     } else if (widget['name'] === 'SQL') {
+      // Parameter-sourced rows carry no saved query and nothing to filter on.
+      if (
+        record(data) &&
+        data['sql'] === undefined &&
+        record(data['source']) &&
+        keys(data['source'], ['parameter'])
+      )
+        return;
       if (!record(data) || !record(data['sql'])) return fail();
       if (
         Object.keys(data['sql']).some(
@@ -285,6 +298,10 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
       for (const tab of data['tabs']) {
         if (!record(tab)) return fail();
         visit(tab['widget'], depth + 1);
+        if (tab['widgets'] != null) {
+          if (!Array.isArray(tab['widgets'])) return fail();
+          for (const inner of tab['widgets']) visit(inner, depth + 1);
+        }
       }
     }
   };

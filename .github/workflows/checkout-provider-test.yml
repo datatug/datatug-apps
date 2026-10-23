@@ -26,7 +26,9 @@ jobs:
           TEST_UID: ${{ secrets.DATATUG_CHECKOUT_TEST_BUYER_UID }}
         run: |
           test -n "$TEST_EMAIL" && test -n "$TEST_PASSWORD" && test -n "$TEST_UID"
-      - run: pnpm exec playwright install --with-deps chromium
+      - uses: ./.github/actions/playwright-install
+        with:
+          browsers: chromium
       - run: pnpm nx run datatug-app:build:production
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}

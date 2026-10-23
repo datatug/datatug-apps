@@ -6,6 +6,8 @@ const outputDir = resolve(
   '../../coverage/apps/datatug-showcase-routing-ab/results',
 );
 export default defineConfig({
+  // Fresh guard state and the GitHub pins (e2e/github-pins.json) the guard serves.
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
   ...measurement,
   testMatch: 'showcase-routing-ab.spec.ts',
   outputDir,

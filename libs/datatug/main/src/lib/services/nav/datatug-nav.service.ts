@@ -16,7 +16,10 @@ import {
   tryProjectUrl,
 } from '../../nav/nav-models';
 import { IProjectRef, isValidProjectRef } from '../../core/project-context';
-import { projectPageHref, projectPageInCurrentSession } from '../../nav/project-page-href';
+import {
+  projectPageHref,
+  projectPageInCurrentSession,
+} from '../../nav/project-page-href';
 import { IStoreRef, storeRefToId } from '@sneat/core';
 
 type NavigationOptions = NonNullable<
@@ -32,8 +35,10 @@ export type ProjectTopLevelPage =
   | 'demo-db-sandbox'
   | 'overview'
   | 'boards'
+  | 'cards'
   | 'dbmodels'
   | 'entities'
+  | 'incidents'
   | 'meanings'
   | 'environments'
   | 'servers'
@@ -116,6 +121,7 @@ export class DatatugNavService {
     project?: IProjectContext,
     projEnv?: IProjEnv,
     envId?: string,
+    navigationOptions?: NavigationOptions,
   ): void {
     if (!project) {
       return;
@@ -130,7 +136,11 @@ export class DatatugNavService {
     if (url === undefined) {
       return;
     }
-    this.navForward(url, { state: { project, projEnv } }, errMessage);
+    this.navForward(
+      url,
+      { ...navigationOptions, state: { project, projEnv } },
+      errMessage,
+    );
   }
 
   // goCatalog: env/:envId/db/:catalogId (EnvDbPageComponent — the catalog
@@ -250,7 +260,10 @@ export class DatatugNavService {
     page: ProjectPage | undefined,
     errMessage: string,
   ): string | undefined {
-    const url = tryProjectUrl(ref, projectPageInCurrentSession(ref, page, this.router?.url));
+    const url = tryProjectUrl(
+      ref,
+      projectPageInCurrentSession(ref, page, this.router?.url),
+    );
     if (typeof url === 'string') {
       return url;
     }

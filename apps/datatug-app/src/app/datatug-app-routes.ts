@@ -455,3 +455,13 @@ export const routes: Routes = [
     redirectTo: '/',
   },
 ];
+
+/**
+ * Last of all, after the auth routes (main.ts): any address no route answers (`/my/profile`, a mistyped path) is a
+ * friendly 404, never NG04002 and Sentry's crash dialog. A project address has its own project-scoped 404 (datatug-main).
+ */
+export const notFoundRoute: Routes[number] = {
+  path: '**',
+  loadComponent: () =>
+    import('@sneat/datatug-main').then((m) => m.loadNotFoundPage()),
+};

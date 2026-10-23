@@ -1,3 +1,4 @@
+import { prepareGithubPins } from './github-pins-setup';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { resetState } from './demodb-guard-state';
@@ -12,6 +13,7 @@ import { resetState } from './demodb-guard-state';
 export default function globalSetup(): void {
   process.env['DEMODB_RUN_ID'] ??= String(process.pid);
   resetState();
+  prepareGithubPins();
   if (process.env['DEMODB_E2E_MODE'] === 'live') return;
   const journeyOnly = process.argv.some((arg, i) => arg === '--project=journey' || (arg === '--project' && process.argv[i + 1] === 'journey'));
   if (process.env['DEMODB_FIXTURE_SETUP'] === 'skip' || journeyOnly) return;

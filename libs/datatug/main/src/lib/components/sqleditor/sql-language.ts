@@ -40,19 +40,25 @@ const sqlEditorTheme = EditorView.theme({
     minHeight: 'inherit',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
+  // Horizontal padding lives on each line so the active-line highlight spans
+  // the editor from border to border.
   '.cm-content': {
     minHeight: 'inherit',
-    padding: '0.75rem',
+    padding: '0.75rem 0',
     caretColor: 'var(--ion-color-primary, #1d4ed8)',
   },
-  '.cm-line': { padding: '0' },
+  '.cm-line': { padding: '0 0.75rem' },
   '.cm-gutters': {
     color: 'var(--sql-gutter-foreground, #374151)',
     backgroundColor: 'var(--sql-gutter-surface, #f3f4f6)',
     borderRight: '1px solid currentColor',
   },
+  // The current line is marked only while the editor has focus.
   '.cm-activeLine, .cm-activeLineGutter': {
-    backgroundColor: 'var(--sql-active-line, #eef2ff)',
+    backgroundColor: 'transparent',
+  },
+  '&.cm-focused .cm-activeLine, &.cm-focused .cm-activeLineGutter': {
+    backgroundColor: 'var(--sql-active-line, #f5f7fb)',
   },
   '.cm-selectionBackground': {
     backgroundColor: 'var(--sql-selection, #dbeafe)',

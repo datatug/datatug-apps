@@ -15,25 +15,47 @@
 }
 @for (page of projTopLevelPages; track page) {
   @if (
-    !metadataOnly() ||
-    [
-      'overview',
-      'quick-search',
-      'queries',
-      'checks',
-      'detective',
-      'sessions',
-      'boards',
-    ].includes(page.path)
+    (page.path !== 'incidents' || showIncidents()) &&
+    (!metadataOnly() ||
+      [
+        'overview',
+        'incidents',
+        'quick-search',
+        'queries',
+        'checks',
+        'detective',
+        'sessions',
+        'boards',
+        'cards',
+      ].includes(page.path))
   ) {
     <ion-menu-toggle autoHide="false">
       <ion-item
         button
-        [routerLink]="projectPageRoute(page.path)"
+        [routerLink]="
+          page.path === 'incidents'
+            ? incidentsProjectRoute()
+            : projectPageRoute(page.path)
+        "
+        [queryParams]="
+          page.path === 'incidents' && !isDemoProject()
+            ? incidentQueryParams()
+            : undefined
+        "
+        [attr.data-testid]="
+          page.path === 'incidents' ? 'incidents-project-menu-item' : null
+        "
         routerDirection="root"
-        [disabled]="!project?.ref || (cliBridgeChat && page.path !== 'chat')"
+        [disabled]="
+          page.path !== 'incidents' &&
+          (!project?.ref || (cliBridgeChat && page.path !== 'chat'))
+        "
       >
-        <ion-icon slot="start" [name]="page.icon" />
+        @if (page.path === 'incidents') {
+          <ion-icon slot="start" name="warning-outline" />
+        } @else {
+          <ion-icon slot="start" [name]="page.icon" />
+        }
         <ion-label [class.current]="(currentFolder | async) === page.path">{{
           page.path === 'variables' && inSessionWorkspace()
             ? 'Context Bag'
@@ -55,24 +77,4 @@
       </ion-item>
     </ion-menu-toggle>
   }
-}
-@if (showIncidents()) {
-  <!--
-    Incidents lives in project navigation now (UX brief §13) — the retired
-    sidebar card's routerLink target (/incidents) and context query params
-    are unchanged; the special danger coloring on the icon is dropped per the
-    standard project-menu icon style (brief §1/§13).
-  -->
-  <ion-menu-toggle autoHide="false">
-    <ion-item
-      button
-      [routerLink]="incidentsProjectRoute()"
-      [queryParams]="isDemoProject() ? undefined : incidentQueryParams()"
-      routerDirection="root"
-      data-testid="incidents-project-menu-item"
-    >
-      <ion-icon slot="start" name="warning-outline" />
-      <ion-label>Incidents</ion-label>
-    </ion-item>
-  </ion-menu-toggle>
 }

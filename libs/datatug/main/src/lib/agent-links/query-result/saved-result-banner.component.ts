@@ -148,7 +148,7 @@ const VIEW_LABEL: Record<string, string> = {
       margin: 0;
     }
     .saved-result-badge {
-      background: var(--ion-color-step-150, #e6e6e6);
+      background: var(--ion-background-color-step-150, #e6e6e6);
       border-radius: 999px;
       color: var(--ion-text-color, #222);
       font-weight: 600;
@@ -164,7 +164,7 @@ const VIEW_LABEL: Record<string, string> = {
       margin: 0.4rem 0 0;
     }
     .saved-result-summary {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       margin: 0.4rem 0 0;
       padding-left: 1.2rem;
     }

@@ -1,3 +1,8 @@
+import { decodeTypedValue } from '@sneat/datatug-semantic';
+import { fromProjectQueryWire } from './project-query-contract';
+import comparisonFixture from '../evidence/testdata/comparison-http.go.json';
+import { decodeQueryComparison } from './query-comparison';
+import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import * as publicQueries from './public-data/public-chart-query';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
@@ -14,6 +19,18 @@ import type { OvdbConnection } from '../ovdb/ovdb-connection';
 import { QueryRuntimeRegistry } from './query-runtime-registry.service';
 import { FederatedQueryService } from './federated-query.service';
 import { createHostedDemoDbQuery } from './hosted-demo-db-query';
+
+function comparisonDefinition(wire: typeof comparisonFixture.open.savedQuery) {
+  if (wire.type !== QueryType.SQL) throw new Error('Expected actual SQL fixture');
+  return fromProjectQueryWire({ ...wire, type: QueryType.SQL });
+}
+function comparisonFixtureInputs(wire: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(wire).map(([key, raw]) => {
+    const value = decodeTypedValue(raw);
+    if (value.type !== 'integer') throw new Error('Expected actual integer fixture');
+    return [key, { ...value }];
+  }));
+}
 
 const sqlDefinition = (): IQueryDef => ({
   id: 'report', title: 'Report',
@@ -149,6 +166,27 @@ describe('QueryDispatchService transport boundary', () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
+  it('sends an unqualified local route to its agent and preserves source admission refusal', async () => {
+    const request: QueryDispatchRequest = {
+      projectRef: { storeId: 'http-127.0.0.1:18989', projectId: 'demo' },
+      definition: { ...sqlDefinition(), connectionId: 'server-owned-unpublished-source' },
+      queryId: 'folder/report', environment: 'LOCAL', securityContextId: 'sctx',
+    };
+    const session = service.start(request);
+    const rejected = expect(session.result).rejects.toMatchObject({ status: 403 });
+    await Promise.resolve();
+    await Promise.resolve();
+    const pending = http.expectOne('http://127.0.0.1:18989/datatug/exec/run_query');
+    expect(pending.request.body).toMatchObject({ project: 'demo', queryId: 'folder/report', environment: 'LOCAL', securityContextId: 'sctx' });
+    pending.flush({ error: 'source admission required' }, { status: 403, statusText: 'Forbidden' });
+    await rejected;
+    expect(catalog).not.toHaveBeenCalled();
+    expect(github).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    expect(hosted).not.toHaveBeenCalled();
+    await session.dispose();
+  });
+
   it('rejects contradictory displayed inputs and origins before sending a local agent request', async () => {
     const request: QueryDispatchRequest = {
       projectRef: { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local' },
@@ -222,6 +260,34 @@ describe('QueryDispatchService transport boundary', () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
+  it('freezes the full actual comparison pair and saved declaration before hosted dispatch',async()=>{
+    const wire=structuredClone(comparisonFixture),q=wire.open.savedQuery;
+    hosted.mockReturnValue(of(wire.run));
+    const definition=comparisonDefinition(q);
+    const declaration=decodeQueryComparison(q.comparison),inputs=comparisonFixtureInputs(wire.request.inputs);
+    const session=service.start({projectRef:{storeId:'firestore',spaceID:wire.request.spaceID,projectId:wire.request.project},
+      definition,queryId:wire.request.queryId,environment:wire.request.environment,target:{kind:'hosted-cloud'},principal:'actor',
+      parameters:inputs,operationId:wire.request.operationId,evidence:wire.request.evidence as unknown as AppliedEvidenceRequest});
+    inputs['order_id'].value='11062';
+    const result=await session.hostedResponse;
+    expect(result?.comparison).toEqual(wire.run.comparison);
+    expect(hosted.mock.calls[0][3]).toEqual(wire.request.inputs);
+    expect(hosted.mock.calls[0][4]).toEqual(expect.objectContaining({comparison:declaration,operationId:wire.request.operationId,evidence:wire.request.evidence}));
+    await session.result;await session.dispose();
+  });
+  it.each(['no-evidence','equal','missing','changed-response'] as const)('refuses %s comparative dispatch/admission',async mode=>{
+    const wire=structuredClone(comparisonFixture),q=wire.open.savedQuery;
+    hosted.mockReturnValue(of(mode==='changed-response'?{...wire.run,comparison:{...wire.run.comparison,queryRevision:'other'}}:wire.run));
+    const inputs=comparisonFixtureInputs(wire.request.inputs);
+    if(mode==='equal')inputs['comparison_order_id']={type:'integer',value:'11045'};
+    if(mode==='missing')Reflect.deleteProperty(inputs,'comparison_order_id');
+    const session=service.start({projectRef:{storeId:'firestore',spaceID:wire.request.spaceID,projectId:wire.request.project},
+      definition:comparisonDefinition(q),queryId:wire.request.queryId,environment:wire.request.environment,target:{kind:'hosted-cloud'},principal:'actor',
+      parameters:inputs,...(mode!=='no-evidence'?{evidence:wire.request.evidence as unknown as AppliedEvidenceRequest}:{})});
+    await expect(Promise.all([session.result,session.hostedResponse])).rejects.toThrow();
+    if(mode!=='changed-response')expect(hosted).not.toHaveBeenCalled();
+    await session.dispose();
+  });
   it('uses the hosted Firestore query contract and checks the retained receipt', async () => {
     hosted.mockReturnValue(of({ queryRevision: 'query-version', resultFingerprint: 'a'.repeat(64), result: {
       ...result,

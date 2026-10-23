@@ -2,7 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SneatUserService } from '@sneat/auth-core';
-import { IonButton, IonContent, IonHeader, IonTitle, IonToolbar } from '@ionic/angular';
+import { IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonTitle, IonToolbar } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { arrowBackOutline } from 'ionicons/icons';
 import { firstValueFrom } from 'rxjs';
 import { LocalDemoDbService, type LocalDemoDbSession } from '../../demo-sqlite/local-demodb.service';
 import { OvdbDatabaseBrowserComponent } from '../../ovdb/ovdb-database-browser.component';
@@ -16,12 +18,26 @@ import type { QueryConnectionDescriptor } from '../../queries/query-dispatch';
 import { QueryRuntimeRegistry } from '../../queries/query-runtime-registry.service';
 import { DemoTableDraftService } from '../../queries/demo-table-draft.service';
 
+addIcons({ arrowBackOutline });
+
 @Component({
   selector: 'sneat-datatug-project-browser-db',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonButton, IonContent, IonHeader, IonTitle, IonToolbar, RouterLink, OvdbDatabaseBrowserComponent],
+  imports: [IonButton, IonButtons, IonContent, IonHeader, IonIcon, IonTitle, IonToolbar, RouterLink, OvdbDatabaseBrowserComponent],
   template: `
-    <ion-header><ion-toolbar><ion-title>My browser database</ion-title></ion-toolbar></ion-header>
+    <ion-header>
+      <ion-toolbar>
+        @if (table()) {
+          <ion-buttons slot="start">
+            <ion-button class="page-back-link" data-testid="back-to-tables" aria-label="All tables" [routerLink]="basePath()" [queryParams]="navigationQuery()" routerDirection="back">
+              <ion-icon slot="start" name="arrow-back-outline" />
+              All tables
+            </ion-button>
+          </ion-buttons>
+        }
+        <ion-title>My browser database</ion-title>
+      </ion-toolbar>
+    </ion-header>
     <ion-content>
       <p data-testid="project-browser-ownership">Project files in GitHub; database and edits in this browser</p>
       @if (loading()) { <p role="status">Checking this project's database connection…</p> }

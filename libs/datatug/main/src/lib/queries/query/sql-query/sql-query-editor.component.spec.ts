@@ -1,7 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ErrorLogger } from '@sneat/core';
 import { RandomIdService } from '@sneat/random';
 import { of } from 'rxjs';
 
@@ -12,6 +11,7 @@ import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('SqlEditorPage', () => {
   let component: SqlQueryEditorComponent;
@@ -27,13 +27,7 @@ describe('SqlEditorPage', () => {
       imports: [SqlQueryEditorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: RandomIdService,
           useValue: { newRandomId: vi.fn(() => 'test-id') },

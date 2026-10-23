@@ -18,6 +18,10 @@ import { activePage } from './helpers/active-page';
 
 const DEMO_PROJECT_ID = 'datatug-demo-project';
 const DEMO_ENV_ID = 'local';
+// The Chinook customer entity: integer ID plus the text-typed Email the `like`
+// condition needs (demo-project-1/entities/ChinookCustomer). The demo's
+// `Customer` entity means the Northwind customer (string ID, CompanyName).
+const CUSTOMER_ENTITY = 'ChinookCustomer';
 
 function isIncidentCreateResponse(
   response: Response,
@@ -61,7 +65,7 @@ async function addNamedOverlay(
       .getByText(option, { exact: true })
       .click();
   };
-  await choose('Entity', 'Customer');
+  await choose('Entity', CUSTOMER_ENTITY);
   await choose('Field', 'ID');
   await choose('Condition', '==');
   await choose('Cohort role', options.role);
@@ -109,7 +113,7 @@ async function addCondition(
       .getByText(option, { exact: true })
       .click();
   };
-  await choose('Entity', 'Customer');
+  await choose('Entity', CUSTOMER_ENTITY);
   await choose('Field', entry.field);
   await choose('Condition', entry.condition);
   // in/like switch the Value input to type=text (it is type=number for an integer
@@ -160,10 +164,10 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
         .securityContextId,
     );
     expect(initialSecurityContextId).toMatch(/^[a-f0-9]{32}$/);
-    await expect(activePage(page).getByText('No incidents yet.')).toBeVisible();
+    await expect(activePage(page).getByRole('heading', { name: 'Follow the evidence. Find the cause.' })).toBeVisible();
 
     await activePage(page)
-      .getByRole('link', { name: "Houston, we've got a problem" })
+      .getByRole('link', { name: 'Report an incident' })
       .click();
     await expect(page).toHaveURL(/\/incidents\/new\?/);
     await activePage(page)
@@ -193,7 +197,7 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     );
 
     await activePage(page)
-      .getByRole('button', { name: "Houston, we've got a problem" })
+      .getByRole('button', { name: 'Create incident' })
       .click();
 
     const staleResponse = await staleResponsePromise;
@@ -357,7 +361,9 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
       value: '1, 2, 3',
     });
     await expect(
-      activePage(page).getByText('Customer.ID in (1, 2, 3)', { exact: false }),
+      activePage(page).getByText(`${CUSTOMER_ENTITY}.ID in (1, 2, 3)`, {
+        exact: false,
+      }),
     ).toBeVisible();
     // Like is offered for the text-typed Email field only.
     await activePage(page).locator('ion-select[label="Field"]').click();
@@ -379,12 +385,17 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
       })
       .click();
     await expect(
-      activePage(page).getByText("Customer.Email like '%@example.com'", {
-        exact: false,
-      }),
+      activePage(page).getByText(
+        `${CUSTOMER_ENTITY}.Email like '%@example.com'`,
+        {
+          exact: false,
+        },
+      ),
     ).toBeVisible();
     await expect(
-      activePage(page).getByText('Customer.ID in (1, 2, 3)', { exact: false }),
+      activePage(page).getByText(`${CUSTOMER_ENTITY}.ID in (1, 2, 3)`, {
+        exact: false,
+      }),
     ).toBeVisible();
   });
 
@@ -417,7 +428,7 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
       isIncidentCreateResponse(response, agentOrigin),
     );
     await activePage(page)
-      .getByRole('button', { name: "Houston, we've got a problem" })
+      .getByRole('button', { name: 'Create incident' })
       .click();
     const createResponse = await createResponsePromise;
     expect(createResponse.status()).toBe(201);

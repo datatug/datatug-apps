@@ -1,7 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OvdbRecordEditorComponent } from '../pages/signed-in/env-db-table/ovdb-record-editor/ovdb-record-editor.component';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, RouterLink } from '@angular/router';
+import { relatedLogEvidenceLinks } from '../pages/demo-logs/log-source-declarations';
+import { declaredShippingLogs } from '../pages/demo-logs/log-source-declarations.spec-helper';
 import { describe, expect, it, vi } from 'vitest';
 import { demoSqliteCatalog } from '../queries/demo-sqlite-catalog';
 import { localOvdbFetchFor, MemorySqliteDatabase } from '../demo-sqlite/local-demodb.spec-helper';
@@ -42,6 +44,32 @@ async function setup(table?: string, options: {
 }
 
 describe('OvdbDatabaseBrowserComponent', () => {
+  it.each([
+    ['requests', 'order_id', 11045, 'https://ovdb.demodb.dev/v1/databases/shipping', 'order'],
+    ['Orders', 'OrderID', 11045, 'https://demodb.dev/ovdb/v1/databases/northwind/', 'order'],
+    ['attempts', 'attempt_id', 'attempt-11045-1', 'https://ovdb.demodb.dev/v1/databases/shipping', 'attempt'],
+  ] as const)('links a selected %s record to its declared log source (record → logs)', async (collection, field, value, database, queryParam) => {
+    const sqlite = new MemorySqliteDatabase({ tables: { [collection]: {
+      columns: [{ name: field, declaredType: typeof value === 'number' ? 'INTEGER' : 'TEXT', notNull: true, primaryKeyPosition: 1 }],
+      primaryKey: [field], foreignKeys: [],
+    } } }, () => ({ [collection]: [{ [field]: value }] }));
+    const { fixture, q, settle } = await setup(collection, { database: sqlite });
+    fixture.componentRef.setInput('relatedEvidence', relatedLogEvidenceLinks(declaredShippingLogs, database, collection));
+    await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
+    q('row-0')?.click(); await settle();
+    const link = fixture.debugElement.queryAll(By.directive(RouterLink)).find(item => item.nativeElement.textContent.trim() === 'Related log evidence · Shipping logs');
+    expect(link).toBeDefined();
+    const directive = link?.injector.get(RouterLink);
+    if (!directive?.urlTree) throw new Error('Missing rendered related evidence target');
+    const url = new URL(TestBed.inject(Router).serializeUrl(directive.urlTree), 'https://example.test');
+    expect(url.pathname).toBe('/demo/logs');
+    expect(Object.fromEntries(url.searchParams)).toEqual({ source: 'shipping-logs', [queryParam]: String(value) });
+    // The same collection name in another database is not declared: no link.
+    fixture.componentRef.setInput('relatedEvidence', relatedLogEvidenceLinks(declaredShippingLogs, 'https://ovdb.example.test/v1/databases/shipping', collection));
+    await settle();
+    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).some(item => item.nativeElement.textContent.includes('Related log evidence'))).toBe(false);
+  });
+
   it('creates a typed record, selects it, keeps duplicate errors in the form, and resets', async () => {
     const { fixture, q, settle, local, component } = await setup('Artist');
     await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
@@ -228,6 +256,33 @@ describe('OvdbDatabaseBrowserComponent', () => {
     expect(q('ovdb-unknown-table')?.textContent).toContain('There is no table “Nope”');
   });
 
+  it('keeps Reset database out of sight until the source menu is opened', async () => {
+    const { q, fixture, settle } = await setup('Artist');
+    expect(q('reset-database')).toBeNull();
+    q('source-menu')?.click();
+    await settle();
+    expect(q('reset-database')).not.toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="source-menu"]')?.click();
+    await settle();
+    expect(q('reset-database')).toBeNull();
+  });
+
+  it('puts Create record inline with the table title and no All tables link in the card', async () => {
+    const { q, fixture, settle } = await setup('Artist');
+    await vi.waitFor(async () => { await settle(); expect(q('ovdb-table')).not.toBeNull(); });
+    const header = q('ovdb-table')?.querySelector('ion-card-header');
+    expect(header?.querySelector('[data-testid="record-create"]')).not.toBeNull();
+    expect(q('ovdb-table')?.textContent).not.toContain('All tables');
+    expect(fixture.nativeElement.querySelector('ion-card ion-card')).toBeNull();
+  });
+
+  it('right-aligns numeric columns', async () => {
+    const { q, settle } = await setup('Artist');
+    await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
+    const cells = q('ovdb-rows')?.querySelectorAll('td.ovdb-num');
+    expect(cells?.length).toBeGreaterThan(0);
+  });
+
   it('resets after confirmation, verifies the canonical copy and reloads', async () => {
     const { q, component, local, confirm, settle } = await setup('Artist');
     local.database.tables['Artist'][0]['Name'] = 'Changed';
@@ -271,6 +326,7 @@ describe('OvdbDatabaseBrowserComponent', () => {
     });
     const { q } = await setup(undefined, { database: readOnly });
     expect(q('reset-database')).toBeNull();
+    expect(q('source-menu')).toBeNull();
     expect(q('ovdb-database-header')?.textContent).toContain('read-only');
     expect(q('ovdb-table-list')).not.toBeNull();
   });

@@ -5,7 +5,6 @@ import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { ActionSheetController, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
-import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { of } from 'rxjs';
 
@@ -13,6 +12,7 @@ import { QueryEditorStateService } from './query-editor-state-service';
 import { QueriesUiService } from './queries-ui.service';
 import { DatatugQueriesServicesModule } from './datatug-queries-services.module';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 /**
  * Regression (S157, founder report 2026-09-10: selecting the side menu's
@@ -98,13 +98,7 @@ describe('QueryEditorStateService/QueriesUiService are app singletons shared by 
             navigateRoot: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         // `RandomIdService` (QueriesUiService's own dependency) is
         // `@Injectable()` with no `providedIn` — the real app provides it
         // (alongside `RANDOM_ID_OPTIONS`) at the bootstrap root
