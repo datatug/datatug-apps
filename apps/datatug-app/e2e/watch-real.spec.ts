@@ -8,13 +8,16 @@ const token = process.env['DATATUG_WATCH_REAL_TOKEN'];
 test('real coordinator: existing Check creates a Watch with consent, observes and opens inbox', async ({
   page,
 }, testInfo) => {
-  test.skip(
-    !endpoint || !agent || !project || !token,
-    'Owned native fixture process supplies endpoints and an ephemeral credential.',
-  );
+  if (!endpoint || !agent || !project || !token) {
+    test.skip(
+      true,
+      'Owned native fixture process supplies endpoints and an ephemeral credential.',
+    );
+    return;
+  }
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  const projectPath = `/store/http-${new URL(agent!).host}/project/${project}`;
+  const projectPath = `/store/http-${new URL(agent).host}/project/${project}`;
   await page.goto(
     projectPath +
       '/checks/shipping-carrier-assignment#code=' +
@@ -29,8 +32,8 @@ test('real coordinator: existing Check creates a Watch with consent, observes an
   });
   if (await rejectAnalytics.isVisible()) await rejectAnalytics.click();
   await page.getByRole('button', { name: 'Create Watch', exact: true }).click();
-  await expect(page.getByText(endpoint!, { exact: true })).toBeVisible();
-  await page.getByLabel('Coordinator user credential').fill(token!);
+  await expect(page.getByText(endpoint, { exact: true })).toBeVisible();
+  await page.getByLabel('Coordinator user credential').fill(token);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(
     page.getByRole('heading', { name: 'Create Watch', exact: true }),
@@ -80,7 +83,7 @@ test('real coordinator: existing Check creates a Watch with consent, observes an
     page.getByText('Order 11045 · carrier assignment failure', { exact: true }),
   ).toHaveCount(2);
   await page.reload();
-  await page.getByLabel('Coordinator user credential').fill(token!);
+  await page.getByLabel('Coordinator user credential').fill(token);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(page).toHaveURL(detailURL);
   await expect(page.locator('.watch-summary')).toContainText('Failing');
