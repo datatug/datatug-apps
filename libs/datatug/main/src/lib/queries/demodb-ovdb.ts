@@ -3,7 +3,7 @@
 // Since 2026-10-16 the API is served from its own host, `https://ovdb.demodb.dev/v1/...`.
 // The old base `https://demodb.dev/ovdb` (same paths after it) only answers with a 308
 // redirect, and browsers do not follow a redirect on a preflighted request such as
-// `POST .../dtql`. DataTug therefore never requests the old base: every request URL goes
+// `POST .../tugql`. DataTug therefore never requests the old base: every request URL goes
 // through `currentDemoDbOvdbUrl`.
 //
 // The old base is still *accepted when reading* data published before the move: the demo

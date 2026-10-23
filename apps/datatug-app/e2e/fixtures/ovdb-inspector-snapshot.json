@@ -3,9 +3,9 @@
     "capabilities": {
       "aggregation": true,
       "delete": false,
-      "dtql": true,
-      "dtqlStreaming": true,
-      "dtqlStreamingErrors": true,
+      "tugql": true,
+      "tugqlStreaming": true,
+      "tugqlStreamingErrors": true,
       "joins": true,
       "persistent": true,
       "query": true,
@@ -29,11 +29,11 @@
       "Territories"
     ],
     "endpoints": {
-      "dtql": "https://cloud.openvaultdb.com/v1/databases/northwind/dtql"
+      "tugql": "https://cloud.openvaultdb.com/v1/databases/northwind/tugql"
     },
     "engine": "sqlite",
     "id": "northwind",
-    "queryFormat": "dtql-yaml+json",
+    "queryFormat": "tugql-yaml+json",
     "schemaMode": "strict",
     "schemas": {
       "collections": {
@@ -400,9 +400,9 @@
     "capabilities": {
       "aggregation": true,
       "delete": false,
-      "dtql": true,
-      "dtqlStreaming": true,
-      "dtqlStreamingErrors": true,
+      "tugql": true,
+      "tugqlStreaming": true,
+      "tugqlStreamingErrors": true,
       "joins": true,
       "persistent": true,
       "query": true,
@@ -424,11 +424,11 @@
       "Track"
     ],
     "endpoints": {
-      "dtql": "https://cloud.openvaultdb.com/v1/databases/chinook/dtql"
+      "tugql": "https://cloud.openvaultdb.com/v1/databases/chinook/tugql"
     },
     "engine": "sqlite",
     "id": "chinook",
-    "queryFormat": "dtql-yaml+json",
+    "queryFormat": "tugql-yaml+json",
     "schemaMode": "strict",
     "schemas": {
       "collections": {

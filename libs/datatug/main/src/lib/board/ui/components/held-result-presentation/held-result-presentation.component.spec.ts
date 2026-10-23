@@ -147,7 +147,7 @@ describe('held result presentation', () => {
         ...result(rows),
         nativeDirect: true,
         provenance: {
-          source: 'https://cloud.openvaultdb.com/v1/dtql (direct OVDB)',
+          source: 'https://cloud.openvaultdb.com/v1/tugql (direct OVDB)',
           mode: 'live',
           observedAt: '2026-10-19T00:00:00Z',
           ...(profile ? { executionProfile: profile } : {}),

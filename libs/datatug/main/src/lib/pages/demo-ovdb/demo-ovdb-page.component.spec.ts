@@ -119,7 +119,7 @@ describe('DemoOvdbPageComponent', () => {
     expect(el.querySelectorAll('[data-testid^="row-"]').length).toBe(2);
     expect(requests.at(-1)).toMatchObject({
       method: 'POST',
-      url: 'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/dtql',
+      url: 'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/tugql',
     });
     (q('row-0') as HTMLElement).click();
     await settle();

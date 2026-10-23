@@ -1,3 +1,8 @@
+import { LEGACY_DTQL_QUERY_TYPE } from './legacy-dtql-query';
+import {
+  selectTugqlBodyFile,
+  type IQueryBodyFile,
+} from './query-body-files';
 import { IEnvironmentPresentation } from '../../../models/definition/environments';
 import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
@@ -174,6 +179,8 @@ export interface IGithubWireQueryItem {
   title?: string;
   type: string;
   text?: string;
+  /** Set by the GitHub reader from the body file name; see ./query-body-files.ts. */
+  representation?: 'text' | 'yaml';
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
@@ -1234,7 +1241,7 @@ export class GithubProjectReaderService {
     }
   }
 
-  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.dtql`/`.http` sidecar). */
+  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
@@ -1489,7 +1496,7 @@ export class GithubProjectReaderService {
   // ---------------------------------------------------------------------
 
   /** File-name suffixes this reader recognizes as a query DEFINITION file
-   * (as opposed to a sidecar body file like `.sql`/`.dtql`/`.http`, or a
+   * (as opposed to a sidecar body file like `.sql`/`.tugql`/`.http`, or a
    * body file that happens to share a definition's own stem, e.g. the
    * legacy `<id>.sql` next to `<id>.sql.json`). Deliberately wider than
    * datatug-cli's own `all_queries`/`get_query` (which only recognize
@@ -1513,24 +1520,24 @@ export class GithubProjectReaderService {
   }
 
   /** The sidecar BODY file for one definition file — `<id>.query.json` ->
-   * `<id>.query.<ext>` (ext from `type`: sql/dtql/http); `<id>.sql.json` ->
+   * `<id>.query.<ext>` (ext from `type`: sql/http; a TugQL body is chosen
+   * from the sibling files by {@link selectTugqlBodyFile}); `<id>.sql.json` ->
    * `<id>.sql` (the def filename itself, minus only the trailing `.json` —
    * the legacy convention already spells the body's own extension into its
    * "sql" segment). */
-  private static bodyFileNameFor(defFileName: string, type: string): string {
+  private static bodyFileFor(
+    defFileName: string,
+    type: string,
+    siblingFileNames: ReadonlySet<string>,
+  ): IQueryBodyFile {
     if (defFileName.endsWith('.sql.json')) {
-      return defFileName.slice(0, -'.json'.length);
+      return { fileName: defFileName.slice(0, -'.json'.length) };
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext =
-      type === 'HTTP'
-        ? 'http'
-        : type === 'TugQL'
-          ? 'tugql'
-          : type === 'DTQL'
-            ? 'dtql'
-            : 'sql';
-    return `${stem}.${ext}`;
+    if (type === 'TugQL' || type === LEGACY_DTQL_QUERY_TYPE) {
+      return selectTugqlBodyFile(stem, type, siblingFileNames);
+    }
+    return { fileName: `${stem}.${type === 'HTTP' ? 'http' : 'sql'}` };
   }
 
   /** The full, recursively-nested query folder tree under `queries/` — one
@@ -1630,7 +1637,11 @@ export class GithubProjectReaderService {
               title: def?.title,
               createdAt: def?.createdAt,
               tags: def?.tags,
-              type: def?.type || 'SQL',
+              // The legacy DTQL type is TugQL (./legacy-dtql-query.ts).
+              type:
+                def?.type === LEGACY_DTQL_QUERY_TYPE
+                  ? 'TugQL'
+                  : def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
@@ -1738,21 +1749,37 @@ export class GithubProjectReaderService {
           switchMap((def) => {
             const bareId = GithubProjectReaderService.defFileBareId(fileName);
             const type = def?.type || 'SQL';
-            const bodyFileName = GithubProjectReaderService.bodyFileNameFor(
+            const siblingPrefix = `${queriesPrefix}${folderName ? `${folderName}/` : ''}`;
+            const siblings = new Set(
+              tree
+                .filter(
+                  (entry) =>
+                    entry.type === 'blob' &&
+                    entry.path.startsWith(siblingPrefix) &&
+                    !entry.path.slice(siblingPrefix.length).includes('/'),
+                )
+                .map((entry) => entry.path.slice(siblingPrefix.length)),
+            );
+            const body = GithubProjectReaderService.bodyFileFor(
               fileName,
               type,
+              siblings,
             );
             const bodyRelPath = folderName
-              ? `queries/${folderName}/${bodyFileName}`
-              : `queries/${bodyFileName}`;
+              ? `queries/${folderName}/${body.fileName}`
+              : `queries/${body.fileName}`;
             return this.getRawText(projectId, bodyRelPath).pipe(
               map(
                 (text): IGithubWireQueryItem => ({
                   id: def?.id || bareId,
                   title: def?.title,
                   createdAt: def?.createdAt,
-                  type,
+                  // The legacy DTQL type is TugQL (its body is the YAML form).
+                  type: type === LEGACY_DTQL_QUERY_TYPE ? 'TugQL' : type,
                   text,
+                  ...(body.representation
+                    ? { representation: body.representation }
+                    : {}),
                   ...(def?.connectionId
                     ? { connectionId: def.connectionId }
                     : {}),

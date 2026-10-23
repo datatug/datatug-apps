@@ -72,8 +72,8 @@ describe('plain HTML custom elements', () => {
     fetcher.mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith('/.well-known/openvaultdb')) return json({ databases: [{ id: 'chinook', url: 'https://example.test/ovdb/dbs/chinook', apiUrl: '/ovdb/v1/databases/chinook' }] });
-      if (url.endsWith('/ovdb/v1/databases/chinook')) return json({ capabilities: { dtql: true }, endpoints: { dtql: '/ovdb/v1/databases/chinook/dtql' }, queryFormat: 'dtql-yaml+json' });
-      if (url.endsWith('/ovdb/v1/databases/chinook/dtql')) {
+      if (url.endsWith('/ovdb/v1/databases/chinook')) return json({ capabilities: { tugql: true }, endpoints: { tugql: '/ovdb/v1/databases/chinook/tugql' }, queryFormat: 'tugql-yaml+json' });
+      if (url.endsWith('/ovdb/v1/databases/chinook/tugql')) {
         expect(init?.method).toBe('POST');
         expect(JSON.parse(String(init?.body))).toEqual({ query: 'from: {name: Album}\nwhere: {op: "==", left: {field: ArtistId}, right: {param: ArtistID}}\nlimit: 10', parameters: { ArtistID: 456, 'user.choice': 'a' } });
         return json({ records: [{ key: 'Album/1', data: { AlbumId: 1, Title: '<script>alert(1)</script>' } }] });
@@ -82,9 +82,9 @@ describe('plain HTML custom elements', () => {
     });
     const grid = document.createElement('datatug-grid');
     grid.setAttribute('connection', 'https://example.test/ovdb/dbs/chinook');
-    grid.innerHTML = '<dtql-query>from: {name: Album}\nwhere: {op: "==", left: {field: ArtistId}, right: {param: ArtistID}}\nlimit: 10</dtql-query><dtql-param name="ArtistID" value="123" type="number"></dtql-param><dtql-param name="user.choice" value="a"></dtql-param>';
+    grid.innerHTML = '<tugql-query>from: {name: Album}\nwhere: {op: "==", left: {field: ArtistId}, right: {param: ArtistID}}\nlimit: 10</tugql-query><tugql-param name="ArtistID" value="123" type="number"></tugql-param><tugql-param name="user.choice" value="a"></tugql-param>';
     document.body.append(grid);
-    (grid.querySelector('dtql-param') as HTMLElement & { value: unknown }).value = 456;
+    (grid.querySelector('tugql-param') as HTMLElement & { value: unknown }).value = 456;
     await tick();
     expect(grid.shadowRoot?.textContent).toContain('<script>alert(1)</script>');
     expect(grid.shadowRoot?.querySelector('script')).toBeNull();
@@ -121,16 +121,16 @@ describe('plain HTML custom elements', () => {
     fetcher.mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith('/.well-known/openvaultdb')) return json({ databases: [{ url: 'https://example.test/ovdb/dbs/a', apiUrl: '/api/a' }] });
-      if (url.endsWith('/api/a')) return json({ capabilities: { dtql: true }, endpoints: { dtql: '/api/a/dtql' }, queryFormat: 'dtql-yaml+json' });
+      if (url.endsWith('/api/a')) return json({ capabilities: { tugql: true }, endpoints: { tugql: '/api/a/tugql' }, queryFormat: 'tugql-yaml+json' });
       calls.push(String(init?.body)); return json({ records: [] });
     });
     const grid = document.createElement('datatug-grid'); grid.setAttribute('connection', 'https://example.test/ovdb/dbs/a');
-    grid.innerHTML = '<dtql-query>from: {name: Album}</dtql-query><dtql-param name="x" value="1" type="number"></dtql-param>';
+    grid.innerHTML = '<tugql-query>from: {name: Album}</tugql-query><tugql-param name="x" value="1" type="number"></tugql-param>';
     document.body.append(grid); await tick();
     expect(JSON.parse(calls.at(-1) ?? '{}').parameters.x).toBe(1);
-    grid.querySelector('dtql-param')?.setAttribute('value', '2'); await tick();
+    grid.querySelector('tugql-param')?.setAttribute('value', '2'); await tick();
     expect(JSON.parse(calls.at(-1) ?? '{}').parameters.x).toBe(2);
-    const query = grid.querySelector('dtql-query');
+    const query = grid.querySelector('tugql-query');
     if (query) query.textContent = 'from: {name: Artist}';
     await tick();
     expect(JSON.parse(calls.at(-1) ?? '{}').query).toBe('from: {name: Artist}');
@@ -143,11 +143,11 @@ describe('plain HTML custom elements', () => {
     fetcher.mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.endsWith('/.well-known/openvaultdb')) return json({ databases: [{ url: 'https://example.test/ovdb/dbs/a', apiUrl: '/api/a' }] });
-      if (url.endsWith('/api/a')) return json({ capabilities: { dtql: true }, endpoints: { dtql: '/api/a/dtql' }, queryFormat: 'dtql-yaml+json' });
+      if (url.endsWith('/api/a')) return json({ capabilities: { tugql: true }, endpoints: { tugql: '/api/a/tugql' }, queryFormat: 'tugql-yaml+json' });
       body = String(init?.body); return json({ records: [] });
     });
     const grid = document.createElement('datatug-grid'); grid.setAttribute('connection', 'https://example.test/ovdb/dbs/a');
-    grid.innerHTML = '<dtql-query>from: {name: Album}</dtql-query><dtql-param name="__proto__" value="safe"></dtql-param>';
+    grid.innerHTML = '<tugql-query>from: {name: Album}</tugql-query><tugql-param name="__proto__" value="safe"></tugql-param>';
     document.body.append(grid); await tick();
     expect(body).toContain('"__proto__":"safe"');
   });
@@ -156,13 +156,13 @@ describe('plain HTML custom elements', () => {
     const fetcher = vi.mocked(fetch);
     fetcher.mockResolvedValueOnce(json({ databases: [] }));
     const grid = document.createElement('datatug-grid'); grid.setAttribute('connection', 'https://example.test/ovdb/dbs/missing');
-    grid.innerHTML = '<dtql-query>from: {name: Album}</dtql-query>';
+    grid.innerHTML = '<tugql-query>from: {name: Album}</tugql-query>';
     document.body.append(grid); await tick();
     expect(grid.shadowRoot?.querySelector('[role=alert]')?.textContent).toContain('does not list');
     fetcher.mockResolvedValueOnce(json({ databases: [{ url: 'https://example.test/ovdb/dbs/missing', apiUrl: '/api/db' }] }));
     fetcher.mockResolvedValueOnce(json({ capabilities: { read: true } }));
     await (grid as HTMLElement & { refresh(): Promise<void> }).refresh();
-    expect(grid.shadowRoot?.querySelector('[role=alert]')?.textContent).toContain('does not advertise DTQL');
+    expect(grid.shadowRoot?.querySelector('[role=alert]')?.textContent).toContain('does not advertise TugQL');
     fetcher.mockResolvedValueOnce(json({ error: { code: 'denied', message: 'Denied' } }, 403));
     await (grid as HTMLElement & { refresh(): Promise<void> }).refresh();
     expect(grid.shadowRoot?.querySelector('[role=alert]')?.textContent).toContain('403): Denied');

@@ -276,7 +276,7 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
                 {
                   message: {
                     content: JSON.stringify({
-                      dtql: {
+                      tugql: {
                         from: { schema: 'main', name: 'InvoiceLine' },
                         where: {
                           op: '==',

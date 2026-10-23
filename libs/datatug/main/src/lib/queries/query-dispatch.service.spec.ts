@@ -64,7 +64,7 @@ describe('QueryDispatchService transport boundary', () => {
   });
   afterEach(() => http.verify());
 
-  it('runs exact publisher-admitted saved DTQL through the existing API admission without SQLite', async () => {
+  it('runs exact publisher-admitted saved TugQL through the existing API admission without SQLite', async () => {
     const admitted = { ...result, totalRows: 830 } as unknown as Awaited<
       ReturnType<typeof publicQueries.executeSavedPublicChartQuery>
     >;
@@ -75,7 +75,7 @@ describe('QueryDispatchService transport boundary', () => {
       const definition = {
         ...sqlDefinition(),
         id: 'northwind-orders-full-sqlite',
-        request: { queryType: QueryType.DTQL, text: 'pinned query' },
+        request: { queryType: QueryType.TugQL, text: 'pinned query' },
       };
       const parent = new AbortController();
       const response = await service.execute({
@@ -351,7 +351,7 @@ describe('QueryDispatchService transport boundary', () => {
 
   it.each([
     ['inprocess', { query: true }, '/query'],
-    ['hosted', { dtql: true }, '/dtql'],
+    ['hosted', { tugql: true }, '/tugql'],
   ] as const)('sends %s OVDB reads through the explicitly bound connection fetch', async (_label, capabilities, path) => {
     const pin = 'a'.repeat(64);
     const response = new Response(JSON.stringify({
@@ -375,7 +375,7 @@ describe('QueryDispatchService transport boundary', () => {
     const execution = service.execute({
       projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
       definition: { ...sqlDefinition(), connectionId: 'logical-edition-4', request: {
-        queryType: QueryType.DTQL, text: 'from:\n  name: "items"\nlimit: 1\n',
+        queryType: QueryType.TugQL, text: 'from:\n  name: "items"\nlimit: 1\n',
       } as ITextQueryRequest },
       queryId: 'folder/report',
       target: { kind: 'ovdb-connection', connectionId: binding.id, databaseId: binding.databaseId },
@@ -417,13 +417,13 @@ describe('QueryDispatchService transport boundary', () => {
     vi.spyOn(body, 'getReader').mockReturnValue(reader);
     const binding: OvdbConnection = {
       id: 'copy', title: 'Copy', baseUrl: 'https://ovdb.example', databaseId: 'db', fetch: async () => response,
-      descriptor: { id: 'db', capabilities: { dtql: true }, canonical: { url: 'https://fixture.example/db.sqlite', sha256: pin, bytes: 64 },
+      descriptor: { id: 'db', capabilities: { tugql: true }, canonical: { url: 'https://fixture.example/db.sqlite', sha256: pin, bytes: 64 },
         schemas: { collections: { items: { fields: { Name: { type: 'string' } } } } } },
     };
     github.mockReturnValue(of({ connections: [{ id: 'logical', storage: 'sqlite', fixtureSha256: pin }] }));
     await expect(service.execute({
       projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
-      definition: { ...sqlDefinition(), connectionId: 'logical', request: { queryType: QueryType.DTQL, text: 'from: {name: items}\nlimit: 1' } as ITextQueryRequest },
+      definition: { ...sqlDefinition(), connectionId: 'logical', request: { queryType: QueryType.TugQL, text: 'from: {name: items}\nlimit: 1' } as ITextQueryRequest },
       queryId: 'folder/report', target: { kind: 'ovdb-connection', connectionId: binding.id, databaseId: binding.databaseId },
       runtimeBinding: binding, signal: controller.signal,
     })).rejects.toThrow(failure === 'limit' ? '2 MiB' : failure === 'error' ? 'reader failed' : 'cancelled');
@@ -447,7 +447,7 @@ describe('QueryDispatchService transport boundary', () => {
     const output = await service.execute({
       projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'shared-space' },
       definition: { ...sqlDefinition(), connectionId: 'paid-logical-connection',
-        request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 1\n' } as ITextQueryRequest },
+        request: { queryType: QueryType.TugQL, text: 'from:\n  name: "customers"\nlimit: 1\n' } as ITextQueryRequest },
       queryId: 'reports/customer-copy', environment: 'production', runtimeBinding,
     });
     expect(output.recordset.rows[0][0]).toEqual({ type: 'string', value: 'edited shared copy' });
@@ -474,7 +474,7 @@ describe('QueryDispatchService transport boundary', () => {
     const registry = TestBed.inject(QueryRuntimeRegistry);
     const registration = registry.register(connection);
     const definition: IQueryDef = { ...sqlDefinition(), connectionId: 'published-edition-v4', request: {
-      queryType: QueryType.DTQL, text: 'from:\n  name: "records"\nlimit: 10\n',
+      queryType: QueryType.TugQL, text: 'from:\n  name: "records"\nlimit: 10\n',
     } as ITextQueryRequest };
     github.mockReturnValue(of({ connections: [{ id: 'published-edition-v4', fixtureSha256: pin }] }));
     const request: QueryDispatchRequest = {
@@ -512,7 +512,7 @@ describe('QueryDispatchService transport boundary', () => {
     const request: QueryDispatchRequest = {
       projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
       definition: { ...sqlDefinition(), connectionId: 'logical-copy', request: {
-        queryType: QueryType.DTQL, text: 'from:\n  name: "records"\nlimit: 10\n',
+        queryType: QueryType.TugQL, text: 'from:\n  name: "records"\nlimit: 10\n',
       } as ITextQueryRequest },
       runtimeBinding: connection,
     };

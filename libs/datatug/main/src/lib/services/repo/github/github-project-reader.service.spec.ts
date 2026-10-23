@@ -87,7 +87,7 @@ const DEMO_TREE = {
     },
     { path: 'demo-project-1/queries/customers', type: 'tree' },
     {
-      path: 'demo-project-1/queries/customers/customer-invoices.query.dtql',
+      path: 'demo-project-1/queries/customers/customer-invoices.query.tugql.yaml',
       type: 'blob',
     },
     {
@@ -526,7 +526,7 @@ describe('GithubProjectReaderService', () => {
       const { service } = setup({
         'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
         'demo-project-1/queries/customers/customer-invoices.query.json':
-          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
+          '{"id":"customer-invoices","title":"Customer invoices","type":"TugQL","connectionId":"chinook-sqlite"}',
       });
       const result = await first(service.getQueriesFolder(PROJECT_ID));
 
@@ -540,7 +540,7 @@ describe('GithubProjectReaderService', () => {
       expect(customers?.items?.[0]).toMatchObject({
         id: 'customer-invoices',
         title: 'Customer invoices',
-        type: 'DTQL',
+        type: 'TugQL',
         connectionId: 'chinook-sqlite',
       });
       // datatug-cli's own `all_queries` never includes the body — this
@@ -583,11 +583,11 @@ describe('GithubProjectReaderService', () => {
         'demo-project-1/queries/customers/customer-invoices.query.json':
           JSON.stringify({
             id: 'customer-invoices',
-            type: 'DTQL',
+            type: 'TugQL',
             publicData,
             federation,
           }),
-        'demo-project-1/queries/customers/customer-invoices.query.dtql': '{}',
+        'demo-project-1/queries/customers/customer-invoices.query.tugql.yaml': '{}',
       });
       const result = await first(
         service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
@@ -595,10 +595,10 @@ describe('GithubProjectReaderService', () => {
       expect(result).toMatchObject({
         publicData,
         federation,
-        type: 'DTQL',
+        type: 'TugQL',
         text: '{}',
       });
-      expect(gh.requests.every((call) => !call.url.includes('/dtql'))).toBe(
+      expect(gh.requests.every((call) => !call.url.includes('/tugql'))).toBe(
         true,
       );
     });
@@ -607,16 +607,76 @@ describe('GithubProjectReaderService', () => {
     it('resolves a bare id, fetching both the definition and its sidecar body', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':
-          '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
-        'demo-project-1/queries/customers/customer-invoices.query.dtql': 'from:\n  name: Invoice\n',
+          '{"id":"customer-invoices","title":"Customer invoices","type":"TugQL","connectionId":"chinook-sqlite"}',
+        'demo-project-1/queries/customers/customer-invoices.query.tugql.yaml': 'from:\n  name: Invoice\n',
       });
       const result = await first(service.getQuery(PROJECT_ID, 'customer-invoices'));
 
       expect(result).toMatchObject({
         id: 'customer-invoices',
-        type: 'DTQL',
+        type: 'TugQL',
         connectionId: 'chinook-sqlite',
         text: 'from:\n  name: Invoice\n',
+      });
+    });
+
+    describe('TugQL body files', () => {
+      const DEF = 'demo-project-1/queries/fresh/fresh-query.query.json';
+      const BODY = 'demo-project-1/queries/fresh/fresh-query.query';
+
+      it('reads <id>.query.tugql as the TugQL text form', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"TugQL"}',
+          [`${BODY}.tugql`]: 'from Invoice\n',
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
+        expect(result).toMatchObject({ type: 'TugQL', representation: 'text', text: 'from Invoice\n' });
+      });
+
+      it('reads <id>.query.tugql.yaml as the TugQL YAML form', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"TugQL"}',
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
+        expect(result).toMatchObject({ type: 'TugQL', representation: 'yaml', text: 'from:\n  name: Invoice\n' });
+      });
+
+      it('rejects a query that has both body files', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"TugQL"}',
+          [`${BODY}.tugql`]: 'from Invoice\n',
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        await expect(first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'))).rejects.toThrow(
+          /more than one body file/,
+        );
+      });
+
+      it('reads the legacy DTQL type with its <id>.query.dtql body as TugQL YAML (removed in TugQL cutover step 9)', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
+          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
+        expect(result).toMatchObject({ type: 'TugQL', representation: 'yaml', text: 'from:\n  name: Invoice\n' });
+      });
+
+      it('rejects a legacy DTQL query that also has a new body file', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
+          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        await expect(first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'))).rejects.toThrow(
+          /more than one body file/,
+        );
+      });
+
+      it('lists a legacy DTQL definition as TugQL', async () => {
+        const { service } = setup({ [DEF]: '{"id":"fresh-query","type":"DTQL"}' });
+        const folder = await first(service.getQueriesFolder(PROJECT_ID));
+        expect(folder.folders?.find((f) => f.id === 'fresh')?.items?.[0].type).toBe('TugQL');
       });
     });
 
@@ -634,11 +694,11 @@ describe('GithubProjectReaderService', () => {
       const { service } = setup({
         'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.json': JSON.stringify({
           id: 'chinook-customer-invoice-join',
-          type: 'DTQL',
+          type: 'TugQL',
           connectionId: 'chinook-sqlite',
           relationshipBindings,
         }),
-        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.dtql':
+        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.tugql.yaml':
           'from Invoice as i\njoin Customer as c\n  on i.CustomerId = c.CustomerId\n',
       });
 
@@ -652,8 +712,8 @@ describe('GithubProjectReaderService', () => {
     it('resolves a folder-qualified id the same way', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':
-          '{"id":"customer-invoices","type":"DTQL"}',
-        'demo-project-1/queries/customers/customer-invoices.query.dtql': 'body',
+          '{"id":"customer-invoices","type":"TugQL"}',
+        'demo-project-1/queries/customers/customer-invoices.query.tugql.yaml': 'body',
       });
       const result = await first(service.getQuery(PROJECT_ID, 'customers/customer-invoices'));
       expect(result.id).toBe('customer-invoices');

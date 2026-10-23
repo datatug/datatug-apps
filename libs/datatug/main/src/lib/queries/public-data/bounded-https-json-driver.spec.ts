@@ -99,7 +99,7 @@ async function setup(
     database = 'ror',
     name = 'Organization',
   ) =>
-    transport.fetch(`${base}/v1/databases/${database}/dtql`, {
+    transport.fetch(`${base}/v1/databases/${database}/tugql`, {
       method: 'POST',
       body: JSON.stringify({ from: { name } }),
       headers: { Authorization: 'never-forward-source-secret' },
@@ -127,7 +127,7 @@ describe('bounded declared source with real OVDB target transport', () => {
     await state.request(transport);
     expect(state.calls.map((call) => call.url)).toEqual([
       state.dataUrl,
-      `${base}/v1/databases/ror/dtql`,
+      `${base}/v1/databases/ror/tugql`,
     ]);
     expect(state.calls[0].init).toMatchObject({
       method: 'GET',

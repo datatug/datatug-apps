@@ -153,8 +153,8 @@ function installErrorLoggerWatch(page: Page): string[] {
 /**
  * `query-page.component.html` only renders a body EDITOR for
  * `queryState.queryType === "HTTP"` (`<sneat-datatug-http-query-editor />`)
- * — the SQL editor is commented out in the template and there is no DTQL
- * branch at all, so a SQL or DTQL query's own body text never appears
+ * — the SQL editor is commented out in the template and there is no TugQL
+ * branch at all, so a SQL or TugQL query's own body text never appears
  * anywhere in the DOM for Playwright's text locators to find (confirmed
  * live, S136; pre-existing, applies to every store, not GitHub-specific —
  * well beyond this task's own scope to add a missing editor UI for). Reading
@@ -619,7 +619,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(errors).toEqual([]);
   });
 
-  test('a saved DTQL query page shows its definition and body', async ({
+  test('a saved TugQL query page shows its definition and body', async ({
     page,
   }) => {
     const errors = installErrorLoggerWatch(page);
@@ -652,7 +652,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(
       activePage(page).getByRole('heading', { level: 1 }),
     ).toHaveText('Customer invoices', { timeout: 20_000 });
-    // The query BODY (from the .query.dtql sidecar file) — proves get_query's
+    // The query BODY (from the .query.tugql.yaml sidecar file) — proves get_query's
     // GitHub equivalent actually read the file content, not just the
     // definition JSON (which never carries `text` for the folder-list view).
     // See `getQueryBodyText()`'s own doc comment for why this reads
@@ -701,7 +701,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .toMatch(/SELECT/);
 
     // Both of this query's own parameters are optional (no value required),
-    // so — unlike the DTQL query in the previous test — "Run" is enabled and
+    // so — unlike the TugQL query in the previous test — "Run" is enabled and
     // reachable here: deliverable 2, "an explicit, friendly notice [that
     // running a query needs a DataTug agent], not a thrown error" for a
     // read-only GitHub-store project.
@@ -727,7 +727,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
    * / `QueriesService.getQuery()` — unchanged by this task, see
    * `github-project-reader.service.spec.ts`'s own `getQuery` coverage and
    * `queries.service.spec.ts`'s new GitHub-store describe block) — the query
-   * page template itself never rendered any of it (no SQL/DTQL body editor
+   * page template itself never rendered any of it (no SQL/TugQL body editor
    * at all, no "linked entities" section anywhere), AND a separate ordering
    * bug in `trackQueryParams()` (processed `env=` before `id=`) threw a
    * user-visible "Something went wrong: An attempt to set unknown env as an

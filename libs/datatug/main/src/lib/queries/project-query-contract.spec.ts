@@ -34,7 +34,7 @@ describe('common project query contract', () => {
     expect(read.createdAt).toBe(wire.createdAt);
   });
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
-    'round-trips complete %s source and DTQL body',
+    'round-trips complete %s source and TugQL body',
     (source) => {
       const query = withHostedDemoDbSource(
         createHostedDemoDbQuery('test'),
@@ -42,7 +42,7 @@ describe('common project query contract', () => {
       );
       const wire = toProjectQueryWire(query);
       expect(wire.folderPath).toBe('~');
-      expect(wire.type).toBe(QueryType.DTQL);
+      expect(wire.type).toBe(QueryType.TugQL);
       expect(fromProjectQueryWire(asReadWire(wire))).toEqual(query);
       expect(wire.federation).not.toBe(query.federation);
     },
@@ -95,7 +95,7 @@ describe('common project query contract', () => {
     const wire = {
       folderPath: 'customers',
       id: 'customer-invoices-joined',
-      type: QueryType.DTQL,
+      type: QueryType.TugQL,
       text: 'from Invoice as i',
       connectionId: 'chinook-sqlite',
       relationshipBindings,

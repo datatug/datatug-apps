@@ -90,14 +90,14 @@ describe('QueryEditorStateService', () => {
     const original: IQueryDef = {
       id: 'chinook-invoice-author-draft-test',
       title: 'Invoice Author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
     };
     const state = service.newQuery({
       id: original.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       def: original,
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice\nlimit 3',
       } as ITextQueryRequest,
       revision: 'draft-base',
@@ -105,7 +105,7 @@ describe('QueryEditorStateService', () => {
     });
     const authorized: IQueryDef = {
       ...original,
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 100' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from Invoice\nlimit 100' } as ITextQueryRequest,
     };
 
     const opened = service.openAuthorizedQuery(original.id, authorized, undefined, {
@@ -115,7 +115,7 @@ describe('QueryEditorStateService', () => {
       unsupportedSaveReason: 'This query has fields the save API cannot preserve.',
     });
 
-    expect(opened.request?.queryType).toBe(QueryType.DTQL);
+    expect(opened.request?.queryType).toBe(QueryType.TugQL);
     expect((opened.request as { text?: string }).text).toBe('from Invoice\nlimit 3');
     expect(opened.def).toBe(original);
     expect(opened.revision).toBe('draft-base');
@@ -130,7 +130,7 @@ describe('QueryEditorStateService', () => {
     const definition: IQueryDef = {
       id: 'chinook-invoice-author-fresh-read-test',
       title: 'Invoice Author',
-      request: { queryType: QueryType.DTQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from Invoice\nlimit 10' } as ITextQueryRequest,
     };
 
     const opened = service.openAuthorizedQuery(definition.id, definition, undefined, {
@@ -152,7 +152,7 @@ describe('QueryEditorStateService', () => {
 });
 
 describe('QueryEditorStateService — hosted DemoDB query creation and save', () => {
-  it('creates a query with the complete selected DTQL/federation definition and marks it persisted', async () => {
+  it('creates a query with the complete selected TugQL/federation definition and marks it persisted', async () => {
     const project = {
       ref: { storeId: 'github.com', projectId: 'owner/repo' },
       summary: {
@@ -192,7 +192,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
       id: draft.id,
       title: draft.title,
       isNew: true,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       def: draft,
       request: draft.request,
       federation: draft.federation,
@@ -203,7 +203,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
     if (!savingState)
       throw new Error('Expected query draft while save is pending');
     const newerRequest = {
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       text: 'from:\n  database: adventureworks\n  schema: Person\n  name: Person\n  alias: p\nlimit: 5\n',
     } as ITextQueryRequest;
     service.updateQueryState({
@@ -388,7 +388,7 @@ describe('QueryEditorStateService — loadQuery falls back to project_full when 
             {
               id: 'customer-invoices',
               title: 'Customer invoices',
-              type: 'DTQL',
+              type: 'TugQL',
               text: 'from:\n  name: Invoice\n  alias: i\n',
               parameters: [
                 {
@@ -557,7 +557,7 @@ describe('QueryEditorStateService — findQueryInProjectFull matches both id for
             {
               id: 'annual-report',
               title: 'Annual report',
-              type: 'DTQL',
+              type: 'TugQL',
               text: 'from:\n  name: Invoice\n  alias: i\n',
             },
           ],

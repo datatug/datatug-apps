@@ -6,7 +6,7 @@
     "id": "northwind-shipping-country-count-sqlite",
     "repository": "https://github.com/datatug/datatug-demo-project",
     "revision": "d65384f3fbd99047e2955d92636a134f4b01e851",
-    "path": "demo-project-1/queries/demodb/northwind-shipping-country-count-sqlite.query.dtql",
+    "path": "demo-project-1/queries/demodb/northwind-shipping-country-count-sqlite.query.tugql.yaml",
     "sha256": "2e320d487d7bbe7dbfc53abc55c08d12eb80a2e79b34cfe15a2148fa362acc9a",
     "bytes": 194
   },
@@ -18,7 +18,7 @@
     "bytes": 4447
   },
   "admission": {
-    "endpoint": "https://demodb.dev/ovdb/v1/databases/northwind/dtql",
+    "endpoint": "https://demodb.dev/ovdb/v1/databases/northwind/tugql",
     "query": "from: {name: Orders}\ngroupBy: [{field: ShipCountry}]\norderBy: [{field: ShipCountry}]\ncolumns: [{field: ShipCountry}, {aggregate: {function: count, args: [{star: true}]}, as: orders}]\nlimit: 100\n",
     "querySha256": "2e320d487d7bbe7dbfc53abc55c08d12eb80a2e79b34cfe15a2148fa362acc9a",
     "complete": true,

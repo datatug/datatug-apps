@@ -42,7 +42,7 @@ describe('provider-neutral OVDB JSON result stream', () => {
 
   it('reports a negotiated mapped late error after provisional rows without accepting success metadata', async () => {
     const seen = vi.fn();
-    const body = '{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql","path":"records"},"hint":"Narrow the query."},"complete":false}';
+    const body = '{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"tugql","path":"records"},"hint":"Narrow the query."},"complete":false}';
     await expect(readOvdbJsonRecordStream(streamed([body], OVDB_ERROR_STREAM_MIME), seen,
       undefined, undefined, true)).rejects.toThrow('OVDB query failed (query_budget_exceeded): The row budget was reached.');
     expect(seen).toHaveBeenCalledOnce();
@@ -64,7 +64,7 @@ describe('provider-neutral OVDB JSON result stream', () => {
   });
 
   it('reads only bounded, mapped early HTTP JSON errors', async () => {
-    const response = new Response('{"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."}}',
+    const response = new Response('{"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"tugql"},"hint":"Narrow the query."}}',
       { status: 422, headers: { 'Content-Type': 'application/json' } });
     expect(await readOvdbEarlyError(response)).toBe('OVDB query failed (query_budget_exceeded): The row budget was reached.');
     const unchecked = new Response('{"error":{"code":"unsupported","message":"private\\nsecret"}}',
@@ -83,7 +83,7 @@ describe('provider-neutral OVDB JSON result stream', () => {
     expect(seen.mock.calls[0][0].data).toEqual({ id: '9007199254740993', amount: '1234567890.123456789' });
   });
 
-  it('accepts the existing key-only simple DTQL record form without inventing fields', async () => {
+  it('accepts the existing key-only simple TugQL record form without inventing fields', async () => {
     const rows: unknown[] = [];
     const result = await readOvdbJsonRecordStream(streamed(['{"records":[{"key":"k-1"}],"complete":true}']),
       (record) => { rows.push(record); });

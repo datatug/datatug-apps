@@ -1,4 +1,4 @@
-// The native PostgreSQL mount of cloud.openvaultdb.com: opaque collection ids named by `source`, reads by DTQL,
+// The native PostgreSQL mount of cloud.openvaultdb.com: opaque collection ids named by `source`, reads by TugQL,
 // nothing writable (descriptor `query: false`, `read: false`, `write: false`).
 import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 import { describe, expect, it } from 'vitest';
@@ -21,8 +21,8 @@ import { ovdbFormFields } from './ovdb-record-form';
 import {
   describeOvdbError,
   listOvdbRows,
-  ovdbDtqlDocument,
-  ovdbReadsWithDtql,
+  ovdbTugqlDocument,
+  ovdbReadsWithTugql,
 } from './ovdb-records';
 
 function connectionOver(fetch: typeof globalThis.fetch): OvdbConnection {
@@ -100,18 +100,18 @@ describe('descriptor of a native PostgreSQL mount', () => {
 });
 
 describe('reading rows of a native PostgreSQL mount', () => {
-  it('reads with DTQL (never /query) and gives rows keys of their own', async () => {
-    expect(ovdbReadsWithDtql(postgresDescriptor)).toBe(true);
+  it('reads with TugQL (never /query) and gives rows keys of their own', async () => {
+    expect(ovdbReadsWithTugql(postgresDescriptor)).toBe(true);
     expect(
-      ovdbReadsWithDtql({
+      ovdbReadsWithTugql({
         ...postgresDescriptor,
-        capabilities: { query: true, dtql: true },
+        capabilities: { query: true, tugql: true },
       }),
     ).toBe(false);
-    expect(ovdbReadsWithDtql({ ...postgresDescriptor, capabilities: {} })).toBe(
+    expect(ovdbReadsWithTugql({ ...postgresDescriptor, capabilities: {} })).toBe(
       false,
     );
-    expect(ovdbReadsWithDtql(undefined)).toBe(false);
+    expect(ovdbReadsWithTugql(undefined)).toBe(false);
     const { fetch, requests } = fakeCloudFetch();
     const rows = await listOvdbRows(connectionOver(fetch), 'Artist');
     expect(rows).toEqual([
@@ -121,7 +121,7 @@ describe('reading rows of a native PostgreSQL mount', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0].method).toBe('POST');
     expect(requests[0].url).toBe(
-      'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/dtql',
+      'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/tugql',
     );
     expect(JSON.parse(requests[0].body ?? '')).toEqual({
       query: 'from:\n  schema: "chinook"\n  name: "Artist"\nlimit: 100\n',
@@ -142,7 +142,7 @@ describe('reading rows of a native PostgreSQL mount', () => {
 
   it('quotes every name, so a name cannot change the document', () => {
     expect(
-      ovdbDtqlDocument(
+      ovdbTugqlDocument(
         { id: 'x', source: { schema: 'adventureworks', name: 'Sales.Store' } },
         5,
       ),
@@ -150,9 +150,9 @@ describe('reading rows of a native PostgreSQL mount', () => {
       'from:\n  schema: "adventureworks"\n  name: "Sales.Store"\nlimit: 5\n',
     );
     expect(
-      ovdbDtqlDocument({ id: 'x', source: { name: 'a"\nlimit: 9' } }, 5),
+      ovdbTugqlDocument({ id: 'x', source: { name: 'a"\nlimit: 9' } }, 5),
     ).toBe('from:\n  name: "a\\"\\nlimit: 9"\nlimit: 5\n');
-    expect(ovdbDtqlDocument({ id: 'plain' }, 1)).toBe(
+    expect(ovdbTugqlDocument({ id: 'plain' }, 1)).toBe(
       'from:\n  name: "plain"\nlimit: 1\n',
     );
   });

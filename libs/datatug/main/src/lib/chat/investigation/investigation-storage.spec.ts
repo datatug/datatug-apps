@@ -82,7 +82,7 @@ async function writeChatsWithMainsBuild(): Promise<string[]> {
   const answered = await main.create(scope);
   const turn = await main.appendQuestion(scope, answered.id, 'Sales by country?');
   await main.completeQuery(scope, answered.id, turn.id, {
-    dtql: 'from: {}', generatedDtql: '', dtqlYaml: 'from: {}', sql: 'select 1',
+    tugql: 'from: {}', generatedTugql: '', tugqlYaml: 'from: {}', sql: 'select 1',
     rows: [{ country: 'Ireland', sales: 12 }], columns: ['country', 'sales'],
     metrics: { requestBytes: 1, responseBytes: 2, interpretMs: 3, queryMs: 4 }, source: `${scope}/chinook`,
   });
@@ -106,7 +106,7 @@ async function runAnInvestigation(): Promise<{ sessionId: string; turnId: string
   const turn = await sessions.appendQuestion(scope, session.id, 'Sales per capita?');
   await sessions.appendTraceStep(scope, traceStep(session.id, turn.id, 0));
   await sessions.completeQuery(scope, session.id, turn.id, {
-    dtql: 'from: {}', generatedDtql: '', dtqlYaml: 'from: {}', sql: '', rows: [{ country: 'Iceland', perCapita: 9 }],
+    tugql: 'from: {}', generatedTugql: '', tugqlYaml: 'from: {}', sql: '', rows: [{ country: 'Iceland', perCapita: 9 }],
     columns: ['country', 'perCapita'], metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 1 },
     source: `${scope}/web`,
   });

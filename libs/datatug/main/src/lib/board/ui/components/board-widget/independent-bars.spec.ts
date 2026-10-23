@@ -71,7 +71,7 @@ function source(
   const snapshot = { queryId: id, identity: id, result };
   const admission = admitIndependentSource(
     snapshot,
-    { id, request: { queryType: QueryType.DTQL } },
+    { id, request: { queryType: QueryType.TugQL } },
     false,
   );
   return { id, state: { loading: false, snapshot, admission } };
@@ -201,7 +201,7 @@ describe('independent source presentation', () => {
   it('admits the actual ordinary transport shape without inventing a server execution profile and refuses physical/query/context mismatch', async () => {
     const definition: IQueryDef = {
       id: 'customer-counts',
-      request: { queryType: QueryType.DTQL },
+      request: { queryType: QueryType.TugQL },
       federation: {
         ovdbBaseUrl: 'https://cloud.openvaultdb.com',
         expectedServerIdentity: {
@@ -338,7 +338,7 @@ describe('independent source presentation', () => {
     const definition: IQueryDef = {
       id: 'stream-counts',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: JSON.stringify({
           from: { database: 'chinook', name: 'Customer' },
           limit: 100,
@@ -393,9 +393,9 @@ describe('independent source presentation', () => {
                   serverId: 'fixture-server',
                   ...rightsFor('chinook', 'Customer'),
                   capabilities: {
-                    dtql: true,
-                    dtqlStreaming: true,
-                    dtqlStreamingErrors: true,
+                    tugql: true,
+                    tugqlStreaming: true,
+                    tugqlStreamingErrors: true,
                   },
                 })
               : Response.json(body, {
@@ -411,7 +411,7 @@ describe('independent source presentation', () => {
     expect(result.nativeStreamRead).toMatchObject({
       terminalComplete: true,
       observedRows: 1,
-      endpoint: 'https://cloud.openvaultdb.com/v1/databases/chinook/dtql',
+      endpoint: 'https://cloud.openvaultdb.com/v1/databases/chinook/tugql',
       plannedSources: [{ database: 'chinook', collection: 'Customer' }],
     });
     expect(result.provenance).not.toHaveProperty('executionProfile');

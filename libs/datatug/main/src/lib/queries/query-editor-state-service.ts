@@ -82,20 +82,20 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     );
   }
   switch (queryState?.request?.queryType) {
-    // S121c (Task 17, exposed by real navigation to a DTQL saved query,
-    // e.g. `customer-invoices`): `QueryType.DTQL` was added by S121b
+    // S121c (Task 17, exposed by real navigation to a TugQL saved query,
+    // e.g. `customer-invoices`): `QueryType.TugQL` was added by S121b
     // (query-def.ts) for `all_queries`/`get_query`'s real, server-reported
     // type, but this switch — pre-existing, untouched by S121/S121b — was
-    // never updated to match, so opening ANY DTQL query fell to `default`
-    // and threw "Unknown query request type: DTQL" the moment
+    // never updated to match, so opening ANY TugQL query fell to `default`
+    // and threw "Unknown query request type: TugQL" the moment
     // `query-page.component.ts`'s `isChanged` getter read it (every
     // template render). `queries.service.ts`'s own `toQueryRequest()`
-    // (S121) adapts a DTQL wire item to the exact same `{queryType, text}`
-    // shape as SQL (its own comment: "SQL and DTQL alike"), so the same
+    // (S121) adapts a TugQL wire item to the exact same `{queryType, text}`
+    // shape as SQL (its own comment: "SQL and TugQL alike"), so the same
     // `.text` comparison applies verbatim — grouped into the same case
     // rather than duplicated.
     case QueryType.SQL:
-    case QueryType.DTQL:
+    case QueryType.TugQL:
       return (
         (queryState.request as ISqlQueryRequest).text !=
         (def.request as ISqlQueryRequest).text
@@ -484,7 +484,7 @@ export class QueryEditorStateService {
       // real SQL body, correctly fetched over the wire) never replaced the
       // placeholder's `text: ''`, because the S121c fix below only swaps in
       // `def.request` when `queryType` DIFFERS from the placeholder's,
-      // leaving every SQL-type query's body permanently blank; DTQL/HTTP
+      // leaving every SQL-type query's body permanently blank; TugQL/HTTP
       // queries were fine only because their real type differs from the
       // SQL placeholder's).
       const wasLoading = activeQuery.isLoading;
@@ -508,7 +508,7 @@ export class QueryEditorStateService {
       // queryState.request.type: <real type> !== SQL` the first time
       // anything reads it (query-page.component.ts's own `hasChanges`
       // getter, evaluated by its template), which aborts that component's
-      // render — reproduced live opening `customer-invoices` (DTQL) and
+      // render — reproduced live opening `customer-invoices` (TugQL) and
       // `country-facts` (HTTP): Title/Folder/Parameters never populate,
       // console shows exactly that thrown error. A SQL query never
       // surfaced this because its placeholder type already matched. Fix:

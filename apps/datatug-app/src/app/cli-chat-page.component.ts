@@ -35,7 +35,7 @@ interface CliRecordSet {
   ID: string;
   Title: string;
   CreatedAt?: string;
-  DTQL?: string;
+  TugQL?: string;
   Database?: string;
   Parameters?: Record<string, unknown>;
   HTTPResponseID?: string;
@@ -124,7 +124,7 @@ interface CliSession {
           <div><strong>Saved project queries</strong>
             <label>Search <input type="search" [value]="querySearch()" (input)="querySearch.set($any($event.target).value)" /></label>
             @for (query of matchingQueries(); track query.ID) {
-              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type === 'DTQL' ? 'TugQL' : query.Type }}</span>@if (query.Type === 'DTQL' || query.Type === 'TugQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)" [disabled]="!session() || busy()">Run</button> }</div>
+              <div class="saved-query"><span>{{ query.Title || query.ID }} · {{ query.Type }}</span>@if (query.Type === 'TugQL' || query.Type === 'HTTP') { <button type="button" (click)="runSavedQuery(query)" [disabled]="!session() || busy()">Run</button> }</div>
             } @empty { <p>No saved queries available.</p> }
           </div>
         </section>
@@ -145,8 +145,8 @@ interface CliSession {
                     <button type="button" (click)="bookmarkResult(message.RecordSetID, result)">Bookmark</button>
                     <button type="button" (click)="workspaceAction({kind: bucketContains(message.RecordSetID) ? 'bucket_remove' : 'bucket_add', recordSetId: message.RecordSetID})">{{ bucketContains(message.RecordSetID) ? 'Remove from export bucket' : 'Add to export bucket' }}</button>
                     <button type="button" (click)="downloadResult(message.RecordSetID)">Download</button>
-                    @if (result.DTQL || result.HTTPResponseID) { <button type="button" (click)="saveResultQuery(result)">Save query</button> }
-                    @if (result.DTQL && !result.HTTPResponseID) { <button type="button" (click)="resultAction('refresh', message.RecordSetID)">Refresh</button> }
+                    @if (result.TugQL || result.HTTPResponseID) { <button type="button" (click)="saveResultQuery(result)">Save query</button> }
+                    @if (result.TugQL && !result.HTTPResponseID) { <button type="button" (click)="resultAction('refresh', message.RecordSetID)">Refresh</button> }
                     <button type="button" (click)="toggleJoins(message.RecordSetID)">Related tables</button>
                   </div>
                   <div class="result-tabs" role="tablist" [attr.aria-label]="result.Title + ' views'">
@@ -365,7 +365,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   });
   readonly savedQueries = signal<CliSavedQuery[]>([]);
   readonly querySearch = signal('');
-  readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type === 'DTQL' ? 'TugQL' : query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
+  readonly matchingQueries = computed(() => this.savedQueries().filter((query) => `${query.Title} ${query.ID} ${query.Type} ${(query.Tags || []).join(' ')}`.toLowerCase().includes(this.querySearch().toLowerCase())));
   readonly toolsOpen = signal(false);
   readonly cellDetail = signal<CliCellDetail | undefined>(undefined);
   readonly projectGroups = computed(() => {
@@ -573,14 +573,14 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
       if (response) this.saveHTTPQuery(response);
       return;
     }
-    if (!result.DTQL || Object.keys(result.Parameters || {}).length) { this.error.set('This result cannot be saved as a reusable query.'); return; }
-    this.promptSaveQuery('DTQL', result.DTQL, result.Title, result.Database || '');
+    if (!result.TugQL || Object.keys(result.Parameters || {}).length) { this.error.set('This result cannot be saved as a reusable query.'); return; }
+    this.promptSaveQuery('TugQL', result.TugQL, result.Title, result.Database || '');
   }
   saveHTTPQuery(response: CliHTTPResponse): void {
     if (response.RequestHasQuery || (response.Method && response.Method !== 'GET')) { this.error.set('Only GET requests without URL parameters can be saved as project queries.'); return; }
     this.promptSaveQuery('HTTP', response.URL, response.URL, '');
   }
-  private promptSaveQuery(type: 'DTQL' | 'HTTP', text: string, suggestedTitle: string, database: string): void {
+  private promptSaveQuery(type: 'TugQL' | 'HTTP', text: string, suggestedTitle: string, database: string): void {
     const title = window.prompt('Project query name', suggestedTitle)?.trim();
     if (!title) return;
     const tagsText = window.prompt('Tags, separated by commas', '');
@@ -619,7 +619,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
     if (!sessionId || this.busy()) return;
     this.busy.set(true);
     try {
-      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: type === 'HTTP' ? 'run_http' : 'run_dtql', queryId, variables }) });
+      const response = await fetch(`${address}/queries`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-DataTug-Chat-Capability': token }, body: JSON.stringify({ sessionId, action: type === 'HTTP' ? 'run_http' : 'run_tugql', queryId, variables }) });
       if (!response.ok) throw new Error(await response.text());
       if (address === this.address && token === this.token) await this.refresh();
     } catch (error) { if (address === this.address && token === this.token) this.error.set(`Could not run query: ${error instanceof Error ? error.message : 'unknown error'}`); }

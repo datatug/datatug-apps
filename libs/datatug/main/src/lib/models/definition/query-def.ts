@@ -10,8 +10,6 @@ export enum QueryType {
   HTTP = 'HTTP',
   SQL = 'SQL',
   TugQL = 'TugQL',
-  // DTQL: retained as backwards-compatible alias for TugQL.
-  DTQL = 'DTQL',
 }
 
 export type IQueryItem = IProjItemBrief;
@@ -101,7 +99,15 @@ export interface IQueryRequest {
 // A base interface for queries that uses some text based language like SQL, GraphQL, etc.
 export interface ITextQueryRequest extends IQueryRequest {
   text: string;
+  /**
+   * How a TugQL body is written: `text` (the TugQL language, `<id>.query.tugql`)
+   * or `yaml` (the structured TugQL YAML document, `<id>.query.tugql.yaml`).
+   * Unset means the body is sniffed (see `isTugqlYamlRequest`).
+   */
+  representation?: TugqlRepresentation;
 }
+
+export type TugqlRepresentation = 'text' | 'yaml';
 
 export interface ISqlQueryRequest extends ITextQueryRequest {
   queryType: QueryType.SQL;

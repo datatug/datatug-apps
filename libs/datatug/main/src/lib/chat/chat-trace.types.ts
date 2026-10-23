@@ -32,7 +32,7 @@ export interface TraceDecision {
   /** How the first decision was made, when this run only replayed it. */
   readonly origin?: { readonly mechanism: DecisionMechanism; readonly at: string; readonly model?: string };
   readonly provenance: ProvenanceClass;
-  readonly validatedBy: readonly ('taxonomy' | 'schema' | 'fk-graph' | 'meaning' | 'data' | 'dtql-parse' | 'number-grounding')[];
+  readonly validatedBy: readonly ('taxonomy' | 'schema' | 'fk-graph' | 'meaning' | 'data' | 'tugql-parse' | 'number-grounding')[];
 }
 
 export interface TraceEvidence {

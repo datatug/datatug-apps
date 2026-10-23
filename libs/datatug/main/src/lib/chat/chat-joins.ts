@@ -1,7 +1,7 @@
 import {
-  isJoinedDTQLQuery, parseDTQL, serializeJoinedDTQL, stringifyJoinedDTQL,
-  type DTQLComparison, type DTQLCondition, type DTQLExpression, type DTQLNullTest, type DTQLQueryFilter, type DTQLSchema, type JoinedDTQLQuery,
-  type ParsedDTQLQuery, type QueryColumn, type QueryJoin, type QueryRelation,
+  isJoinedTugQLQuery, parseTugQLYaml, serializeJoinedTugQL, stringifyJoinedTugQL,
+  type TugQLComparison, type TugQLCondition, type TugQLExpression, type TugQLNullTest, type TugQLQueryFilter, type TugQLSchema, type JoinedTugQLQuery,
+  type ParsedTugQLQuery, type QueryColumn, type QueryJoin, type QueryRelation,
 } from '@dalgo/core';
 import manifestData from './chinook-fks.json';
 import { ChatJoinChoice, ChatJoinLineage } from './chat.types';
@@ -38,9 +38,9 @@ export interface ChatJoinCandidate {
 }
 
 export interface DerivedChatJoin {
-  readonly query: JoinedDTQLQuery;
-  readonly dtql: string;
-  readonly dtqlYaml: string;
+  readonly query: JoinedTugQLQuery;
+  readonly tugql: string;
+  readonly tugqlYaml: string;
   readonly candidate: ChatJoinCandidate;
   readonly lineage: ChatJoinLineage;
 }
@@ -49,8 +49,8 @@ function aliasOf(relation: QueryRelation): string {
   return relation.alias || relation.name;
 }
 
-function relationFromQuery(query: ParsedDTQLQuery<Data>): QueryRelation {
-  if (isJoinedDTQLQuery(query)) return query.from;
+function relationFromQuery(query: ParsedTugQLQuery<Data>): QueryRelation {
+  if (isJoinedTugQLQuery(query)) return query.from;
   const index = query.source.name.lastIndexOf('.');
   return {
     name: index < 0 ? query.source.name : query.source.name.slice(index + 1),
@@ -100,7 +100,7 @@ function activeEdge(root: QueryRelation, candidate: ChatJoinCandidate): boolean 
 }
 
 export function discoverChatJoinCandidates(
-  query: ParsedDTQLQuery<Data>, manifest: ChatForeignKeyManifest = CHINOOK_FK_MANIFEST,
+  query: ParsedTugQLQuery<Data>, manifest: ChatForeignKeyManifest = CHINOOK_FK_MANIFEST,
 ): readonly ChatJoinCandidate[] {
   const root = relationFromQuery(query);
   const candidates: ChatJoinCandidate[] = [];
@@ -201,9 +201,9 @@ export function validateChatJoinChoice(
   return candidate;
 }
 
-type ChatFilter = DTQLQueryFilter | DTQLCondition;
+type ChatFilter = TugQLQueryFilter | TugQLCondition;
 
-const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
+const isNullLiteral = (expression: TugQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
 
 /**
  * What a result the user sees means, once it is joined. The relational executor follows SQL's three-valued
@@ -212,7 +212,7 @@ const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind =
  * with explicit null tests. This covers a relation-model parent whose `field == null` / `field != null`
  * is written with the field on either side; it is rewritten at any depth of its and/or groups.
  */
-function carriedCondition(condition: DTQLCondition): DTQLCondition {
+function carriedCondition(condition: TugQLCondition): TugQLCondition {
   if ('conditions' in condition) {
     return { ...condition, conditions: condition.conditions.map(carriedCondition) };
   }
@@ -228,7 +228,7 @@ function carriedFilter(filter: ChatFilter): ChatFilter {
   return { kind: filter.operator === '==' ? 'is-null' : 'is-not-null', operand: { kind: 'field', field: filter.field } };
 }
 
-function comparison(filter: DTQLQueryFilter, values?: readonly unknown[]): DTQLComparison {
+function comparison(filter: TugQLQueryFilter, values?: readonly unknown[]): TugQLComparison {
   return {
     left: { kind: 'field', field: filter.field }, operator: filter.operator,
     right: values
@@ -243,10 +243,10 @@ function comparison(filter: DTQLQueryFilter, values?: readonly unknown[]): DTQLC
  * `> null` and `NotIn [.., null]` drop them. The joined executor keeps only `!= x` on its own, so the rest
  * are spelled out; every other comparison already means the same in both.
  */
-function carriedSingleSourceFilter(filter: DTQLQueryFilter): ChatFilter {
-  const operand: DTQLExpression = { kind: 'field', field: filter.field };
-  const isNull: DTQLNullTest = { kind: 'is-null', operand };
-  const isNotNull: DTQLNullTest = { kind: 'is-not-null', operand };
+function carriedSingleSourceFilter(filter: TugQLQueryFilter): ChatFilter {
+  const operand: TugQLExpression = { kind: 'field', field: filter.field };
+  const isNull: TugQLNullTest = { kind: 'is-null', operand };
+  const isNotNull: TugQLNullTest = { kind: 'is-not-null', operand };
   const { operator, value } = filter;
   if (operator === 'in' || operator === 'not-in') {
     const values = value as readonly unknown[];
@@ -270,12 +270,12 @@ function carriedSingleSourceFilter(filter: DTQLQueryFilter): ChatFilter {
   return operator === '<' || operator === '<=' ? { kind: 'or', conditions: [comparison(filter), isNull] } : filter;
 }
 
-function joinedBase(query: ParsedDTQLQuery<Data>): JoinedDTQLQuery {
-  if (isJoinedDTQLQuery(query)) return { ...query, filters: query.filters.map(carriedFilter) };
+function joinedBase(query: ParsedTugQLQuery<Data>): JoinedTugQLQuery {
+  if (isJoinedTugQLQuery(query)) return { ...query, filters: query.filters.map(carriedFilter) };
   if (query.filters.length > 1) throw new Error('This result has unsupported filter groups for an interactive JOIN.');
   const source = aliasOf(relationFromQuery(query));
   return {
-    kind: 'joined-dtql', from: relationFromQuery(query),
+    kind: 'joined-tugql', from: relationFromQuery(query),
     filters: query.filters.map((filter) => carriedSingleSourceFilter({ ...filter, field: { source, field: filter.field } })),
     orders: query.orders.map((order) => ({ ...order, field: { source, field: order.field } })),
     limit: query.limit, offset: query.offset,
@@ -292,7 +292,7 @@ function outputName(column: QueryColumn): string {
   return column.as || (column.expression?.kind === 'field' ? column.expression.field.field : '');
 }
 
-function explicitColumns(query: JoinedDTQLQuery, schema: DTQLSchema): QueryColumn[] {
+function explicitColumns(query: JoinedTugQLQuery, schema: TugQLSchema): QueryColumn[] {
   const columns: QueryColumn[] = [];
   if (query.columns) {
     for (const column of query.columns) {
@@ -323,7 +323,7 @@ function explicitColumns(query: JoinedDTQLQuery, schema: DTQLSchema): QueryColum
         if (aliasOf(item) === source) relation = item;
       });
       const table = schema.tables.find((item) => item.name === relation?.name && item.schema === (relation?.schema || 'main'));
-      if (!table) throw new Error('Cannot expand the current DTQL wildcard for this JOIN.');
+      if (!table) throw new Error('Cannot expand the current TugQL wildcard for this JOIN.');
       for (const field of table.fields) {
         if (!column.wildcard.exclude.includes(field)) {
           columns.push({ expression: { kind: 'field', field: { source, field } }, as: field });
@@ -358,7 +358,7 @@ function appendJoin(root: QueryRelation, path: readonly number[], join: QueryJoi
 }
 
 export function deriveChatJoin(
-  query: ParsedDTQLQuery<Data>, candidateId: string, schema: DTQLSchema,
+  query: ParsedTugQLQuery<Data>, candidateId: string, schema: TugQLSchema,
   manifest: ChatForeignKeyManifest = CHINOOK_FK_MANIFEST,
 ): DerivedChatJoin {
   const candidate = discoverChatJoinCandidates(query, manifest).find((item) => item.id === candidateId);
@@ -388,10 +388,10 @@ export function deriveChatJoin(
       columns.push({ expression: { kind: 'field', field: { source: targetAlias, field } }, as: name });
     }
   }
-  const derived: JoinedDTQLQuery = { ...base, from: appendJoin(base.from, candidate.sourcePath, join), columns };
-  const dtql = JSON.stringify(serializeJoinedDTQL(derived));
-  const validated = parseDTQL(dtql, schema, { maxLimit: 1000 });
-  if (!isJoinedDTQLQuery(validated)) throw new Error('The derived DTQL did not contain a JOIN.');
+  const derived: JoinedTugQLQuery = { ...base, from: appendJoin(base.from, candidate.sourcePath, join), columns };
+  const tugql = JSON.stringify(serializeJoinedTugQL(derived));
+  const validated = parseTugQLYaml(tugql, schema, { maxLimit: 1000 });
+  if (!isJoinedTugQLQuery(validated)) throw new Error('The derived TugQL did not contain a JOIN.');
   const lineage: ChatJoinLineage = {
     candidateId: candidate.id, manifestVersion: candidate.manifestVersion,
     foreignKeyId: candidate.foreignKeyId, direction: candidate.direction,
@@ -399,5 +399,5 @@ export function deriveChatJoin(
     sourceTable: candidate.sourceTable, targetTable: candidate.targetTable,
     sourceFields: candidate.sourceFields, targetFields: candidate.targetFields,
   };
-  return { query: validated, dtql, dtqlYaml: stringifyJoinedDTQL(validated), candidate, lineage };
+  return { query: validated, tugql, tugqlYaml: stringifyJoinedTugQL(validated), candidate, lineage };
 }

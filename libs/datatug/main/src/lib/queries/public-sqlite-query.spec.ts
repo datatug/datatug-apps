@@ -28,7 +28,7 @@ import type {
 const invoiceAuthorProof: PublicSqlitePreparedPlan['authorProof'] = {
   profile: 'invoice-query',
   resolvedQuery: {
-    kind: 'recursive-dtql',
+    kind: 'recursive-tugql',
     from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
     limit: 10,
     columns: [
@@ -305,7 +305,7 @@ it('cancels a started Author worker and terminates it promptly', async () => {
       {
         id: 'chinook-invoice-author',
         connectionId: 'chinook-sqlite',
-        request: { queryType: QueryType.DTQL, text: '' } as ITextQueryRequest,
+        request: { queryType: QueryType.TugQL, text: '' } as ITextQueryRequest,
       },
       plan,
       controller.signal,
@@ -738,7 +738,7 @@ describe('Author TugQL structural preview and Run binding', () => {
   const definition = (text: string): IQueryDef => ({
     id: 'chinook-invoice-author',
     connectionId: 'chinook-sqlite',
-    request: { queryType: QueryType.DTQL, text } as ITextQueryRequest,
+    request: { queryType: QueryType.TugQL, text } as ITextQueryRequest,
   });
   const joinedDefinition = (text: string): IQueryDef => ({
     ...definition(text),
@@ -1642,7 +1642,7 @@ select (
       undefined,
     )).rejects.toThrow('profile proof or execution metadata');
     const invoiceScan = {
-      kind: 'recursive-dtql',
+      kind: 'recursive-tugql',
       from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
       limit: 10,
       columns: [{ expression: { kind: 'field', field: { source: 'i', field: 'InvoiceId' } } }],

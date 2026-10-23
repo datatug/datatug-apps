@@ -48,10 +48,10 @@ export interface ChatQuery {
   readonly id: string;
   readonly sessionId: string;
   readonly turnId: string;
-  readonly dtql: string;
-  readonly generatedDtql: string;
+  readonly tugql: string;
+  readonly generatedTugql: string;
   readonly parentRecordSetId?: string;
-  readonly dtqlYaml: string;
+  readonly tugqlYaml: string;
   readonly sql: string;
   readonly source: string;
   readonly executedAt: string;
@@ -81,10 +81,10 @@ interface StoredTurn extends Omit<ChatTurn, 'rows'> {
 }
 
 export interface CompletedChatQuery {
-  readonly dtql: string;
-  readonly generatedDtql: string;
+  readonly tugql: string;
+  readonly generatedTugql: string;
   readonly parentRecordSetId?: string;
-  readonly dtqlYaml: string;
+  readonly tugqlYaml: string;
   readonly sql: string;
   readonly rows: readonly Record<string, unknown>[];
   readonly columns: readonly string[];
@@ -175,8 +175,8 @@ export class ChatSessionService {
       const turn: ChatTurn = {
         id: data.id, question: data.question, state: data.state,
         queryId: data.queryId, recordSetId: data.recordSetId,
-        dtql: data.dtql, generatedDtql: data.generatedDtql,
-        dtqlYaml: data.dtqlYaml, sql: data.sql,
+        tugql: data.tugql, generatedTugql: data.generatedTugql,
+        tugqlYaml: data.tugqlYaml, sql: data.sql,
         error: data.error, metrics: data.metrics, actionSummary: data.actionSummary, join: data.join,
         joinChoices: data.joinChoices, traceStepIds: data.traceStepIds,
       };
@@ -241,21 +241,21 @@ export class ChatSessionService {
     return { query: query.data, recordSet: stored.data };
   }
 
-  async bindRecordSet(scope: string, sessionId: string, generatedDtql: string): Promise<{ dtql: string; parentRecordSetId?: string }> {
+  async bindRecordSet(scope: string, sessionId: string, generatedTugql: string): Promise<{ tugql: string; parentRecordSetId?: string }> {
     let action: Record<string, unknown>;
     try {
-      const parsed = JSON.parse(generatedDtql) as unknown;
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { dtql: generatedDtql };
+      const parsed = JSON.parse(generatedTugql) as unknown;
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return { tugql: generatedTugql };
       action = parsed as Record<string, unknown>;
     } catch {
-      return { dtql: generatedDtql };
+      return { tugql: generatedTugql };
     }
     const where = action['where'];
-    if (!where || typeof where !== 'object' || Array.isArray(where)) return { dtql: generatedDtql };
+    if (!where || typeof where !== 'object' || Array.isArray(where)) return { tugql: generatedTugql };
     const condition = where as Record<string, unknown>;
     const right = condition['right'];
     if (!right || typeof right !== 'object' || Array.isArray(right) || (!('recordSet' in right) && !('selection' in right) && !('bookmark' in right))) {
-      return { dtql: generatedDtql };
+      return { tugql: generatedTugql };
     }
     if (condition['op'] !== 'In') throw new Error('A saved RecordSet reference requires the In operator.');
     const rightObject = right as Record<string, unknown>;
@@ -293,7 +293,7 @@ export class ChatSessionService {
       const rows = chatBookmarkRows(saved.data);
       const values = [...new Set(rows.filter((row) => Object.prototype.hasOwnProperty.call(row, field)).map((row) => row[field]))];
       if (!values.length || values.length > 1000 || values.some((value) => value !== null && typeof value !== 'string' && typeof value !== 'boolean' && !(typeof value === 'number' && Number.isFinite(value)))) throw new Error('The referenced Bookmark has no supported identifier values.');
-      return { dtql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }) };
+      return { tugql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }) };
     }
     if (!session.recordSetIds.includes(recordSetId)) throw new Error('The referenced RecordSet is not in this chat session.');
     const stored = await this.database.get<ChatRecordSet>(recordSetKey(recordSetId));
@@ -310,7 +310,7 @@ export class ChatSessionService {
       throw new Error('The referenced RecordSet has too many or unsupported identifier values.');
     }
     return {
-      dtql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }),
+      tugql: JSON.stringify({ ...action, where: { ...condition, right: { values } } }),
       parentRecordSetId: recordSetId,
     };
   }
@@ -482,8 +482,8 @@ export class ChatSessionService {
     const recordSetId = crypto.randomUUID();
     const columns = result.columns;
     const query: ChatQuery = {
-      id: queryId, sessionId, turnId, dtql: result.dtql, generatedDtql: result.generatedDtql,
-      parentRecordSetId: result.parentRecordSetId, dtqlYaml: result.dtqlYaml,
+      id: queryId, sessionId, turnId, tugql: result.tugql, generatedTugql: result.generatedTugql,
+      parentRecordSetId: result.parentRecordSetId, tugqlYaml: result.tugqlYaml,
       sql: result.sql, source: result.source, executedAt: timestamp, columns, rowCount: result.rows.length,
       join: result.join,
     };
@@ -511,8 +511,8 @@ export class ChatSessionService {
       if (result.join && !result.parentRecordSetId) throw new Error('A JOIN result requires a parent RecordSet.');
       const turn: StoredTurn = {
         ...stored.data, state: result.rows.length ? 'result' : 'empty',
-        dtql: result.dtql, generatedDtql: result.generatedDtql,
-        dtqlYaml: result.dtqlYaml, sql: result.sql,
+        tugql: result.tugql, generatedTugql: result.generatedTugql,
+        tugqlYaml: result.tugqlYaml, sql: result.sql,
         metrics: result.metrics, queryId, recordSetId, join: result.join,
       };
       await tx.insert(queryKey(queryId), query);
@@ -583,8 +583,8 @@ export class ChatSessionService {
   }
 
   context(turns: readonly ChatTurn[], workspace?: ChatWorkspaceState, projectId = '', bookmarks: readonly ChatBookmark[] = []): string {
-    const history = turns.filter((turn) => turn.dtql && turn.recordSetId).slice(-3).map((turn) =>
-      `Question: ${turn.question.slice(0, 200)}\nDTQL: ${(turn.generatedDtql || turn.dtql)?.slice(0, 1000)}\n` +
+    const history = turns.filter((turn) => turn.tugql && turn.recordSetId).slice(-3).map((turn) =>
+      `Question: ${turn.question.slice(0, 200)}\nTugQL: ${(turn.generatedTugql || turn.tugql)?.slice(0, 1000)}\n` +
       `RecordSet: ${turn.recordSetId}; columns: ${turn.columns?.join(', ') || ''}; rows: ${turn.rows?.length || 0}`,
     ).join('\n\n');
     const refs = [...(workspace?.attachments || [])];

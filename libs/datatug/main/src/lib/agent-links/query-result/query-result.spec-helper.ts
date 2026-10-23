@@ -1,5 +1,5 @@
 /**
- * A stored result as `GET /datatug/results/<id>` answers it, for the result page specs: an ad-hoc DTQL query of
+ * A stored result as `GET /datatug/results/<id>` answers it, for the result page specs: an ad-hoc TugQL query of
  * Invoice joined to Customer on a registered project database. The row values are made-up markers.
  */
 export const ROW_MARKER = 'row-value-marker-41';
@@ -29,8 +29,8 @@ export function invoiceCustomerResult(
         ...overrides.db,
       },
       query: {
-        kind: 'dtql',
-        dtql: 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n',
+        kind: 'tugql',
+        tugql: 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n',
         policy: 'discovered',
         ...overrides.query,
       },
@@ -150,7 +150,7 @@ export function invoiceCustomerResult(
 /** The prompt of the fixtures: markup on purpose, to show it is only ever drawn as text. */
 export const PROMPT_TEXT = 'show the invoices <b id="x">of customer 2</b> & their names';
 /** The query text of the fixtures. */
-export const DTQL_TEXT = 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n';
+export const TUGQL_TEXT = 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n';
 
 /**
  * The answer of an agent with the editor-ready members (datatug-cli#431): `query.text`, `language`, `dbRef` and
@@ -165,11 +165,11 @@ export function editorReadyResult(
   } = {},
 ): Record<string, unknown> {
   const query = {
-    kind: 'dtql',
-    dtql: DTQL_TEXT,
+    kind: 'tugql',
+    tugql: TUGQL_TEXT,
     policy: 'discovered',
-    text: DTQL_TEXT,
-    language: 'dtql',
+    text: TUGQL_TEXT,
+    language: 'tugql',
     dbRef: 'datatug://demo/chinook?env=local',
     params: [
       { name: 'CustomerId', value: { type: 'integer', value: '2' } },

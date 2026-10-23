@@ -4,7 +4,7 @@
 // cloud.openvaultdb.com, the public DemoDB OVDB) and the local, editable SQLite copy
 // running in the browser (`@openvaultdb/inprocess` over `@dalgo/sqlite-wasm`). What
 // the UI offers is decided ONLY by the descriptor's `capabilities`:
-//   - browse (table list, rows): `query` or `dtql` — never `read`, which means keyed
+//   - browse (table list, rows): `query` or `tugql` — never `read`, which means keyed
 //     record reads only (a native PostgreSQL mount reports read: false yet is queryable);
 //   - edit a record: `write` (the update first reads the record by key, so also `read`);
 //   - delete a record: `delete`;
@@ -16,7 +16,7 @@ import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 export interface OvdbCapabilities {
   readonly read?: boolean;
   readonly query?: boolean;
-  readonly dtql?: boolean;
+  readonly tugql?: boolean;
   readonly write?: boolean;
   readonly delete?: boolean;
   readonly reset?: boolean;
@@ -91,7 +91,7 @@ export interface OvdbUiCapabilities {
 export function ovdbUiCapabilities(descriptor: OvdbDescriptor | undefined): OvdbUiCapabilities {
   const c = descriptor?.capabilities ?? {};
   return {
-    browse: c.query === true || c.dtql === true,
+    browse: c.query === true || c.tugql === true,
     edit: c.write === true && c.read === true,
     delete: c.delete === true,
     reset: c.reset === true,

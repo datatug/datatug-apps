@@ -15,8 +15,8 @@ describe('DemoDB OVDB host', () => {
 
   it('moves URLs under the legacy base to the same path on the current host, and nothing else', () => {
     expect(currentDemoDbOvdbUrl(LEGACY_DEMODB_OVDB_BASE_URL)).toBe(DEMODB_OVDB_BASE_URL);
-    expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdb/v1/databases/northwind/dtql'))
-      .toBe('https://ovdb.demodb.dev/v1/databases/northwind/dtql');
+    expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdb/v1/databases/northwind/tugql'))
+      .toBe('https://ovdb.demodb.dev/v1/databases/northwind/tugql');
     expect(currentDemoDbOvdbUrl('https://ovdb.demodb.dev/v1/databases/pubs')).toBe('https://ovdb.demodb.dev/v1/databases/pubs');
     // Look-alikes are not the legacy base.
     expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdbx')).toBe('https://demodb.dev/ovdbx');

@@ -23,7 +23,7 @@ Deliver continued use of the active edited demo database after the existing GitH
 2. I choose GitHub or local Git from the existing two choices. Defaults reflect my dataset, while restored/user edits win.
 3. GitHub: I choose an existing writable repository and Space, complete existing sign-in/OAuth if required, and see the existing setup PR. Refresh/retry returns to the same intent and operation without losing the continuation.
 4. I merge that setup PR. Once status is merged_ready, my copied project opens automatically at the original table, showing the edited row and the ownership label.
-5. I select Query this table. Query opens an unsaved bounded DTQL draft using my copied project's matching SQLite connection and current browser runtime. Running returns the edited value.
+5. I select Query this table. Query opens an unsaved bounded TugQL draft using my copied project's matching SQLite connection and current browser runtime. Running returns the edited value.
 6. Local Git: I download edited SQLite, keep safe dataset folder/project defaults and enter the actual downloaded SQLite path, run generated registration/add/serve commands, and query the exported row through the real CLI. No sign-in is introduced.
 7. If a session/version/access check fails, I see the reason and explicit recovery choices; no original data is silently downloaded or substituted.
 
@@ -34,7 +34,7 @@ Deliver continued use of the active edited demo database after the existing GitH
 - Proposed continuation: `{version:1,dataset,canonicalSha256,table?,source:GithubProjectCopySource}` plus local actor/operation/destination association. Bound and validate every field before use. Source identity includes repository ID, owner/name/folder, branch, immutable commit and tree.
 - Proposed project child route: `/store/github.com/project/:projectId/browser-db/:connectionId[/table/:table]?branch=<actual setup base branch>&projectApi=cloud&demoContinuation=<opaque session token>`. Short GitHub `/-/browser-db/...` routes resolve through the existing project matcher. Use existing navigation helpers rather than URL concatenation.
 - Project child resolves the actual destination catalog, requires exactly one eligible dataset/SHA declaration, then resolves the already-active LocalDemoDbService session. Add a read-only lookup if needed; do not call open/start implicitly when missing. A user-confirmed OPFS reopen is a recovery action and must warn before version replacement/reset.
-- Query entry reuses `/store/github.com/project/:projectId/query?branch=...&projectApi=cloud&env=<catalog-declared environment>&runtime=<current registry selection>&demoDraft=<opaque session token>`. Existing Query reads env/runtime but has no generic draft token support. Add a narrow validated demo-draft reader, applied only to a new unsaved query and after project context is ready. Consume once without replacing an existing editor draft. DTQL uses the exact descriptor table identifier, bounded limit 100 and destination connection ID; runtime selection stays client-side and is never saved into the definition.
+- Query entry reuses `/store/github.com/project/:projectId/query?branch=...&projectApi=cloud&env=<catalog-declared environment>&runtime=<current registry selection>&demoDraft=<opaque session token>`. Existing Query reads env/runtime but has no generic draft token support. Add a narrow validated demo-draft reader, applied only to a new unsaved query and after project context is ready. Consume once without replacing an existing editor draft. TugQL uses the exact descriptor table identifier, bounded limit 100 and destination connection ID; runtime selection stays client-side and is never saved into the definition.
 - TEST transport: existing `POST /v0/datatug/projects/create_project?store=github.com`, `GET /v0/datatug/projects/create_project/status`, `GET /v0/datatug/github/projects/pending-setups` and existing repository/catalog reads. Validate exact query names/duplicates, request JSON keys/source shape and scoped responses. Preview must not expose unrelated pending records.
 
 ### Ownership and file boundaries
@@ -71,7 +71,7 @@ Add bounded readers/private session storage, actor/source/operation/destination 
 
 Add project browser database routes/page and continuation completion helper. Validate actual branch catalog and active runtime independently before opening; retain table and ownership label. Test missing/ambiguous/changed catalogs, closed/runtime-lost states, denied reads and explicit recovery. Reuse existing browser CRUD and lifecycle.
 
-### Task 3: Add bounded DTQL table draft on existing Query screen
+### Task 3: Add bounded TugQL table draft on existing Query screen
 
 **Status:** planning
 **Verifies:** demo-database-handoff#ac:query-table, demo-database-handoff#ac:explicit-recovery

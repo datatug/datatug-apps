@@ -150,7 +150,7 @@ func createFixture(root string, sqlite []byte) error {
 	}
 
 	query := &datatug.QueryDefWithFolderPath{}
-	query.ID, query.Title, query.Type, query.ConnectionID = "invoice-detail", "Invoice detail", datatug.QueryTypeDTQL, "chinook-sqlite"
+	query.ID, query.Title, query.Type, query.ConnectionID = "invoice-detail", "Invoice detail", datatug.QueryTypeTugQL, "chinook-sqlite"
 	query.Text = "from:\n  name: Invoice\nwhere:\n  op: \"==\"\n  left:\n    field: InvoiceId\n  right:\n    param: InvoiceId\n"
 	if err := json.Unmarshal([]byte(`[{"id":"InvoiceId","type":"integer","isRequired":true}]`), &query.Parameters); err != nil {
 		return err

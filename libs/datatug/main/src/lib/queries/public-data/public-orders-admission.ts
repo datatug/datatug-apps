@@ -23,7 +23,7 @@ export interface PublishedOrdersPin {
 export const NORTHWIND_ORDERS_PIN: PublishedOrdersPin = Object.freeze({
   publicationUrl: 'https://raw.githubusercontent.com/demo-db/northwind/83ea600a7eae8b35ad33bf4c53bab6440d697850/artifacts/hosting-imports/source-rights.json',
   publicationSha256: '50454d5f30db615178fcd0c6a846854f9434f4f93bb44835cc75fdad4af52e30',
-  endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
+  endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/tugql',
   querySha256: 'ba8e43a239489bfb17761990658909b969c9d4939dd8aa008615c867671b2c52',
   rows: 830,
   fields: [
@@ -85,7 +85,7 @@ async function boundedBytes(response: Response, maximum: number, signal: AbortSi
   return bytes;
 }
 
-/** Read only the pinned publisher artifact. DTQL execution uses the shared transport. */
+/** Read only the pinned publisher artifact. TugQL execution uses the shared transport. */
 export async function fetchOrdersRightsPublication(
   options: { readonly signal?: AbortSignal; readonly fetch?: typeof globalThis.fetch; readonly pin?: PublishedOrdersPin } = {},
 ): Promise<Uint8Array> {

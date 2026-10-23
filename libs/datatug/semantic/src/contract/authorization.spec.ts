@@ -4,7 +4,7 @@ import { isAuthorizationResult, isUpdateResponse } from './authorization';
 
 function executionResult(enforced: boolean) {
   return {
-    apiVersion: 'dtql.org/authorization/v1',
+    apiVersion: 'tugql.org/authorization/v1',
     requestId: 'request-1',
     mode: 'execution',
     scope: 'request',

@@ -37,7 +37,7 @@ export const HOSTED_DEMO_DB_SOURCES: readonly HostedDemoDbSource[] = [
     label: 'AdventureWorks · Person.Person',
     database: 'adventureworks',
     // OVDB's strict SQLite schema mode exposes this under its complete
-    // collection key and rejects schema-qualified DTQL sources.
+    // collection key and rejects schema-qualified TugQL sources.
     name: 'Person.Person',
     alias: 'p',
     fields: ['BusinessEntityID', 'PersonType', 'FirstName', 'LastName', 'EmailPromotion'],
@@ -63,7 +63,7 @@ export function createHostedDemoDbQuery(id: string): IQueryDef {
   return {
     id,
     title: 'New DemoDB query',
-    request: { queryType: QueryType.DTQL, text: bodyFor(source) } as ITextQueryRequest,
+    request: { queryType: QueryType.TugQL, representation: 'yaml', text: bodyFor(source) } as ITextQueryRequest,
     federation: {
       ovdbBaseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL,
       tables: [{
@@ -93,11 +93,11 @@ export function hostedDemoDbSourceId(definition: IQueryDef | undefined): string 
  * custom filters, joins, projections, or limits. */
 export function isHostedDemoDbStarterQuery(definition: IQueryDef | undefined): boolean {
   const sourceId = hostedDemoDbSourceId(definition);
-  if (!sourceId || !definition || definition.request.queryType !== QueryType.DTQL) return false;
+  if (!sourceId || !definition || definition.request.queryType !== QueryType.TugQL) return false;
   const source = HOSTED_DEMO_DB_SOURCES.find((item) => item.id === sourceId);
   if (!source || (definition.request as ITextQueryRequest).text !== bodyFor(source)) return false;
 
-  // The picker replaces both the DTQL body and federation settings. A query
+  // The picker replaces both the TugQL body and federation settings. A query
   // with a starter-looking body can still carry meaningful execution metadata
   // (lookups, limits, source rights, graph plans, etc.), so only admit the exact
   // canonical federation emitted by createHostedDemoDbQuery().
@@ -126,7 +126,7 @@ export function withHostedDemoDbSource(
   }
   return {
     ...definition,
-    request: { queryType: QueryType.DTQL, text: bodyFor(source) } as ITextQueryRequest,
+    request: { queryType: QueryType.TugQL, representation: 'yaml', text: bodyFor(source) } as ITextQueryRequest,
     federation: {
       ovdbBaseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL,
       tables: [{

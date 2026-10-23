@@ -5,14 +5,14 @@ import { currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { IngitdbGithubSources } from './ingitdb-github-source';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
-  executeJoinedDTQLQuery,
-  executeJoinedDTQLQueryPages,
+  executeJoinedTugQLQuery,
+  executeJoinedTugQLQueryPages,
   executeRecordLookupPages,
   executeRecordLookups,
-  isJoinedDTQLQuery,
+  isJoinedTugQLQuery,
   key,
-  parseDTQL,
-  type DTQLExpression,
+  parseTugQLYaml,
+  type TugQLExpression,
   type JoinedQueryExecutionOptions,
   type JoinedQueryProgress,
   type QueryExecutor,
@@ -43,6 +43,7 @@ import type {
   GraphRelatedRecordset,
   NativeGraphResult,
 } from './public-data/native-graph-executor';
+import { isTugqlYamlRequest } from './tugql-representation';
 import {
   publicDataExceptions,
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
@@ -61,7 +62,7 @@ interface OvdbPage {
   readonly snapshotExpiresAt?: string;
 }
 
-function containsAggregate(expression: DTQLExpression): boolean {
+function containsAggregate(expression: TugQLExpression): boolean {
   return (
     expression.kind === 'aggregate' ||
     (expression.kind === 'binary' &&
@@ -80,10 +81,10 @@ export function federatedVisibleMode(definition: IQueryDef): {
   try {
     if (nativeQueryPlan(definition))
       return { supported: false, defaultMode: 'full', reason: 'A whole-query execution returns its complete result.' };
-    const parsed = parseDTQL((definition.request as ITextQueryRequest).text, {
+    const parsed = parseTugQLYaml((definition.request as ITextQueryRequest).text, {
       tables: config.tables,
     });
-    if (!isJoinedDTQLQuery(parsed))
+    if (!isJoinedTugQLQuery(parsed))
       return {
         supported: false,
         defaultMode: 'full',
@@ -225,7 +226,7 @@ export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
     readonly providerSources?: readonly { readonly database: string; readonly collection: string }[];
     readonly providerRows?: number;
   };
-  /** Worker staging marker for a complete ordinary /dtql response. */
+  /** Worker staging marker for a complete ordinary /tugql response. */
   readonly nativeDirect?: true;
   /** Validated ordinary envelope, distinct from a protected execution receipt. */
   readonly ordinaryComplete?: true;
@@ -289,12 +290,12 @@ function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: P
   const config = definition.federation;
   // An inGitDB source on GitHub is read by the browser, so the plan cannot run on the OVDB server.
   if (!config || config.lookups?.length || config.bounds || config.ingitdbSources?.length ||
-    definition.request.queryType !== 'DTQL') return undefined;
-  const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
+    !isTugqlYamlRequest(definition.request)) return undefined;
+  const parsed = parseTugQLYaml((definition.request as ITextQueryRequest).text, { tables: config.tables });
   const configured = new Set(config.tables.map((table) => table.database).filter((database): database is string => !!database));
   const implicit = configured.size === 1 && config.tables.every((table) => table.database)
     ? [...configured][0] : undefined;
-  if (!isJoinedDTQLQuery(parsed)) {
+  if (!isJoinedTugQLQuery(parsed)) {
     if (parsed.source.kind !== 'collection') return undefined;
     const matches = config.tables.filter((table) => table.name === parsed.source.name && table.database);
     return matches.length === 1 && implicit && matches[0].database === implicit
@@ -377,12 +378,12 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
     const flags = capabilities as Record<string, unknown>;
     if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
       throw new Error('OVDB query capability identity differs from the selected database.');
-    if (flags['dtqlStreaming'] === true && flags['dtql'] !== true)
-      throw new Error('OVDB advertises a query stream without DTQL capability.');
+    if (flags['tugqlStreaming'] === true && flags['tugql'] !== true)
+      throw new Error('OVDB advertises a query stream without TugQL capability.');
     return {
-      streaming: flags['dtqlStreaming'] === true,
-      ordinary: flags['dtql'] === true && flags['dtqlStreaming'] !== true,
-      mappedErrors: flags['dtqlStreaming'] === true && flags['dtqlStreamingErrors'] === true,
+      streaming: flags['tugqlStreaming'] === true,
+      ordinary: flags['tugql'] === true && flags['tugqlStreaming'] !== true,
+      mappedErrors: flags['tugqlStreaming'] === true && flags['tugqlStreamingErrors'] === true,
     };
   });
 }
@@ -416,7 +417,7 @@ async function runNativeOrdinary(
     admittedServerId(config, base),
   );
   signal?.throwIfAborted();
-  const path = database === undefined ? '/v1/dtql' : `/v1/databases/${encodeURIComponent(database)}/dtql`;
+  const path = database === undefined ? '/v1/tugql' : `/v1/databases/${encodeURIComponent(database)}/tugql`;
   const response = await nativeQueryFetch(fetcher,
     `${base}${path}`,
     {
@@ -463,7 +464,7 @@ async function runNativeStream(
   const rights = await preflightSourceRights(base, sources, fetcher, authHeaders, signal, undefined,
     config.expectedSourceRights, expectedServerId);
   signal?.throwIfAborted();
-  const response = await nativeQueryFetch(fetcher, `${base}/v1/databases/${encodeURIComponent(database)}/dtql`, {
+  const response = await nativeQueryFetch(fetcher, `${base}/v1/databases/${encodeURIComponent(database)}/tugql`, {
     method: 'POST', headers: { 'Content-Type': 'application/yaml',
       Accept: mappedErrors ? OVDB_ERROR_STREAM_MIME : 'application/json', ...authHeaders },
     body: (definition.request as ITextQueryRequest).text, redirect: 'error', signal,
@@ -521,7 +522,7 @@ async function runNativeStream(
     ...(stream.footer.providerReads === undefined ? {} : { providerReads: stream.footer.providerReads }),
     recordset: { columns, rows }, totalRows: count, hasMore: false, nativeStream: true,
     nativeStreamRead: {
-      endpoint: `${base}/v1/databases/${encodeURIComponent(database)}/dtql`, queryId: definition.id,
+      endpoint: `${base}/v1/databases/${encodeURIComponent(database)}/tugql`, queryId: definition.id,
       plannedSources: sources.map((source) => ({ database: source.database, collection: source.name })),
       terminalComplete: true, observedRows: count,
       ...(providerSources ? { providerSources } : {}),
@@ -596,7 +597,7 @@ export async function runFederatedQuery(
           const capability = await streamCapability(base, database, fetcher, headers,
             admittedServerId(config, base), nativeSignal);
           if (!capability.ordinary && !capability.streaming)
-            throw new Error('OVDB cross-database execution requires DTQL capability for every database.');
+            throw new Error('OVDB cross-database execution requires TugQL capability for every database.');
         }
         return runNativeOrdinary(definition, undefined, native.sources, base, token,
           onProgress, onOutputPage, nativeSignal, runObserver);
@@ -795,10 +796,10 @@ async function runFederatedQueryInternal(
   const authHeaders: Record<string, string> = token
     ? { Authorization: `Bearer ${token}` }
     : {};
-  const parsed = parseDTQL((definition.request as ITextQueryRequest).text, {
+  const parsed = parseTugQLYaml((definition.request as ITextQueryRequest).text, {
     tables: config.tables,
   });
-  if (!isJoinedDTQLQuery(parsed))
+  if (!isJoinedTugQLQuery(parsed))
     throw new Error('The direct OVDB query must contain a join.');
   const relations: QueryRelation[] = [];
   const visit = (relation: QueryRelation): void => {
@@ -1098,7 +1099,7 @@ async function runFederatedQueryInternal(
           }
           const response = await nativeQueryFetch(
             httpFetch,
-            `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`,
+            `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/tugql`,
             {
               method: 'POST',
               headers: {
@@ -1184,7 +1185,7 @@ async function runFederatedQueryInternal(
           // Use a fresh signal because cancellation must not abort the release request.
           try {
             await httpFetch(
-              `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`,
+              `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/tugql`,
               {
                 method: 'POST',
                 headers: {
@@ -1383,7 +1384,7 @@ async function runFederatedQueryInternal(
     let records: QueryPage<Data>['records'];
     if (pagedJoin && !config.bounds?.runtime) {
       if (onOutputPage) {
-        let pages: AsyncIterable<QueryPage<Data>> = executeJoinedDTQLQueryPages(
+        let pages: AsyncIterable<QueryPage<Data>> = executeJoinedTugQLQueryPages(
           parsed,
           mode === 'visible'
             ? ({
@@ -1399,7 +1400,7 @@ async function runFederatedQueryInternal(
         return pagedResponse();
       }
       const paged: QueryPage<Data>['records'][number][] = [];
-      for await (const page of executeJoinedDTQLQueryPages(
+      for await (const page of executeJoinedTugQLQueryPages(
         parsed,
         executionOptions,
       ))
@@ -1407,7 +1408,7 @@ async function runFederatedQueryInternal(
       records = paged;
     } else {
       records = (
-        await executeJoinedDTQLQuery(
+        await executeJoinedTugQLQuery(
           executorFor(parsed.from),
           parsed,
           executionOptions,

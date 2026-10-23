@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { BrowserContext } from '@playwright/test';
 
 export const countriesEndpoint =
-  'https://ovdb.demodb.dev/v1/databases/northwind/dtql';
+  'https://ovdb.demodb.dev/v1/databases/northwind/tugql';
 export const inertDocument = 'https://datatug.app/assets/icon/favicon.png';
 export const countriesQuerySHA =
   '2e320d487d7bbe7dbfc53abc55c08d12eb80a2e79b34cfe15a2148fa362acc9a';
@@ -70,7 +70,7 @@ export async function consumeCountriesOnce(query: string) {
       throw new Error('The exact saved Countries query is required.');
     stage = 'fetch';
     const response = await fetch(
-      'https://ovdb.demodb.dev/v1/databases/northwind/dtql',
+      'https://ovdb.demodb.dev/v1/databases/northwind/tugql',
       {
         method: 'POST',
         headers: {

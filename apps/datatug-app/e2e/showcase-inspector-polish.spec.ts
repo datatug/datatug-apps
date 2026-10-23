@@ -25,9 +25,9 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await context.route(isCloudRead, async route => {
         requests.push(route.request().url());
         const path = new URL(route.request().url()).pathname.replace(cloudPrefix, '');
-        if (path === '/v1/dtql' && route.request().method() === 'POST') {
+        if (path === '/v1/tugql' && route.request().method() === 'POST') {
           posts++;
-          expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.dtql'), 'utf8'));
+          expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.tugql.yaml'), 'utf8'));
           await route.fulfill({ json: snapshot.comparison });
         } else if (path === '/v1/databases/northwind') await route.fulfill({ json: metadata('northwind') });
         else if (path === '/v1/databases/chinook') await route.fulfill({ json: metadata('chinook') });
@@ -92,7 +92,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await expect(inspector).toContainText('17 rows · 3 columns');
       await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
       expect(posts).toBe(1);
-      await Promise.all([page.waitForResponse(response => isCloudRead(new URL(response.url())) && new URL(response.url()).pathname.replace(cloudPrefix, '') === '/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: /^Refresh on board · / }).click()]);
+      await Promise.all([page.waitForResponse(response => isCloudRead(new URL(response.url())) && new URL(response.url()).pathname.replace(cloudPrefix, '') === '/v1/tugql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: /^Refresh on board · / }).click()]);
       await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
       expect(posts).toBe(2);
       await inspector.scrollIntoViewIfNeeded();

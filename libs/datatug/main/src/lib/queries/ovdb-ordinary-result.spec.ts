@@ -4,7 +4,7 @@ import { readOvdbOrdinaryResult } from './ovdb-ordinary-result';
 const response = (body: string): Response =>
   new Response(body, { headers: { 'Content-Type': 'application/json' } });
 
-describe('released OVDB ordinary DTQL result', () => {
+describe('released OVDB ordinary TugQL result', () => {
   it('reads the complete released envelope without inventing a stream footer', async () => {
     const result = await readOvdbOrdinaryResult(
       response(

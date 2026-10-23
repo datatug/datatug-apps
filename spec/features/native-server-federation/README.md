@@ -11,15 +11,15 @@ status: Draft
 
 ## Summary
 
-Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows.
+Execute a qualified multi-database saved TugQL plan in one bounded OVDB server request and validate physical sources before exposing rows.
 
 ## Problem
 
-The original browser-scan fallback could not provide a truthful bounded whole-document server comparison. The landed native root path now executes at `/v1/dtql` and preserves physical-source evidence; continuing acceptance must distinguish verified source/fixture behavior from real-network mechanism and authenticated copy evidence.
+The original browser-scan fallback could not provide a truthful bounded whole-document server comparison. The landed native root path now executes at `/v1/tugql` and preserves physical-source evidence; continuing acceptance must distinguish verified source/fixture behavior from real-network mechanism and authenticated copy evidence.
 
 ## Behavior
 
-Opening the saved Northwind/Chinook comparison and pressing Run sends one query POST to `https://cloud.openvaultdb.com/v1/dtql`. Without another action, the result displays 17 countries and separate customer-record counts from each sample. Existing query/result components provide inspection and retry. Numeric customer IDs are counted distinctly within each source; the result never claims matching people. Exact country labels are matched: UK/United Kingdom, source-exclusive countries and two Northwind null-country records are excluded and explained.
+Opening the saved Northwind/Chinook comparison and pressing Run sends one query POST to `https://cloud.openvaultdb.com/v1/tugql`. Without another action, the result displays 17 countries and separate customer-record counts from each sample. Existing query/result components provide inspection and retry. Numeric customer IDs are counted distinctly within each source; the result never claims matching people. Exact country labels are matched: UK/United Kingdom, source-exclusive countries and two Northwind null-country records are excluded and explained.
 
 A native plan records its exact unique physical sources and root or database endpoint. Root execution requires a complete bounded ordinary JSON envelope, exact result count and physical-source set, the in-memory server route, current source-rights evidence and validated result types before exposing rows. Cancellation aborts discovery and query reads. A root refusal never silently falls back to browser scans. Existing single-database streaming and ordinary paths retain their contracts.
 
@@ -39,7 +39,7 @@ The selected chart value is a customer-country label, while `ShipCountry` descri
 
 ### AC: server-query
 
-Given a fully qualified multi-database global DTQL plan (aggregation, grouping, HAVING or ordering) without client lookups or bounded client execution, when Run is pressed, then one query POST executes the complete document at `/v1/dtql`, with no browser source scans, SQLite or WASM downloads.
+Given a fully qualified multi-database global TugQL plan (aggregation, grouping, HAVING or ordering) without client lookups or bounded client execution, when Run is pressed, then one query POST executes the complete document at `/v1/tugql`, with no browser source scans, SQLite or WASM downloads.
 ### AC: trusted-result
 
 Given a root result, when its envelope, route, row count, source set, column shape/types or rights evidence differs from the plan, then it fails before rows reach callbacks or result storage.

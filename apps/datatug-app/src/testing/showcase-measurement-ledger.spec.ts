@@ -11,11 +11,11 @@ import {
 const ordersQuery = readFileSync(
   resolve(
     process.cwd(),
-    'apps/datatug-app/e2e/fixtures/northwind-orders-query.dtql',
+    'apps/datatug-app/e2e/fixtures/northwind-orders-query.tugql',
   ),
   'utf8',
 );
-const queryURL = 'https://ovdb.demodb.dev/v1/databases/northwind/dtql';
+const queryURL = 'https://ovdb.demodb.dev/v1/databases/northwind/tugql';
 const queryBody = JSON.stringify({ query: ordersQuery });
 
 function request(url: string, method = 'POST', body = queryBody): Request {
@@ -259,10 +259,10 @@ describe('opt-in production measurement protection without network', () => {
   it('refuses unknown queries, wrong source/body contracts, proxy use and SQLite/WASM requests', async () => {
     for (const req of [
       request(queryURL, 'POST', 'unknown'),
-      request('https://cloud.openvaultdb.com/v1/databases/northwind/dtql'),
+      request('https://cloud.openvaultdb.com/v1/databases/northwind/tugql'),
       request(queryURL, 'POST', ordersQuery),
       request(
-        'https://datatug.app/__datatug_public_ovdb/demodb/v1/databases/northwind/dtql',
+        'https://datatug.app/__datatug_public_ovdb/demodb/v1/databases/northwind/tugql',
       ),
       request('https://datatug.app/database.sqlite', 'GET'),
       request('https://datatug.app/worker.wasm', 'GET'),

@@ -116,10 +116,10 @@
       "origin": "chinookdb.com /data/json/chinook.Invoice.json (datatug/chinookdb public/data/json/chinook.Invoice.json at 0b6bb6ba22f680c9fb2fea9ec8107a8638dd8dc4)"
     },
     {
-      "path": "queries/sales/chinook-sales-per-capita.query.dtql",
+      "path": "queries/sales/chinook-sales-per-capita.query.tugql.yaml",
       "bytes": 1878,
       "sha256": "0075fff4bf6dbfa70a97abc6b0f39c5728058ce7254b59a43ed3b363e2f2d2de",
-      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.dtql"
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.tugql.yaml"
     },
     {
       "path": "queries/sales/chinook-sales-per-capita.query.json",

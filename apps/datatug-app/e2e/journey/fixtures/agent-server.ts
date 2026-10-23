@@ -64,7 +64,7 @@ export const PERSONAL_QUERY_TITLE = 'My personal scratchpad query';
  * convention (`pkg/personalqueries.ResolveProjectDir` — `$DATATUG_PERSONAL_DIR/
  * <projectID>/queries/<id>.query.json`), mirroring that repo's own
  * `query_endpoints_personal_queries_test.go` `writePersonalQuery()` fixture
- * writer exactly (flat `{id,title,type}`, no sibling `.sql`/`.dtql`/`.http` body
+ * writer exactly (flat `{id,title,type}`, no sibling `.sql`/`.tugql`/`.http` body
  * file needed — `all_queries` never reads a query's text, same reason
  * `queries.service.ts`'s own `IWireQueryItem` doc comment gives). `projectId` is
  * read out of the demo project's own `datatug-project.json` rather than

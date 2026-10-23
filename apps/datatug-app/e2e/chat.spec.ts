@@ -20,7 +20,7 @@ test('project side menu opens Chat', async ({ page }) => {
   await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project|datatug-demo-project)/)).toBeVisible();
 });
 
-test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
+test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic TugQL', async ({ page }) => {
   test.setTimeout(90_000);
   let fixtureRequests = 0;
   let localInterpretRequests = 0;
@@ -58,9 +58,9 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
       'Show 10 artists': { from: { name: 'Artist' }, orderBy: [{ field: 'ArtistId' }], limit: 10 },
       'Show 10 invoice lines': { from: { schema: 'main', name: 'InvoiceLine' }, orderBy: [{ field: 'InvoiceLineId' }], limit: 10 },
       'Show nobody from nowhere': { from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'City' }, right: { value: 'Nowhere' } }, limit: 50 },
-      'Return malformed DTQL': 'not valid DTQL',
+      'Return malformed TugQL': 'not valid TugQL',
     };
-    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: actions[question || ''] }) } }], usage: { prompt_tokens: 21, completion_tokens: 9, total_tokens: 30 } } });
+    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ tugql: actions[question || ''] }) } }], usage: { prompt_tokens: 21, completion_tokens: 9, total_tokens: 30 } } });
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
@@ -114,11 +114,11 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   expect(bubble.x).toBeGreaterThan(you.x + you.width);
   expect(Math.abs((bubble.y + bubble.height / 2) - (you.y + you.height / 2))).toBeLessThan(12);
   await expect(page.locator('.turn').first().getByText('Rows 100', { exact: true })).toBeVisible();
-  await expect(page.locator('.turn').first().locator('.dtql')).toHaveCount(0);
+  await expect(page.locator('.turn').first().locator('.tugql')).toHaveCount(0);
   await page.locator('.turn').first().getByText('TugQL', { exact: true }).click();
-  await expect(page.locator('.turn').first().locator('.dtql')).toBeVisible();
-  await expect(page.locator('.turn').first().locator('.dtql')).toContainText('from:\n  schema: "main"\n  name: "Invoice"');
-  await expect(page.locator('.turn').first().locator('.dtql')).toContainText('limit: 100');
+  await expect(page.locator('.turn').first().locator('.tugql')).toBeVisible();
+  await expect(page.locator('.turn').first().locator('.tugql')).toContainText('from:\n  schema: "main"\n  name: "Invoice"');
+  await expect(page.locator('.turn').first().locator('.tugql')).toContainText('limit: 100');
   await page.locator('.turn').first().getByText('SQL', { exact: true }).click();
   const sqlTurn = page.locator('.turn').first();
   await expect(sqlTurn.getByLabel('SQL syntax')).toBeVisible();
@@ -176,9 +176,9 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   expect(emptyColumns).toContain('CustomerId');
   expect(emptyColumns).toContain('City');
 
-  await page.getByLabel('Ask about Chinook data').fill('Return malformed DTQL');
+  await page.getByLabel('Ask about Chinook data').fill('Return malformed TugQL');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/DTQL|from/i);
+  await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/TugQL|from/i);
 
   await page.getByLabel('Ask about Chinook data').fill('Return oversized response');
   await page.getByRole('button', { name: 'Send' }).click();
@@ -338,7 +338,7 @@ for (const provider of [
       } else {
         expect(headers['authorization']).toBe('Bearer test-key-not-a-secret');
       }
-      const content = JSON.stringify({ dtql: { from: { name: 'Artist' }, orderBy: [{ field: 'ArtistId' }], limit: 10 } });
+      const content = JSON.stringify({ tugql: { from: { name: 'Artist' }, orderBy: [{ field: 'ArtistId' }], limit: 10 } });
       await route.fulfill({ json: provider.protocol === 'anthropic-messages'
         ? { content: [{ type: 'text', text: content }], usage: { input_tokens: 20, output_tokens: 8 } }
         : { choices: [{ message: { content } }], usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } });

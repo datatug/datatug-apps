@@ -24,7 +24,7 @@ export class QueriesUiService {
   async openNewQuery(projectRef: IProjectRef): Promise<void> {
     const createNewQuery = (type: QueryType) => () => {
       const id = this.randomIdService.newRandomId({ len: 7 });
-      const demoDbDefinition = type === QueryType.DTQL
+      const demoDbDefinition = type === QueryType.TugQL
         ? createHostedDemoDbQuery(id)
         : undefined;
       const request = demoDbDefinition?.request ?? (type === QueryType.HTTP
@@ -62,7 +62,7 @@ export class QueriesUiService {
         ...(!isSharedProjectRef(projectRef) ? [{
           text: 'Hosted DemoDB table (TugQL)',
           role: 'selected',
-          handler: createNewQuery(QueryType.DTQL),
+          handler: createNewQuery(QueryType.TugQL),
         }] : []),
         {
           // icon: 'browser-outline',

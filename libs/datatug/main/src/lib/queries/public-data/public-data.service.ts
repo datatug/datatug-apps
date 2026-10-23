@@ -663,7 +663,7 @@ export class PublicDataService {
       id: `public-data-${crypto.randomUUID()}`,
       title: `${source.entity}.${source.property} public lookup`,
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL, representation: 'yaml',
         text: JSON.stringify(query, null, 2),
       } as IQueryDef['request'],
       federation: {
@@ -905,7 +905,7 @@ export class PublicDataService {
       id: `public-data-${crypto.randomUUID()}`,
       title: `${source.entity}.${source.property} native lookup`,
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL, representation: 'yaml',
         text: JSON.stringify(
           {
             columns: [

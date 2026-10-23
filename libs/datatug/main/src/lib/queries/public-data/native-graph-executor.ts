@@ -1,9 +1,9 @@
 import {
-  executeJoinedDTQLQuery,
-  isJoinedDTQLQuery,
+  executeJoinedTugQLQuery,
+  isJoinedTugQLQuery,
   key,
-  parseDTQL,
-  type JoinedDTQLQuery,
+  parseTugQLYaml,
+  type JoinedTugQLQuery,
   type QueryExecutor,
   type QueryPage,
 } from '@dalgo/core';
@@ -374,8 +374,8 @@ interface Link {
 export function finiteGraphJoin(
   leftName: string,
   rightName: string,
-): JoinedDTQLQuery {
-  const parsed = parseDTQL(
+): JoinedTugQLQuery {
+  const parsed = parseTugQLYaml(
     {
       from: {
         name: leftName,
@@ -407,12 +407,12 @@ export function finiteGraphJoin(
       ],
     },
   );
-  if (!isJoinedDTQLQuery(parsed))
+  if (!isJoinedTugQLQuery(parsed))
     throw new Error('The finite graph join could not be parsed.');
   assertFiniteGraphJoin(parsed);
   return parsed;
 }
-export function assertFiniteGraphJoin(q: JoinedDTQLQuery): void {
+export function assertFiniteGraphJoin(q: JoinedTugQLQuery): void {
   const j = q.from.joins[0],
     predicate = j?.on[0];
   const left = q.columns?.[0],
@@ -511,7 +511,7 @@ export async function executeFiniteGraphJoin(
       return { records: rows as unknown as QueryPage<T>['records'] };
     },
   };
-  const result = await executeJoinedDTQLQuery(
+  const result = await executeJoinedTugQLQuery(
     executor,
     finiteGraphJoin('left', 'right'),
     {
@@ -1131,7 +1131,7 @@ export class NativeGraphExecution {
       offset: requested.offset,
       where: { left: { field }, op: 'In', right: { values: keys } },
     };
-    parseDTQL(
+    parseTugQLYaml(
       query,
       { tables: [{ name: mount.collection, fields: mount.fields }] },
       { maxLimit: 1000 },
@@ -1141,7 +1141,7 @@ export class NativeGraphExecution {
     headers.set('Accept', 'application/json');
     this.budget.admitNetwork();
     const response = await this.http(
-      `${this.base.replace(/\/$/, '')}/v1/databases/${mount.database}/dtql`,
+      `${this.base.replace(/\/$/, '')}/v1/databases/${mount.database}/tugql`,
       {
         method: 'POST',
         body: JSON.stringify(query),

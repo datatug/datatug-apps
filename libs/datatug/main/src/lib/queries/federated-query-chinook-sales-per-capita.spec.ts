@@ -3,7 +3,7 @@
 // fixtures/chinook-sales-per-capita (see its README for provenance and attribution). The
 // browser engine must return what the Go CLI returns for the same query.
 import 'fake-indexeddb/auto';
-import { isJoinedDTQLQuery, parseDTQL } from '@dalgo/core';
+import { isJoinedTugQLQuery, parseTugQLYaml } from '@dalgo/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { federatedVisibleMode, runFederatedQuery, type FederatedQueryResult } from './federated-query-executor';
 import type { IQueryDef } from '../models/definition/query-def';
@@ -11,7 +11,7 @@ import aliases from './fixtures/chinook-sales-per-capita/country_aliases.json';
 import invoices from './fixtures/chinook-sales-per-capita/invoice.json';
 import populations from './fixtures/chinook-sales-per-capita/population_wb.json';
 import queryMeta from './fixtures/chinook-sales-per-capita/chinook-sales-per-capita.query.json';
-import queryText from './fixtures/chinook-sales-per-capita/chinook-sales-per-capita.query.dtql?raw';
+import queryText from './fixtures/chinook-sales-per-capita/chinook-sales-per-capita.query.tugql.yaml?raw';
 import {
   createHostedDemoDbQuery,
   HOSTED_DEMO_DB_SOURCES,
@@ -26,7 +26,7 @@ const hero = (): Sources => ({ 'chinook.Invoice': invoices, 'geo.country_aliases
 
 const definition = (): IQueryDef => ({
   id: queryMeta.id, title: queryMeta.title,
-  request: { queryType: 'DTQL', text: queryText },
+  request: { queryType: 'TugQL', text: queryText },
   federation: { ...queryMeta.federation, ovdbBaseUrl: base },
   recordsets: queryMeta.recordsets,
 } as unknown as IQueryDef);
@@ -44,7 +44,7 @@ function serve(sources: Sources): string[] {
   const requested: string[] = [];
   vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
     requested.push(url);
-    const match = /^https:\/\/ovdb\.example\.test\/v1\/databases\/([^/]+)\/dtql$/.exec(url);
+    const match = /^https:\/\/ovdb\.example\.test\/v1\/databases\/([^/]+)\/tugql$/.exec(url);
     if (!match || init.method !== 'POST') throw new Error(`unexpected request ${url}`);
     const headers = new Headers(init.headers);
     if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
@@ -98,9 +98,9 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
   afterEach(() => vi.unstubAllGlobals());
 
   it('parses against the declared tables as a join over three databases', () => {
-    const parsed = parseDTQL(queryText, { tables: queryMeta.federation.tables });
-    expect(isJoinedDTQLQuery(parsed)).toBe(true);
-    if (!isJoinedDTQLQuery(parsed)) return;
+    const parsed = parseTugQLYaml(queryText, { tables: queryMeta.federation.tables });
+    expect(isJoinedTugQLQuery(parsed)).toBe(true);
+    if (!isJoinedTugQLQuery(parsed)) return;
     expect(parsed.orders).toHaveLength(1);
     expect(parsed.orders[0].expression?.kind).toBe('binary'); // ordered by an expression, not a field
     expect(parsed.groupBy).toHaveLength(3);
@@ -129,14 +129,14 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
     expect(byCountry['USA']).toBeCloseTo(1.53, 2);
     // Only the three OVDB sources were read, over paged snapshots, and each snapshot was released.
     expect(requested.every((url) => url.startsWith(`${base}/v1/databases/`))).toBe(true);
-    expect(requested.every((url) => url.endsWith('/dtql'))).toBe(true);
+    expect(requested.every((url) => url.endsWith('/tugql'))).toBe(true);
     expect(requested.filter((url) => url.includes('/chinook/')).length).toBeGreaterThan(4);
     const releases = vi.mocked(fetch).mock.calls.filter(([, init]) =>
       new Headers(init?.headers).get('OVDB-Page-Close') === 'true');
     expect(releases.map(([url]) => String(url)).sort()).toEqual([
-      `${base}/v1/databases/chinook/dtql`,
-      `${base}/v1/databases/geo/dtql`,
-      `${base}/v1/databases/geo/dtql`,
+      `${base}/v1/databases/chinook/tugql`,
+      `${base}/v1/databases/geo/tugql`,
+      `${base}/v1/databases/geo/tugql`,
     ]);
   });
 
@@ -170,7 +170,7 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
     const rows = table(result);
 
     expect(requests.some(({ url }) =>
-      url === `${base}/v1/databases/${source.database}/dtql`)).toBe(true);
+      url === `${base}/v1/databases/${source.database}/tugql`)).toBe(true);
     expect(JSON.parse(requests.find(({ body }) => body)?.body ?? '{}').from).toMatchObject({
       name: source.name,
       ...(source.schema ? { schema: source.schema } : {}),

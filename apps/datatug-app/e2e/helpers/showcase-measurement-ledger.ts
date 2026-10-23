@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { BrowserContext, Request } from '@playwright/test';
 
-// Hashes are trim + CRLF-normalized UTF-8 DTQL at Demo subtree b9743cc8f6306f8421abb0f98b188d10e0fb1b78.
+// Hashes are trim + CRLF-normalized UTF-8 TugQL at Demo subtree b9743cc8f6306f8421abb0f98b188d10e0fb1b78.
 const queryHashes: Record<string, string> = {
   '48ddadfbb85bdbb9c2eb432cfd94c50c3201bfb62fc4557fcbf235af5b10c1be': 'orders',
   '7779615c15bc3fcd5e28bd85d406f431881eb38e3709788a15ac238e4922aaaa':
@@ -71,10 +71,10 @@ function identify(
   if (
     method === 'POST' &&
     (provider || proxy) &&
-    /^\/v1\/(?:databases\/[^/]+\/)?dtql$/.test(path)
+    /^\/v1\/(?:databases\/[^/]+\/)?tugql$/.test(path)
   ) {
     let text = request.postData() ?? '';
-    let bodyFormat = 'raw-dtql';
+    let bodyFormat = 'raw-tugql';
     if (text.trimStart().startsWith('{')) {
       try {
         const body = JSON.parse(text) as { query?: unknown };
@@ -185,8 +185,8 @@ export async function installShowcaseMeasurementLedger(
         violate('Production unexpectedly used a proxy');
       const expectedSuffix =
         row.query === 'comparison'
-          ? '/v1/dtql'
-          : '/v1/databases/northwind/dtql';
+          ? '/v1/tugql'
+          : '/v1/databases/northwind/tugql';
       if (
         new URL(row.canonicalEndpoint ?? row.endpoint).pathname !==
         expectedSuffix
@@ -202,7 +202,7 @@ export async function installShowcaseMeasurementLedger(
         violate('Unexpected query provider for ' + row.query);
       const expectedFormat = ['orders', 'countries'].includes(row.query ?? '')
         ? 'json-query-string'
-        : 'raw-dtql';
+        : 'raw-tugql';
       if (row.bodyFormat !== expectedFormat)
         violate('Unexpected wire body format for ' + row.query);
     }

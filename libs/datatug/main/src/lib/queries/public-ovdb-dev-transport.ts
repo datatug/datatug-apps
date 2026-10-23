@@ -52,7 +52,7 @@ export function createPublicOvdbDevFetch(
       method === 'GET'
         ? /^\/v1\/databases\/[A-Za-z0-9_-]+$/.test(path)
         : method === 'POST' &&
-          /^\/v1\/(?:dtql|databases\/[A-Za-z0-9_-]+\/dtql)$/.test(path);
+          /^\/v1\/(?:tugql|databases\/[A-Za-z0-9_-]+\/tugql)$/.test(path);
     // Explicit credentials retain their original authorized direct transport.
     if (
       !allowed ||

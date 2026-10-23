@@ -705,7 +705,7 @@ describe('GithubProjectReaderService: the commit, the cache, the failover (desig
         'datatug-project.json': '{}',
         'ai/prepared-questions.json': '{}',
         'queries/sales/chinook-sales-per-capita.query.json': '{}',
-        'queries/sales/chinook-sales-per-capita.query.dtql': 'x',
+        'queries/sales/chinook-sales-per-capita.query.tugql.yaml': 'x',
         'environments/web/web.env.json': '{}',
         'environments/web/catalogs/chinook/chinook.db.json': '{}',
         'environments/web/catalogs/geo/geo.db.json': '{}',

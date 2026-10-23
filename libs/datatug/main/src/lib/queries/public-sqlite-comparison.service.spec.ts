@@ -78,7 +78,7 @@ const plan = Object.freeze({
   authorProof: {
     profile: 'invoice-query' as const,
     resolvedQuery: {
-      kind: 'recursive-dtql' as const,
+      kind: 'recursive-tugql' as const,
       from: { kind: 'table' as const, name: 'Invoice', alias: 'i', joins: [] },
       limit: 100,
       columns: [],

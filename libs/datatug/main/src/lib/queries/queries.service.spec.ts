@@ -121,12 +121,12 @@ describe('QueriesService — GitHub-store getQuery (S155)', () => {
     expect(result?.recordsets).toBeUndefined();
   });
 
-  it('a DTQL query (real demo-project-1 customer-invoices shape) — text AND linked-entity metadata both come through', () => {
+  it('a TugQL query (real demo-project-1 customer-invoices shape) — text AND linked-entity metadata both come through', () => {
     const service = createService(() =>
       of({
         id: 'customer-invoices',
         title: 'Customer invoices',
-        type: 'DTQL',
+        type: 'TugQL',
         text: 'from:\n  name: Invoice\n',
         parameters: [
           { id: 'CustomerId', type: 'integer', meta: { entity: 'Customer', field: 'ID' } },
@@ -146,7 +146,7 @@ describe('QueriesService — GitHub-store getQuery (S155)', () => {
       .getQuery(projRef, 'customers/customer-invoices')
       .subscribe((def) => (result = def));
 
-    expect(result?.request).toEqual({ queryType: 'DTQL', text: 'from:\n  name: Invoice\n' });
+    expect(result?.request).toEqual({ queryType: 'TugQL', text: 'from:\n  name: Invoice\n' });
     expect(result?.parameters?.[0].meta).toEqual({ entity: 'Customer', field: 'ID' });
     expect(result?.recordsets?.[0].columns[0].meta).toEqual({ entity: 'Invoice', field: 'ID' });
   });

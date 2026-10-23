@@ -28,7 +28,7 @@ export function admitComparisonChart(
   if (
     definition.federation?.ovdbBaseUrl !== 'https://cloud.openvaultdb.com' ||
     result.provenance.source !==
-      'https://cloud.openvaultdb.com/v1/dtql (direct OVDB)' ||
+      'https://cloud.openvaultdb.com/v1/tugql (direct OVDB)' ||
     definition.id !== 'customer-country-comparison-server' ||
     !result.nativeDirect ||
     !result.ordinaryComplete ||

@@ -1,8 +1,8 @@
-import { parseDTQL, type DTQLSchema } from '@dalgo/core';
-import { chatDtqlYaml, chatSQLite } from './chat-query-format';
+import { parseTugQLYaml, type TugQLSchema } from '@dalgo/core';
+import { chatTugqlYaml, chatSQLite } from './chat-query-format';
 import { CHINOOK_SCHEMA } from './chat.types';
 
-const schema = CHINOOK_SCHEMA as unknown as DTQLSchema;
+const schema = CHINOOK_SCHEMA as unknown as TugQLSchema;
 
 /** Invoice joined to Customer, as the Chat derives it from a foreign key. */
 const joined = `from:
@@ -19,9 +19,9 @@ const totalSales = `columns:
 groupBy: [{field: Country, source: c}]
 `;
 
-const sql = (yaml: string): string => chatSQLite(parseDTQL(yaml, schema));
+const sql = (yaml: string): string => chatSQLite(parseTugQLYaml(yaml, schema));
 
-describe('chat SQLite preview of join-aware DTQL', () => {
+describe('chat SQLite preview of join-aware TugQL', () => {
   it('renders an expression order key', () => {
     const text = sql(joined + totalSales + `orderBy:
   - binary: {op: '*', left: {aggregate: {function: sum, args: [{field: Total, source: i}]}}, right: {value: 2}}
@@ -112,37 +112,37 @@ columns: [{field: Country, source: c}]
   });
 
   it('keeps the single-source preview, where null is a value', () => {
-    const single = parseDTQL({ from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'Company' }, right: { value: null } }, limit: 5 }, schema);
+    const single = parseTugQLYaml({ from: { schema: 'main', name: 'Customer' }, where: { op: '==', left: { field: 'Company' }, right: { value: null } }, limit: 5 }, schema);
     expect(chatSQLite(single)).toContain('"Company" IS NULL');
   });
 });
 
 describe('chat preview of a single-source query', () => {
-  const single = (where: unknown): ReturnType<typeof parseDTQL> => parseDTQL({ from: { schema: 'main', name: 'Customer' }, where, limit: 5 }, schema);
+  const single = (where: unknown): ReturnType<typeof parseTugQLYaml> => parseTugQLYaml({ from: { schema: 'main', name: 'Customer' }, where, limit: 5 }, schema);
 
   it('previews != as <> that keeps the null rows, and != null as IS NOT NULL, as the filter runs', () => {
     expect(chatSQLite(single({ op: '!=', left: { field: 'Country' }, right: { value: 'Canada' } }))).toContain(`WHERE ("Country" <> 'Canada' OR "Country" IS NULL)`);
     expect(chatSQLite(single({ op: '!=', left: { field: 'Company' }, right: { value: null } }))).toContain('WHERE "Company" IS NOT NULL');
   });
 
-  it('previews a NotIn list as NOT IN and shows it as editable DTQL that parses back', () => {
+  it('previews a NotIn list as NOT IN and shows it as editable TugQL that parses back', () => {
     const query = single({ op: 'NotIn', left: { field: 'Country' }, right: { values: ['Canada', 'USA'] } });
     expect(chatSQLite(query)).toContain(`WHERE ("Country" NOT IN ('Canada', 'USA') OR "Country" IS NULL)`);
-    const yaml = chatDtqlYaml(query);
+    const yaml = chatTugqlYaml(query);
     expect(yaml).toContain('op: "NotIn"');
-    expect(chatSQLite(parseDTQL(yaml, schema))).toBe(chatSQLite(query));
+    expect(chatSQLite(parseTugQLYaml(yaml, schema))).toBe(chatSQLite(query));
   });
 
   it('previews a null test, which the parser keeps on the join-aware model', () => {
     const query = single({ isNotNull: { field: 'Company' } });
     expect(chatSQLite(query)).toContain('WHERE "Customer"."Company" IS NOT NULL');
-    expect(chatDtqlYaml(query)).toContain('isNotNull:');
+    expect(chatTugqlYaml(query)).toContain('isNotNull:');
   });
 });
 
-describe('chat DTQL display of join-aware queries', () => {
-  it('shows expression order keys, and/or groups and having groups as editable DTQL', () => {
-    const yaml = chatDtqlYaml(parseDTQL(joined + totalSales + `where:
+describe('chat TugQL display of join-aware queries', () => {
+  it('shows expression order keys, and/or groups and having groups as editable TugQL', () => {
+    const yaml = chatTugqlYaml(parseTugQLYaml(joined + totalSales + `where:
   or:
     - {op: '>=', left: {field: Total, source: i}, right: {value: 5}}
     - {op: '==', left: {field: Country, source: c}, right: {value: Canada}}
@@ -154,8 +154,8 @@ orderBy:
     desc: true
 `, schema));
     // The canonical display must parse back to the same query.
-    const again = parseDTQL(yaml, schema);
-    expect(chatDtqlYaml(again)).toBe(yaml);
+    const again = parseTugQLYaml(yaml, schema);
+    expect(chatTugqlYaml(again)).toBe(yaml);
     expect(yaml).toContain('or:');
     expect(yaml).toContain('having:');
     expect(yaml).toContain('desc: true');

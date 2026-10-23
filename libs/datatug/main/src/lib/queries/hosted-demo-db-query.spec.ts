@@ -1,4 +1,4 @@
-import { isJoinedDTQLQuery, parseDTQL } from '@dalgo/core';
+import { isJoinedTugQLQuery, parseTugQLYaml } from '@dalgo/core';
 import { describe, expect, it } from 'vitest';
 import {
   QueryType,
@@ -7,8 +7,8 @@ import {
 } from '../models/definition/query-def';
 
 function textRequest(definition: IQueryDef): string {
-  if (definition.request.queryType !== QueryType.DTQL) {
-    throw new Error('Expected a text-based DTQL definition.');
+  if (definition.request.queryType !== QueryType.TugQL) {
+    throw new Error('Expected a text-based TugQL definition.');
   }
   return (definition.request as ITextQueryRequest).text;
 }
@@ -22,16 +22,16 @@ import {
 } from './hosted-demo-db-query';
 
 describe('hosted DemoDB query definitions', () => {
-  it.each(HOSTED_DEMO_DB_SOURCES)('creates a reloadable DTQL definition for $id', (source) => {
+  it.each(HOSTED_DEMO_DB_SOURCES)('creates a reloadable TugQL definition for $id', (source) => {
     const initial = createHostedDemoDbQuery('query-1');
     const selected = withHostedDemoDbSource(initial, source.id);
     expect(isHostedDemoDbStarterQuery(selected)).toBe(true);
     const tables = selected.federation?.tables;
     if (!tables) throw new Error('Expected hosted source table metadata.');
-    const parsed = parseDTQL(textRequest(selected), { tables });
-    if (!isJoinedDTQLQuery(parsed)) throw new Error('Expected relation query model.');
+    const parsed = parseTugQLYaml(textRequest(selected), { tables });
+    if (!isJoinedTugQLQuery(parsed)) throw new Error('Expected relation query model.');
 
-    expect(selected.request.queryType).toBe(QueryType.DTQL);
+    expect(selected.request.queryType).toBe(QueryType.TugQL);
     expect(selected.federation).toMatchObject({
       ovdbBaseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL,
       tables: [{
@@ -58,10 +58,10 @@ describe('hosted DemoDB query definitions', () => {
     const legacy = { ...reloaded, federation: { ...reloaded.federation, ovdbBaseUrl: 'https://demodb.dev/ovdb' } };
     expect(hostedDemoDbSourceId(legacy)).toBe(source.id);
     expect(HOSTED_DEMO_DB_OVDB_BASE_URL).toBe('https://ovdb.demodb.dev');
-    const reloadedQuery = parseDTQL(textRequest(reloaded), {
+    const reloadedQuery = parseTugQLYaml(textRequest(reloaded), {
       tables: reloaded.federation.tables,
     });
-    if (!isJoinedDTQLQuery(reloadedQuery)) throw new Error('Expected relation query model.');
+    if (!isJoinedTugQLQuery(reloadedQuery)) throw new Error('Expected relation query model.');
     expect(reloadedQuery.from.name).toBe(source.name);
   });
 
@@ -71,12 +71,12 @@ describe('hosted DemoDB query definitions', () => {
       'chinook.Customer',
     );
     const federation = initial.federation;
-    if (!federation || initial.request.queryType !== QueryType.DTQL)
+    if (!federation || initial.request.queryType !== QueryType.TugQL)
       throw new Error('Expected the hosted DemoDB starter definition');
     const custom = {
       ...initial,
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: `${textRequest(initial)}where:\n  field: Country\n  op: ==\n  value: IE\n`,
       } as ITextQueryRequest,
     };

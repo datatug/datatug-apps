@@ -9,7 +9,7 @@ const definition = {
   id: 'q',
   title: 'q',
   request: {
-    queryType: 'DTQL',
+    queryType: 'TugQL',
     text: 'from: {database: db, name: items, alias: i}\ncolumns: [{field: name, source: i}]\n',
   },
   federation: {
@@ -126,7 +126,7 @@ describe('federated query worker', () => {
       expect(init?.redirect).toBe('error');
       expect(new Headers(init?.headers).has('Authorization')).toBe(false);
       return String(input).endsWith('/v1/databases/db')
-        ? Response.json({ id: 'db', capabilities: { dtql: true } })
+        ? Response.json({ id: 'db', capabilities: { tugql: true } })
         : Response.json({ complete: true, records: [{ data: { name: 'A' } }], columns: ['name'], execution: { route: 'database', rowsReturned: 1 } });
     }));
     await run({
@@ -136,7 +136,7 @@ describe('federated query worker', () => {
     expect(posted.find(message => message.type === 'error')).toBeUndefined();
     expect(calls).toEqual([
       'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db',
-      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db/dtql',
+      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db/tugql',
     ]);
     expect(posted.find(message => message.type === 'result')?.['result']).toMatchObject({
       provenance: { source: 'https://cloud.openvaultdb.com/v1/databases/db (direct OVDB)' },
@@ -184,7 +184,7 @@ describe('federated query worker', () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       calls.push(String(input));
       if (String(input).endsWith('/v1/databases/db'))
-        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: streaming } }), { headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ id: 'db', capabilities: { tugql: true, tugqlStreaming: streaming } }), { headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ records: Array.from({ length: 105 }, (_, index) => ({ data: { name: `row-${index}`, id: String(index) } })),
         columns: ['id', 'name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } });
     }));
@@ -199,7 +199,7 @@ describe('federated query worker', () => {
     await vi.waitFor(() => expect(posted.some((message) => message.type === 'page' && message['requestId'] === 7)).toBe(true));
     const page = posted.find((message) => message.type === 'page' && message['requestId'] === 7)?.['rows'] as { value: unknown }[][];
     expect(page.map((row) => row[0].value)).toEqual(['100', '101', '102', '103', '104']);
-    expect(calls).toEqual(['https://static.example.test/data/v1/databases/db', 'https://static.example.test/data/v1/databases/db/dtql']);
+    expect(calls).toEqual(['https://static.example.test/data/v1/databases/db', 'https://static.example.test/data/v1/databases/db/tugql']);
   });
 
   it('splits large streamed rows across byte-bounded IndexedDB transactions', async () => {
@@ -207,7 +207,7 @@ describe('federated query worker', () => {
     try {
       const large = 'x'.repeat(600_000);
       vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
-        ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+        ? new Response(JSON.stringify({ id: 'db', capabilities: { tugql: true, tugqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
         : new Response(JSON.stringify({ records: [{ data: { name: large } }, { data: { name: large } }, { data: { name: large } }],
           columns: ['name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } })));
       await run({});
@@ -221,7 +221,7 @@ describe('federated query worker', () => {
     try {
       const large = 'x'.repeat(900_000);
       vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
-        ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+        ? new Response(JSON.stringify({ id: 'db', capabilities: { tugql: true, tugqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
         : new Response(JSON.stringify({ records: Array.from({ length: 10 }, () => ({ data: { name: large } })),
           columns: ['name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } })));
       scope.onmessage?.({ data: { type: 'run', definition, token: '', mode: 'full' } });
@@ -239,7 +239,7 @@ describe('federated query worker', () => {
   it('deletes provisional streamed rows when a late transport failure truncates the JSON footer', async () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
-      ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+      ? new Response(JSON.stringify({ id: 'db', capabilities: { tugql: true, tugqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
       : new Response(`{"records":[${Array.from({ length: 100 }, (_, index) => JSON.stringify({ data: { name: String(index) } })).join(',')}`,
         { headers: { 'Content-Type': 'application/json' } })));
     await run({});
@@ -252,10 +252,10 @@ describe('federated query worker', () => {
     const before = new Set((await indexedDB.databases()).map((database) => database.name));
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
       ? new Response(JSON.stringify({ id: 'db', capabilities: {
-        dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true,
+        tugql: true, tugqlStreaming: true, tugqlStreamingErrors: true,
       } }), { headers: { 'Content-Type': 'application/json' } })
       : new Response(`{"records":[${Array.from({ length: 100 }, (_, index) =>
-        JSON.stringify({ data: { name: String(index) } })).join(',')}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."},"complete":false}`,
+        JSON.stringify({ data: { name: String(index) } })).join(',')}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"tugql"},"hint":"Narrow the query."},"complete":false}`,
       { headers: { 'Content-Type': OVDB_ERROR_STREAM_MIME } })));
     await run({});
     expect(posted.find((message) => message.type === 'result')).toBeUndefined();
@@ -269,7 +269,7 @@ describe('federated query worker', () => {
     let source!: ReadableStreamDefaultController<Uint8Array>;
     const stream = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('/v1/databases/db')
-      ? new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
+      ? new Response(JSON.stringify({ id: 'db', capabilities: { tugql: true, tugqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } })
       : new Response(stream, { headers: { 'Content-Type': 'application/json' } })));
     scope.onmessage?.({ data: { type: 'run', definition, token: '', mode: 'full' } });
     source.enqueue(new TextEncoder().encode(`{"records":[${Array.from({ length: 100 }, (_, index) => JSON.stringify({ data: { name: String(index) } })).join(',')}`));
@@ -311,7 +311,7 @@ describe('federated query worker', () => {
     const configured = {
       id: 'immutable-worker',
       request: {
-        queryType: 'DTQL',
+        queryType: 'TugQL',
         text: JSON.stringify({
           from: {
             database: 'user',

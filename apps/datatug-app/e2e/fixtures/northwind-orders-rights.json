@@ -3,7 +3,7 @@
   "scope": "DemoDB publisher declaration for the Northwind SQLite Orders recordset only. Admission requires a fresh complete live result matching the pinned receipt; this artifact is not a signed response from the live API.",
   "observedAtUtc": "2026-10-16T12:46:09.629987+00:00",
   "admission": {
-    "endpoint": "https://demodb.dev/ovdb/v1/databases/northwind/dtql",
+    "endpoint": "https://demodb.dev/ovdb/v1/databases/northwind/tugql",
     "querySha256": "ba8e43a239489bfb17761990658909b969c9d4939dd8aa008615c867671b2c52",
     "complete": true,
     "rows": 830,
@@ -98,7 +98,7 @@
     "ovdb:https%3A%2F%2Fdemodb.dev%2Fovdb/northwind/Orders"
   ],
   "limitations": [
-    "The SQLite DTQL response did not provide execution.sources; this publisher identifies its own endpoint and recordset through the exact query and full result digest.",
+    "The SQLite TugQL response did not provide execution.sources; this publisher identifies its own endpoint and recordset through the exact query and full result digest.",
     "The PostgreSQL endpoint at cloud.openvaultdb.com has a different owner and source identity and is not covered by this declaration.",
     "A later, incomplete, truncated, limited, changed, or differently sourced response must not inherit this admission without a fresh full-result verification."
   ]

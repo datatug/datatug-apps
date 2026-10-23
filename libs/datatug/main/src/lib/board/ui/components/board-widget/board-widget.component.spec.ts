@@ -292,7 +292,7 @@ describe('BoardWidgetComponent', () => {
         title: 'Customers',
         connectionId: 'logical-ledger-v7',
         request: {
-          queryType: QueryType.DTQL,
+          queryType: QueryType.TugQL,
           text: 'from:\n  name: "customers"\nlimit: 10\n',
         },
       }),
@@ -368,7 +368,7 @@ describe('BoardWidgetComponent', () => {
         title: 'Customers',
         connectionId: 'logical-ledger-v7',
         request: {
-          queryType: QueryType.DTQL,
+          queryType: QueryType.TugQL,
           text: 'from:\n  name: "customers"\nlimit: 10\n',
         },
       }),
@@ -1105,7 +1105,7 @@ describe('BoardWidgetComponent', () => {
         queryId: publicQueryId,
         mode: 'snapshot' as const,
         observedAt: '2026-10-16T14:00:00Z',
-        endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
+        endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/tugql',
         databaseId: 'northwind',
       },
       sqliteReceipt: {
@@ -1128,7 +1128,7 @@ describe('BoardWidgetComponent', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
-  it('dispatches a native-demo DTQL saved query from the canonical SQL widget to the explicit hosted target', async () => {
+  it('dispatches a native-demo TugQL saved query from the canonical SQL widget to the explicit hosted target', async () => {
     const queryId = 'detective/invoice-detail';
     const { board, readBoard } = configureShowcase({
       name: 'SQL',
@@ -1143,7 +1143,7 @@ describe('BoardWidgetComponent', () => {
       id: 'invoice-detail',
       title: 'Invoice totals and customer',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from: {database: invoices-db, name: InvoiceDetail}',
       },
       parameters: [{ id: 'invoice_id', type: 'integer', isRequired: true }],
@@ -1208,10 +1208,10 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.componentInstance.result()).toBeUndefined();expect(fixture.componentInstance.heldSnapshot()).toBeUndefined();
   });
 
-  it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
+  it('runs a saved server TugQL definition by default without choosing a working copy', async () => {
     configureShowcase();
     getQuery.mockReturnValue(of({ id: publicQueryId, title: 'Server countries',
-      request: { queryType: QueryType.DTQL, text: 'from: {database: northwind, name: Orders, alias: orders}' },
+      request: { queryType: QueryType.TugQL, text: 'from: {database: northwind, name: Orders, alias: orders}' },
       federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [{ database: 'northwind', name: 'Orders', fields: ['ShipCountry'] }] } }));
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
@@ -1818,7 +1818,7 @@ describe('BoardWidgetComponent', () => {
     if (!seeded) throw new Error('Missing seeded widget');
     const { readBoard } = configureShowcase(seeded);
     readBoard.mockReturnValue(of(board));
-    getQuery.mockImplementation((_ref, id: string) => of({ id, title: id, request: { queryType: QueryType.DTQL, text: 'from: { name: Customer }' }, federation: { ovdbBaseUrl: 'https://cloud.openvaultdb.com', tables: [{ database: id.endsWith('/n') ? 'northwind' : 'chinook', name: 'Customer', fields: ['Country'] }] } }));
+    getQuery.mockImplementation((_ref, id: string) => of({ id, title: id, request: { queryType: QueryType.TugQL, text: 'from: { name: Customer }' }, federation: { ovdbBaseUrl: 'https://cloud.openvaultdb.com', tables: [{ database: id.endsWith('/n') ? 'northwind' : 'chinook', name: 'Customer', fields: ['Country'] }] } }));
     const runtime = TestBed.inject(TutorialBoardRuntime);
     const ref = fixture.componentInstance.projectRef();
     if (!ref) throw new Error('Missing project reference');

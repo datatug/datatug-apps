@@ -1,5 +1,5 @@
 // A fake cloud.openvaultdb.com for specs: the descriptor of a native PostgreSQL mount (opaque `pg1_…` collection
-// ids named by `source`, `query: false`, `dtql: true`, nothing writable) and its `POST /dtql` reads.
+// ids named by `source`, `query: false`, `tugql: true`, nothing writable) and its `POST /tugql` reads.
 import type { OvdbDescriptor } from '../ovdb/ovdb-connection';
 
 export const ARTIST_ID = 'pg1_AAAAB2NoaW5vb2sAAAAGQXJ0aXN0';
@@ -12,7 +12,7 @@ export const postgresDescriptor: OvdbDescriptor = {
   capabilities: {
     read: false,
     query: false,
-    dtql: true,
+    tugql: true,
     write: false,
     delete: false,
     reset: false,
@@ -109,7 +109,7 @@ export function fakeCloudFetch(
       return json(200, options.descriptor ?? postgresDescriptor);
     if (
       method === 'POST' &&
-      url.endsWith('/v1/databases/chinook-postgresql/dtql')
+      url.endsWith('/v1/databases/chinook-postgresql/tugql')
     ) {
       const { query } = JSON.parse(String(init?.body)) as { query: string };
       return json(200, {

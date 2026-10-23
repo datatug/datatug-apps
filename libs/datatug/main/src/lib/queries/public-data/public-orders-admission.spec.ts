@@ -10,7 +10,7 @@ import {
 const encoder = new TextEncoder();
 const sourceId = 'ovdb:https%3A%2F%2Fdemodb.dev%2Fovdb/northwind/Orders';
 const serverId = 'https://demodb.dev/ovdb';
-const endpoint = 'https://demodb.dev/ovdb/v1/databases/northwind/dtql';
+const endpoint = 'https://demodb.dev/ovdb/v1/databases/northwind/tugql';
 const query = 'from: {name: Orders}\nlimit: 1000\n';
 const fields = ['OrderID', 'OrderDate', 'Freight', 'ShipCountry'];
 const response = {
@@ -94,7 +94,7 @@ describe('publisher-verified Orders admission', () => {
       .rejects.toThrow(/invalid OrderDate/);
   });
 
-  it('fetches only the pinned publication; the shared DTQL transport owns query execution', async () => {
+  it('fetches only the pinned publication; the shared TugQL transport owns query execution', async () => {
     const { bytes, pin } = await fixture();
     const calls: { url: string; init: RequestInit }[] = [];
     const transport: typeof fetch = async (input, init) => {

@@ -66,7 +66,7 @@ export interface AuthorizationLayer {
 }
 
 export interface AuthorizationResult {
-  readonly apiVersion: 'tugql.org/authorization/v1' | 'dtql.org/authorization/v1';
+  readonly apiVersion: 'tugql.org/authorization/v1' | 'tugql.org/authorization/v1';
   readonly requestId: string;
   readonly mode: 'plan' | 'inspect' | 'sample' | 'execution';
   readonly scope: 'request' | 'sample';
@@ -127,7 +127,7 @@ export function isAuthorizationResult(
   const restrictions = value['restrictions'];
   const blockers = value['blockers'];
   if (
-    !['tugql.org/authorization/v1', 'dtql.org/authorization/v1'].includes(String(value['apiVersion'])) ||
+    !['tugql.org/authorization/v1', 'tugql.org/authorization/v1'].includes(String(value['apiVersion'])) ||
     typeof value['requestId'] !== 'string' ||
     value['requestId'].length === 0 ||
     !['plan', 'inspect', 'sample', 'execution'].includes(String(mode)) ||

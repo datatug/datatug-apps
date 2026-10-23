@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { parseDTQL } from '@dalgo/core';
+import { parseTugQLYaml } from '@dalgo/core';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { deriveChatJoin, discoverChatJoinCandidates } from './chat-joins';
 import { CHINOOK_SCHEMA } from './chat.types';
@@ -32,7 +32,7 @@ const invoiceToCustomer = `from:
       on: [{left: {field: CustomerId, source: i}, op: '==', right: {field: CustomerId, source: c}}]
 `;
 
-describe('ChinookChatDataService on the DTQL engine bundled with @dalgo/core', () => {
+describe('ChinookChatDataService on the TugQL engine bundled with @dalgo/core', () => {
   const service = new ChinookChatDataService();
 
   beforeAll(async () => {
@@ -70,10 +70,10 @@ orderBy: [{field: FirstName, source: c}]
     });
 
     it('runs a join derived from a foreign key', async () => {
-      const invoice = parseDTQL({ from: { schema: 'main', name: 'Invoice' }, limit: 10 }, CHINOOK_SCHEMA);
+      const invoice = parseTugQLYaml({ from: { schema: 'main', name: 'Invoice' }, limit: 10 }, CHINOOK_SCHEMA);
       const edge = discoverChatJoinCandidates(invoice).find((item) => item.targetTable === 'Customer' && item.direction === 'forward');
       const derived = deriveChatJoin(invoice, edge?.id ?? '', CHINOOK_SCHEMA);
-      const { rows } = await service.query(scope, derived.dtql);
+      const { rows } = await service.query(scope, derived.tugql);
       expect(rows).toHaveLength(5);
       expect(rows[0]).toMatchObject({ InvoiceId: 1, 'Customer.FirstName': 'Leonie' });
     });
@@ -110,7 +110,7 @@ orderBy: [{field: FirstName, source: c}]
       const parent = await service.query(scope, customerFilter(op));
       const edge = discoverChatJoinCandidates(parent.query).find((item) => item.targetTable === 'Invoice' && item.direction === 'reverse');
       const derived = deriveChatJoin(parent.query, edge?.id ?? '', CHINOOK_SCHEMA);
-      const { rows } = await service.query(scope, derived.dtql);
+      const { rows } = await service.query(scope, derived.tugql);
       return {
         parent: parent.rows.map((row) => row['CustomerId']),
         joined: rows.map((row) => `${row['CustomerId']}:${row['Invoice.InvoiceId']}`).sort(),

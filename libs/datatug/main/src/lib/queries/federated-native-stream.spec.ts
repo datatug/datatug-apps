@@ -5,7 +5,7 @@ import { OVDB_ERROR_STREAM_MIME } from './ovdb-json-record-stream';
 
 const definition: IQueryDef = {
   id: 'artist-tracks', title: 'Artist tracks',
-  request: { queryType: QueryType.DTQL, text: JSON.stringify({
+  request: { queryType: QueryType.TugQL, text: JSON.stringify({
     from: { database: 'music', name: 'Artist', alias: 'artist', joins: [{
       from: { database: 'music', name: 'Album', alias: 'album', joins: [{
         from: { database: 'music', name: 'Track', alias: 'track' },
@@ -52,7 +52,7 @@ columns:
   - {aggregate: {function: count, args: [{field: TrackId, source: track}]}, as: TrackCount}
   - {aggregate: {function: sum, args: [{field: Milliseconds, source: track}]}, as: TotalMilliseconds}
 limit: 10`;
-    const saved = { ...definition, request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+    const saved = { ...definition, request: { queryType: QueryType.TugQL, text: yaml } as ITextQueryRequest,
       federation: { ...definition.federation, tables: definition.federation?.tables.map((table) =>
         ({ ...table, schema: 'chinook', fields: table.name === 'Track' ? [...table.fields, 'Milliseconds'] : table.fields })) },
       recordsets: [{ name: 'Artists', columns: [{ name: 'Artist', type: 'string' }, { name: 'TrackCount', type: 'integer' },
@@ -62,7 +62,7 @@ limit: 10`;
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       calls.push({ url: String(input), init });
       return String(input).endsWith('/music')
-        ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+        ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
         : json({ records: [{ data: { Artist: 'Iron Maiden', TrackCount: '213', TotalMilliseconds: '71844745' } }],
           columns: ['Artist', 'TrackCount', 'TotalMilliseconds'], execution: {}, complete: true });
     });
@@ -79,7 +79,7 @@ limit: 10`;
 
   it('routes an unqualified single collection through its one unambiguous configured database', async () => {
     const single = { ...definition,
-      request: { queryType: QueryType.DTQL, text: JSON.stringify({ from: { name: 'Artist' }, limit: 2 }) },
+      request: { queryType: QueryType.TugQL, text: JSON.stringify({ from: { name: 'Artist' }, limit: 2 }) },
       federation: { ovdbBaseUrl: 'https://ovdb.example.test', tables: [{ database: 'music', name: 'Artist', fields: ['ArtistId', 'Name'] }] },
       recordsets: [{ columns: [{ name: 'ArtistId', type: 'integer' }, { name: 'Name', type: 'string' }] }],
     } as unknown as IQueryDef;
@@ -87,22 +87,22 @@ limit: 10`;
     const fetcher = vi.fn<typeof fetch>(async (input) => {
       urls.push(String(input));
       return String(input).endsWith('/music')
-        ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+        ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
         : json({ records: [{ key: '1', data: { ArtistId: '1', Name: 'Alpha' } }], complete: true });
     });
     const result = await runFederatedQuery(single, undefined, '', undefined, undefined, 'full', undefined, undefined, { fetch: fetcher });
-    expect(urls).toEqual(['https://ovdb.example.test/v1/databases/music', 'https://ovdb.example.test/v1/databases/music/dtql']);
+    expect(urls).toEqual(['https://ovdb.example.test/v1/databases/music', 'https://ovdb.example.test/v1/databases/music/tugql']);
     expect(result.recordset.columns.map((column) => column.name)).toEqual(['ArtistId', 'Name']);
     expect(result.recordset.rows[0][0]).toEqual({ type: 'integer', value: '1' });
   });
 
-  it('sends one complete DTQL POST, stages a first record before EOF, and preserves declared integer types', async () => {
+  it('sends one complete TugQL POST, stages a first record before EOF, and preserves declared integer types', async () => {
     let body!: ReadableStreamDefaultController<Uint8Array>;
     const stream = new ReadableStream<Uint8Array>({ start(controller) { body = controller; } });
     const calls: { url: string; init?: RequestInit }[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       calls.push({ url: String(input), init });
-      if (String(input).endsWith('/music')) return json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } });
+      if (String(input).endsWith('/music')) return json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } });
       return new Response(stream, { headers: { 'Content-Type': 'application/json' } });
     });
     const events: string[] = [];
@@ -113,7 +113,7 @@ limit: 10`;
       { fetch: fetcher, onFirstRecord: firstRecord, onNativeRecord: first });
     void run.finally(() => { settled = true; });
     await vi.waitFor(() => expect(calls).toHaveLength(2));
-    expect(calls[1].url).toBe('https://ovdb.example.test/v1/databases/music/dtql');
+    expect(calls[1].url).toBe('https://ovdb.example.test/v1/databases/music/tugql');
     expect(calls[1].init?.body).toBe((definition.request as unknown as { text: string }).text);
     expect(new Headers(calls[1].init?.headers).get('Authorization')).toBe('Bearer in-memory-token');
     body.enqueue(new TextEncoder().encode('{"records":[{"data":{"ArtistId":"42","Artist":"Alpha","TrackCount":"213"}},{"data":{"ArtistId":"43","Artist":"Beta","TrackCount":"1"}}'));
@@ -135,7 +135,7 @@ limit: 10`;
   it('rejects a late truncated stream and never fetches leaf tables as a fallback', async () => {
     const firstRecord = vi.fn();
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : new Response('{"records":[{"data":{"ArtistId":"42"}}', { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher, onFirstRecord: firstRecord, onNativeRecord: async () => undefined })).rejects.toThrow(/terminal footer/);
@@ -149,8 +149,8 @@ limit: 10`;
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       calls.push(init ?? {});
       return String(input).endsWith('/music')
-        ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true } })
-        : new Response('{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"dtql"},"hint":"Narrow the query."},"complete":false}',
+        ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true, tugqlStreamingErrors: true } })
+        : new Response('{"records":[{"data":{"ArtistId":"42"}}],"error":{"code":"query_budget_exceeded","message":"The row budget was reached.","budget":{"name":"rows","limit":100,"route":"tugql"},"hint":"Narrow the query."},"complete":false}',
           { headers: { 'Content-Type': OVDB_ERROR_STREAM_MIME } });
     });
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
@@ -162,7 +162,7 @@ limit: 10`;
 
   it('shows a bounded early mapped HTTP error while retaining the no-leaf-fallback rule', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true, tugqlStreamingErrors: true } })
       : new Response('{"error":{"code":"unsupported","message":"The query cannot run."}}',
         { status: 422, headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
@@ -172,7 +172,7 @@ limit: 10`;
 
   it('does not turn an unsupported native query into browser table scans', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : new Response('{"error":{"code":"unsupported"}}', { status: 422, headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher })).rejects.toMatchObject({ diagnostic: { stage: 'query_execution', reason: 'http_status', status: 422 } });
@@ -182,7 +182,7 @@ limit: 10`;
   it('requires a paged sink rather than buffering an unlimited direct result', async () => {
     const records = Array.from({ length: 101 }, (_, index) => ({ data: { ArtistId: String(index) } }));
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : json({ records, columns: ['ArtistId'], execution: {}, complete: true }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher })).rejects.toThrow(/paged result sink/);
@@ -192,7 +192,7 @@ limit: 10`;
   it('bounds the direct preview by bytes even below 100 rows', async () => {
     const name = 'x'.repeat(600_000);
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : json({ records: [{ data: { name } }, { data: { name } }], columns: ['name'], execution: {}, complete: true }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher })).rejects.toThrow(/preview limit/);
@@ -204,7 +204,7 @@ limit: 10`;
   it('ends a stalled streamed body at the caller deadline', async () => {
     const body = new ReadableStream<Uint8Array>();
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : new Response(body, { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher, deadline: Date.now() + STALL_DEADLINE_MS, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort|deadline/i);
@@ -213,7 +213,7 @@ limit: 10`;
 
   it('passes the same deadline signal to a blocked row sink', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
-      ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
+      ? json({ id: 'music', capabilities: { tugql: true, tugqlStreaming: true } })
       : json({ records: [{ data: { ArtistId: '1' } }], columns: ['ArtistId'], execution: {}, complete: true }));
     let sinkSignal: AbortSignal | undefined;
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,

@@ -6,7 +6,7 @@ import {
   type BoundedJsonDriver,
 } from './bounded-https-json-driver';
 import { strictJson } from './strict-json';
-import { parseDTQL } from '@dalgo/core';
+import { parseTugQLYaml } from '@dalgo/core';
 import { validNativeRorUrl } from './public-data-scenario';
 import { boundedResponseText } from './bounded-response';
 import {
@@ -224,7 +224,7 @@ export function createBoundedFederationFetch(
           : { offset: bounds.userOffset }),
       };
       // Verify the exact installed DALgo dialect before trusting this request.
-      parseDTQL(
+      parseTugQLYaml(
         query,
         { tables: [{ name: source.name, fields: [source.keyField] }] },
         { maxLimit: 5000 },
@@ -246,7 +246,7 @@ export function createBoundedFederationFetch(
           requestHeaders.delete('OVDB-Page-Token');
           if (pageToken) requestHeaders.set('OVDB-Page-Token', pageToken);
           const response = await httpFetch(
-            `${base}/v1/databases/${source.database}/dtql`,
+            `${base}/v1/databases/${source.database}/tugql`,
             {
               method: 'POST',
               headers: requestHeaders,
@@ -335,7 +335,7 @@ export function createBoundedFederationFetch(
           close.set('OVDB-Page-Close', 'true');
           close.set('OVDB-Page-Size', '100');
           // Cancellation must also release the owned server snapshot. It does not fetch rows.
-          await httpFetch(`${base}/v1/databases/${source.database}/dtql`, {
+          await httpFetch(`${base}/v1/databases/${source.database}/tugql`, {
             method: 'POST',
             headers: close,
             body,
@@ -365,10 +365,10 @@ export function createBoundedFederationFetch(
       if (
         init?.method !== 'POST' ||
         !url.startsWith(`${base}/v1/databases/`) ||
-        !url.endsWith('/dtql')
+        !url.endsWith('/tugql')
       )
         throw new Error(
-          'Only the declared bounded DTQL sources may be requested.',
+          'Only the declared bounded TugQL sources may be requested.',
         );
       const headers = new Headers(init.headers);
       if (headers.get('OVDB-Page-Close') === 'true')
@@ -378,7 +378,7 @@ export function createBoundedFederationFetch(
       };
       const database = url.slice(
         `${base}/v1/databases/`.length,
-        -'/dtql'.length,
+        -'/tugql'.length,
       );
       const source = stages.get(`${database}.${document.from?.name}`);
       if (!source)

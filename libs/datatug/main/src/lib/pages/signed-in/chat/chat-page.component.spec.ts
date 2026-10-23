@@ -38,8 +38,8 @@ describe('ChatPageComponent failed turns', () => {
     listBookmarks: vi.fn(async () => []),
     context: vi.fn(() => ''),
     appendQuestion: vi.fn(async (_scope: string, _session: string, question: string): Promise<ChatTurn> => ({ id: 'new', question, state: 'loading' })),
-    bindRecordSet: vi.fn(async (_scope: string, _session: string, dtql: string) => ({
-      dtql,
+    bindRecordSet: vi.fn(async (_scope: string, _session: string, tugql: string) => ({
+      tugql,
       parentRecordSetId: undefined,
     })),
     failQuestion: vi.fn(
@@ -64,7 +64,7 @@ describe('ChatPageComponent failed turns', () => {
   const joiner = { candidates: vi.fn((): unknown[] => []) };
   const interpreter = {
     interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({
-      dtql: '{}',
+      tugql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     })),
   };
@@ -145,7 +145,7 @@ describe('ChatPageComponent failed turns', () => {
     joiner.candidates.mockImplementation(() => []);
     eligibility.read.mockImplementation(() => of({ aiAllowed: true }));
     interpreter.interpret.mockImplementation(async () => ({
-      dtql: '{}',
+      tugql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     }));
   });
@@ -525,7 +525,7 @@ describe('ChatPageComponent failed turns', () => {
       question: 'Customers?',
       state: 'result',
       recordSetId: 'rs1',
-      dtql: '{}',
+      tugql: '{}',
       rows: [{ CustomerId: 1 }],
     };
     const relatedError = (): HTMLElement | null => (fixture.nativeElement as HTMLElement).querySelector('.join-candidates .turn-error');

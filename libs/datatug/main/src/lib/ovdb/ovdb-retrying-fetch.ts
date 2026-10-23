@@ -4,7 +4,7 @@ import { abortableWait } from './abortable-wait';
 //
 // cloud.openvaultdb.com mounts its Neon-backed PostgreSQL databases lazily: a cold start can take several
 // seconds, and while a mount is pending the server answers `503 database_unavailable` (also 502/504 from the
-// edge, or a dropped connection). Only reads are retried — GET/HEAD and the read-only `POST …/dtql` — so a
+// edge, or a dropped connection). Only reads are retried — GET/HEAD and the read-only `POST …/tugql` — so a
 // mutation is never sent twice; everything else passes through untouched.
 
 export interface OvdbRetryOptions {
@@ -95,7 +95,7 @@ export function isRetryableOvdbRequest(
   if (method === 'GET' || method === 'HEAD') return true;
   if (method !== 'POST') return false;
   try {
-    return new URL(requestUrl(input)).pathname.endsWith('/dtql');
+    return new URL(requestUrl(input)).pathname.endsWith('/tugql');
   } catch {
     return false;
   }

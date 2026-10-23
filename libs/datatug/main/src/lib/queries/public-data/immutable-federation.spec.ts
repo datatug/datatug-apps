@@ -127,7 +127,7 @@ async function localRead(
   database = 'geo',
   name = 'Countries',
 ) {
-  return t.fetch(`${base}/v1/databases/${database}/dtql`, {
+  return t.fetch(`${base}/v1/databases/${database}/tugql`, {
     method: 'POST',
     body: JSON.stringify({ from: { name } }),
   });
@@ -136,7 +136,7 @@ function definition(b = bounds()): IQueryDef {
   return {
     id: 'bounded-runtime',
     request: {
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       text: JSON.stringify({
         from: {
           database: 'user',
@@ -560,8 +560,8 @@ describe('explicit immutable save and hostile transport boundaries', () => {
     const { transport } = session(bounds(), f.http);
     for (const url of [
       `${base}/v1/databases/geo/records/Countries/key`,
-      `${base}/v1/databases/geo%2F..%2Fother/dtql`,
-      `https://evil.example/v1/databases/geo/dtql`,
+      `${base}/v1/databases/geo%2F..%2Fother/tugql`,
+      `https://evil.example/v1/databases/geo/tugql`,
     ])
       await expect(
         transport.fetch(url, {
@@ -595,7 +595,7 @@ describe('explicit immutable save and hostile transport boundaries', () => {
   it('refuses a tiny final result that masks an intermediate join expansion above 5000 rows', async () => {
     const d = definition();
     d.request = {
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       text: JSON.stringify({
         from: {
           database: 'user',

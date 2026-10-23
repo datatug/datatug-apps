@@ -15,9 +15,9 @@ export interface ChatTurn {
   readonly state: 'loading' | 'result' | 'empty' | 'error';
   readonly queryId?: string;
   readonly recordSetId?: string;
-  readonly dtql?: string;
-  readonly generatedDtql?: string;
-  readonly dtqlYaml?: string;
+  readonly tugql?: string;
+  readonly generatedTugql?: string;
+  readonly tugqlYaml?: string;
   readonly sql?: string;
   readonly rows?: readonly Record<string, unknown>[];
   readonly columns?: readonly string[];
@@ -121,7 +121,7 @@ export const CHINOOK_SCHEMA = {
   ],
 } as const;
 
-export const CHINOOK_SCHEMA_PROMPT = `Chinook schema (use DTQL only):
+export const CHINOOK_SCHEMA_PROMPT = `Chinook schema (use TugQL only):
 ${CHINOOK_SCHEMA.tables.map(({ name, fields }) => `main.${name}(${fields.join(', ')})`).join('\n')}
 Orders means invoices. Track.ArtistName is derived from Album and Artist.
-Return one bounded single-source DTQL query, or use a supplied FK candidate ID for a JOIN request. Do not generate JOIN clauses or aggregation.`;
+Return one bounded single-source TugQL query, or use a supplied FK candidate ID for a JOIN request. Do not generate JOIN clauses or aggregation.`;

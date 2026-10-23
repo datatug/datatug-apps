@@ -18,12 +18,12 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
     const question = request.messages.at(-1)?.content;
     let action: Record<string, unknown>;
     if (question === 'Show five invoices') {
-      action = { dtql: { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId' }], limit: 5 } };
+      action = { tugql: { from: { schema: 'main', name: 'Invoice' }, orderBy: [{ field: 'InvoiceId' }], limit: 5 } };
     } else if (question === 'Show five employees') {
-      action = { dtql: { from: { schema: 'main', name: 'Employee' }, orderBy: [{ field: 'EmployeeId' }], limit: 5 } };
+      action = { tugql: { from: { schema: 'main', name: 'Employee' }, orderBy: [{ field: 'EmployeeId' }], limit: 5 } };
     } else if (question === 'Invoices for joined bookmark customers') {
       expect(request.messages[0].content).toContain(joinedBookmarkId);
-      action = { dtql: { from: { schema: 'main', name: 'Invoice' }, where: {
+      action = { tugql: { from: { schema: 'main', name: 'Invoice' }, where: {
         op: 'In', left: { field: 'CustomerId' }, right: { bookmark: { id: joinedBookmarkId, field: 'Customer.CustomerId' } },
       }, limit: 100 } };
     } else if (question === 'Join Customer using CustomerId') {

@@ -68,7 +68,7 @@ const definition = (id = PUBLIC_ORDERS_QUERY_ID, text = query): IQueryDef =>
     ],
     id: id.split('/').at(-1) ?? id,
     connectionId: 'northwind-sqlite',
-    request: { queryType: QueryType.DTQL, text },
+    request: { queryType: QueryType.TugQL, text },
   }) as unknown as IQueryDef;
 const rights = () => [
   {
@@ -216,9 +216,9 @@ describe('saved public chart query adapter', () => {
     expect(source.calls.map(({ url }) => url)).toEqual([
       NORTHWIND_ORDERS_PIN.publicationUrl,
       // The pin names the published (legacy) endpoint; the POST goes to the current OVDB host.
-      'https://ovdb.demodb.dev/v1/databases/northwind/dtql',
+      'https://ovdb.demodb.dev/v1/databases/northwind/tugql',
     ]);
-    expect(NORTHWIND_ORDERS_PIN.endpoint).toBe('https://demodb.dev/ovdb/v1/databases/northwind/dtql');
+    expect(NORTHWIND_ORDERS_PIN.endpoint).toBe('https://demodb.dev/ovdb/v1/databases/northwind/tugql');
     expect(JSON.parse(String(source.calls[1].init?.body))).toEqual({ query });
   });
 
@@ -489,7 +489,7 @@ describe('saved PostgreSQL inspector adapter', () => {
     ).toBe(true);
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(
-      'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/dtql',
+      'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/tugql',
     );
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({ query: pgQuery });
   });
@@ -501,7 +501,7 @@ describe('saved PostgreSQL inspector adapter', () => {
       { ...pgDefinition(), connectionId: 'northwind-sqlite' },
       {
         ...pgDefinition(),
-        request: { queryType: QueryType.DTQL, text: countryQuery },
+        request: { queryType: QueryType.TugQL, text: countryQuery },
       },
     ])
       await expect(

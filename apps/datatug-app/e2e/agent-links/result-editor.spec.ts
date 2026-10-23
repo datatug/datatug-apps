@@ -156,7 +156,7 @@ test.describe('query result in the query editor', () => {
 
     if (editorReady) {
       await expect(
-        page.getByRole('textbox', { name: 'DTQL source' }),
+        page.getByRole('textbox', { name: 'TugQL YAML source' }),
       ).toContainText('Invoice');
     } else {
       await expect(page.getByTestId('saved-result-notice')).toContainText(

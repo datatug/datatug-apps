@@ -36,7 +36,7 @@ export class QueryRuntimeRegistry {
     if (!sha || !/^[a-f0-9]{64}$/u.test(sha)) return [];
     return [...this.entries.values()].filter(({ connection }) =>
       connection.descriptor.canonical?.sha256 === sha &&
-      (connection.descriptor.capabilities.query === true || connection.descriptor.capabilities.dtql === true));
+      (connection.descriptor.capabilities.query === true || connection.descriptor.capabilities.tugql === true));
   }
 
   resolve(selectionId: string, declaration: QueryConnectionDescriptor): OvdbConnection | undefined {

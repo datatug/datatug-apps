@@ -115,7 +115,10 @@ const scanToken = (line: string, start: number): TokenRange => {
     return { end };
   }
 
-  if (line.startsWith('--', start)) {
+  // `--` and `//` both start a comment that runs to the end of the line. Strings
+  // and quoted identifiers are scanned as whole tokens above, so a `//` inside
+  // 'https://example.com/x' never reaches this check.
+  if (line.startsWith('--', start) || line.startsWith('//', start)) {
     return { end: line.length, kind: 'comment' };
   }
 

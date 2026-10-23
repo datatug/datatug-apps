@@ -357,7 +357,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
       const details = paired.locator('.source-details');
       await details.locator('summary').click();
       await expect(details).toContainText(
-        'https://cloud.openvaultdb.com/v1/dtql',
+        'https://cloud.openvaultdb.com/v1/tugql',
       );
     });
     await observedAction('keyboard Canada and selected rows', async () => {

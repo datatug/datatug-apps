@@ -30,7 +30,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
       expect(withoutOpaqueUuids('CustomerId: 99999')).toContain('99999');
       const recordSetId = previous.match(/RecordSet: ([0-9a-f-]{36})/)?.[1];
       expect(recordSetId).toBeTruthy();
-      await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: {
+      await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ tugql: {
         from: { schema: 'main', name: 'Customer' },
         where: { op: 'In', left: { field: 'CustomerId' }, right: { recordSet: { id: recordSetId, field: 'CustomerId' } } },
         limit: 100,
@@ -41,7 +41,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
     const limit = table === 'Genre' ? 5 : 20;
     const field = `${table}Id`;
     await route.fulfill({ json: {
-      choices: [{ message: { content: JSON.stringify({ dtql: { from: { schema: 'main', name: table }, orderBy: [{ field, desc: table === 'Invoice' }], limit } }) } }],
+      choices: [{ message: { content: JSON.stringify({ tugql: { from: { schema: 'main', name: table }, orderBy: [{ field, desc: table === 'Invoice' }], limit } }) } }],
       usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 },
     } });
   });
@@ -116,7 +116,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const queries = await new Promise<{ data: { dtql: string; parentRecordSetId?: string } }[]>((resolve, reject) => {
+    const queries = await new Promise<{ data: { tugql: string; parentRecordSetId?: string } }[]>((resolve, reject) => {
       const request = database.transaction('ChatQueries', 'readonly').objectStore('ChatQueries').getAll();
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -125,11 +125,11 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
     return queries.map((query) => query.data);
   });
   const related = queries.find((query) => query.parentRecordSetId);
-  const bound = related ? { parentRecordSetId: related.parentRecordSetId, dtql: JSON.parse(related.dtql) as { where: { right: { values: number[] } } } } : null;
+  const bound = related ? { parentRecordSetId: related.parentRecordSetId, tugql: JSON.parse(related.tugql) as { where: { right: { values: number[] } } } } : null;
   expect(queries).toEqual(expect.arrayContaining([expect.objectContaining({ parentRecordSetId: expect.any(String) })]));
   expect(bound?.parentRecordSetId).toBeTruthy();
-  expect(bound?.dtql.where.right.values).toContain(Number(firstCustomerId));
-  expect(bound?.dtql.where.right.values).not.toContain(99999);
+  expect(bound?.tugql.where.right.values).toContain(Number(firstCustomerId));
+  expect(bound?.tugql.where.right.values).not.toContain(99999);
   expect(continuationHasMetadata).toBe(true);
   expect(providerCalls).toBe(3);
 
@@ -166,7 +166,7 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   await page.route('https://api.deepseek.com/chat/completions', async (route) => {
     providerCalls += 1;
     await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({
-      dtql: { from: { schema: 'main', name: 'Artist' }, limit: 1 },
+      tugql: { from: { schema: 'main', name: 'Artist' }, limit: 1 },
     }) } }] } });
   });
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');

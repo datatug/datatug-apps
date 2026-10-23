@@ -19,7 +19,7 @@ import type { FederatedQueryResult } from '../../../../queries/federated-query-e
 const definition: IQueryDef = {
   id: 'customer-country-comparison-server',
   title: 'Comparison',
-  request: { queryType: QueryType.DTQL, text: '' } as ITextQueryRequest,
+  request: { queryType: QueryType.TugQL, text: '' } as ITextQueryRequest,
   federation: {
     ovdbBaseUrl: 'https://cloud.openvaultdb.com',
     tables: [
@@ -53,7 +53,7 @@ const result = (): FederatedQueryResult => ({
   limitations: [],
   bindingsApplied: [],
   provenance: {
-    source: 'https://cloud.openvaultdb.com/v1/dtql (direct OVDB)',
+    source: 'https://cloud.openvaultdb.com/v1/tugql (direct OVDB)',
     mode: 'live',
     observedAt: '2026-10-19T00:00:00Z',
   },
@@ -118,8 +118,8 @@ describe('held presentation admission', () => {
         title: 'Orders',
         connectionId: 'northwind-sqlite',
         request: {
-          queryType: QueryType.DTQL,
-          text: fixture('northwind-orders-query.dtql'),
+          queryType: QueryType.TugQL,
+          text: fixture('northwind-orders-query.tugql'),
         } as ITextQueryRequest,
       },
       {
