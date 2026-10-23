@@ -23,9 +23,9 @@ import {
   type PendingGithubReconnect,
 } from './github-reauthorization-banner.component';
 import {
-  hashReturnedOAuthState,
-  isOAuthStateHash,
-} from './oauth-state-hash';
+  sha256HexOrUndefined,
+  isSha256Hex,
+} from './sha256-hex';
 
 declare global {
   interface Window {
@@ -90,7 +90,7 @@ export class GithubAuthorizationPageComponent {
     // The page can be left before the hash settles; nothing resumes then.
     let destroyed = false;
     this.destroyRef.onDestroy(() => (destroyed = true));
-    this.resumed = hashReturnedOAuthState(authorization.state)
+    this.resumed = sha256HexOrUndefined(authorization.state)
       .then((stateHash) => {
         if (!destroyed) this.resumeAuthorization(authorization, stateHash);
       })
@@ -319,7 +319,7 @@ function hasPendingOAuthProject(returnedStateHash: string | undefined): boolean 
     draft?.['oauthResumePending'] === true &&
     typeof draft['operationID'] === 'string' &&
     /^[0-9a-f-]{36}$/i.test(draft['operationID']) &&
-    isOAuthStateHash(draft['oauthStateHash']) &&
+    isSha256Hex(draft['oauthStateHash']) &&
     draft['oauthStateHash'] === returnedStateHash
   );
 }

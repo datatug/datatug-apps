@@ -8,7 +8,7 @@ import { readGithubProjectId } from '@datatug/project-address';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { Router } from '@angular/router';
-import { hashOAuthState, isOAuthStateHash } from './oauth-state-hash';
+import { sha256Hex, isSha256Hex } from './sha256-hex';
 
 export interface PendingGithubReconnect {
   readonly operationID: string;
@@ -142,7 +142,7 @@ export class GitHubReauthorizationBannerComponent {
               throw new Error('Missing authorization state');
             }
             const requiredScopes = this.requiredScopes();
-            hashOAuthState(oauthState).then(
+            sha256Hex(oauthState).then(
               (oauthStateHash) => {
                 if (!isCurrent()) return;
                 try {
@@ -220,7 +220,7 @@ export function readPendingGithubReconnect(
       !/^[0-9a-f-]{36}$/i.test(pending.operationID) ||
       typeof pending.firebaseUID !== 'string' ||
       !returnedStateHash ||
-      !isOAuthStateHash(pending.oauthStateHash) ||
+      !isSha256Hex(pending.oauthStateHash) ||
       pending.oauthStateHash !== returnedStateHash ||
       typeof pending.returnUrl !== 'string' ||
       !Array.isArray(pending.requiredScopes) ||
