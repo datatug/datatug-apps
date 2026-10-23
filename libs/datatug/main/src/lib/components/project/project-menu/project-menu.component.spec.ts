@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { ProjectMenuComponent } from './project-menu.component';
+import { ProjectMenuTopComponent } from '../project-menu-top/project-menu-top.component';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { QueriesUiService } from '../../../queries/queries-ui.service';
 import { QueryEditorStateService } from '../../../queries/query-editor-state-service';
@@ -165,8 +166,14 @@ describe('shared project menu refuses active-query tab', () => {
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
-    // Seven metadata destinations, including Quick Search and hosted Boards, plus Incidents.
-    expect(items).toHaveLength(9);
+    // Metadata destinations include Watch, Quick Search, hosted Boards and Incidents.
+    expect(items).toHaveLength(10);
+    const menu = fixture.debugElement.query(
+      By.directive(ProjectMenuTopComponent),
+    ).componentInstance as ProjectMenuTopComponent;
+    expect(
+      menu.projTopLevelPages.find((page) => page.path === 'watch')?.title,
+    ).toBe('Watch');
     const router = TestBed.inject(Router);
     const destinations = fixture.debugElement
       .queryAll(By.directive(RouterLink))
@@ -175,9 +182,18 @@ describe('shared project menu refuses active-query tab', () => {
         if (!tree) throw new Error('Project menu link has no destination.');
         return router.serializeUrl(tree);
       });
-    expect(destinations).toContain('/space/S1/store/firestore/project/same/boards');
-    expect(destinations).toContain('/space/S1/store/firestore/project/same/cards');
-    expect(destinations).toContain('/space/S1/store/firestore/project/same/quick-search');
+    expect(destinations).toContain(
+      '/space/S1/store/firestore/project/same/boards',
+    );
+    expect(destinations).toContain(
+      '/space/S1/store/firestore/project/same/cards',
+    );
+    expect(destinations).toContain(
+      '/space/S1/store/firestore/project/same/quick-search',
+    );
+    expect(destinations).toContain(
+      '/space/S1/store/firestore/project/same/watch',
+    );
     expect(
       host.querySelector('[data-testid="incidents-project-menu-item"]'),
     ).toBeTruthy();
