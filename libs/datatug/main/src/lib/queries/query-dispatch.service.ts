@@ -417,7 +417,7 @@ export class QueryDispatchService {
       }
     };
     let records: readonly { readonly data: Record<string, unknown> }[];
-    let hasContinuation = false;
+    let hasContinuation: boolean;
     if (nativeDtql) {
       const response = await connectionFetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/dtql`, {
         method: 'POST',

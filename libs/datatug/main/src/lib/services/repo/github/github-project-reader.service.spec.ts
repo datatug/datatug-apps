@@ -659,6 +659,147 @@ describe('GithubProjectReaderService', () => {
       expect(result.id).toBe('customer-invoices');
     });
 
+    describe('TugQL body forms (selectTugqlBodyFile: the file name decides)', () => {
+      const DEF =
+        'demo-project-1/queries/customers/customer-invoices.query.json';
+      const BODY = 'demo-project-1/queries/customers/customer-invoices.query';
+      const TUGQL_DEF =
+        '{"id":"customer-invoices","title":"Customer invoices","type":"TugQL"}';
+
+      it('reads the text form "<id>.query.tugql" as TugQL', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+        });
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'TugQL',
+          text: 'from Invoice as i\n',
+        });
+        expect(result.savedQueryType).toBeUndefined();
+        expect(
+          gh
+            .urls()
+            .filter(
+              (u) =>
+                u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+            ),
+        ).toEqual([expect.stringMatching(/customer-invoices\.query\.tugql$/u)]);
+      });
+
+      it('reads the structured YAML form "<id>.query.tugql.yaml" as the structured document, with no 404 probe', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'DTQL',
+          savedQueryType: 'TugQL',
+          text: 'from:\n  name: Invoice\n',
+        });
+        expect(
+          gh
+            .urls()
+            .filter(
+              (u) =>
+                u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+            ),
+        ).toEqual([
+          expect.stringMatching(/customer-invoices\.query\.tugql\.yaml$/u),
+        ]);
+      });
+
+      it('falls back from "<id>.query.tugql" to "<id>.query.tugql.yaml" on a 404 when the tree lists neither', async () => {
+        const gh = new FakeGithub();
+        const files = demoFiles({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        gh.addRepo(REPO, SHA, files);
+        // A tree that does not list the query's body files (truncated or stale): the reader has to probe.
+        const fetchWithoutBodiesInTree: typeof gh.fetch = async (url, init) => {
+          const response = await gh.fetch(url, init);
+          if (!url.includes('/git/trees/')) return response;
+          const json = (await response.json()) as { tree: { path: string }[] };
+          json.tree = json.tree.filter(
+            (e) => !e.path.startsWith(`${BODY}.`) || e.path.endsWith('.json'),
+          );
+          return new Response(JSON.stringify(json), {
+            status: response.status,
+            headers: response.headers,
+          });
+        };
+        TestBed.configureTestingModule({
+          providers: [
+            { provide: GITHUB_FETCH, useValue: fetchWithoutBodiesInTree },
+            { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+            { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+          ],
+        });
+        const service = TestBed.inject(GithubProjectReaderService);
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'DTQL',
+          text: 'from:\n  name: Invoice\n',
+        });
+        const bodyUrls = gh
+          .urls()
+          .filter(
+            (u) =>
+              u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+          );
+        expect(bodyUrls[0]).toMatch(/customer-invoices\.query\.tugql$/u);
+        expect(bodyUrls.at(-1)).toMatch(
+          /customer-invoices\.query\.tugql\.yaml$/u,
+        );
+        expect(bodyUrls.some((u) => u.endsWith('.dtql'))).toBe(false);
+      });
+
+      it('refuses a TugQL query with both a text and a YAML body file, reading neither', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        await expect(
+          first(service.getQuery(PROJECT_ID, 'customers/customer-invoices')),
+        ).rejects.toThrow(/more than one body file/u);
+        expect(gh.urls().some((u) => /\.query\.tugql(\.yaml)?$/u.test(u))).toBe(false);
+      });
+
+      it('still reads a legacy DTQL definition from "<id>.query.dtql"', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"customer-invoices","type":"DTQL"}',
+          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'customers/customer-invoices'));
+        expect(result).toMatchObject({ type: 'DTQL', text: 'from:\n  name: Invoice\n' });
+        expect(result.savedQueryType).toBeUndefined();
+      });
+
+      it('does not fall back past a failure that is not a 404', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+        });
+        gh.fail.raw = (u: URL) =>
+          u.pathname.endsWith('.tugql') ? 500 : undefined;
+        gh.fail.mirror = (u: URL) =>
+          u.pathname.endsWith('.tugql') ? 500 : undefined;
+        await expect(
+          first(service.getQuery(PROJECT_ID, 'customers/customer-invoices')),
+        ).rejects.toThrow();
+        expect(gh.urls().some((u) => u.endsWith('.tugql.yaml'))).toBe(false);
+      });
+    });
+
     it('resolves the legacy "<id>.sql.json" shape, body = def filename minus ".json"', async () => {
       const { service } = setup({
         'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',

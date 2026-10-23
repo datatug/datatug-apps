@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
 
 const projectPath = '/store/http-localhost:19881/project/search-demo';
@@ -37,6 +38,27 @@ const documents = [
     reference: { objectId: 'customers-board' },
   },
 ];
+/** Left edge, font size and weight of every result title in `scope`: query rows (shared row) and other kinds alike. */
+async function titleMetrics(scope: Locator, selector: string) {
+  return scope.locator(selector).evaluateAll((titles) =>
+    titles.map((title) => {
+      const style = getComputedStyle(title);
+      return {
+        left: Math.round(title.getBoundingClientRect().left),
+        size: style.fontSize,
+        weight: style.fontWeight,
+      };
+    }),
+  );
+}
+
+/** Every kind's row title starts at the same x and uses the same type as the shared query row. */
+async function expectAlignedTitles(scope: Locator, selector: string) {
+  const metrics = await titleMetrics(scope, selector);
+  expect(metrics.length).toBeGreaterThan(1);
+  for (const metric of metrics) expect(metric).toEqual(metrics[0]);
+}
+
 test('Quick Search consent, grouped kind navigation, tags and deletion retry', async ({
   page,
 }, testInfo) => {
@@ -191,9 +213,14 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     suggestions.locator('sneat-datatug-query-list-item .query-type-badge'),
   ).toHaveText('SQL');
   await expect(querySuggestion.locator('mark')).toHaveText('Customers');
+  await expect(querySuggestion).toHaveAccessibleDescription('Query');
   await expect(
     suggestions.getByRole('option', { name: /See all \d+ results/ }),
   ).toBeVisible();
+  await expectAlignedTitles(
+    suggestions,
+    'sneat-datatug-query-list-item h3, .option:not(.see-all) .title',
+  );
   await page.screenshot({
     path: testInfo.outputPath('quick-search-overview-input.png'),
     fullPage: true,
@@ -202,6 +229,10 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   const desktopViewport = page.viewportSize();
   await page.setViewportSize({ width: 375, height: 812 });
   await expect(querySuggestion).toBeVisible();
+  await expectAlignedTitles(
+    suggestions,
+    'sneat-datatug-query-list-item h3, .option:not(.see-all) .title',
+  );
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -239,6 +270,10 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     hasText: 'Table · Chinook · dbo',
   });
   await expect(chinookTable).toBeVisible();
+  await expectAlignedTitles(
+    results,
+    'sneat-datatug-query-list-item h3, ion-item-group > ion-item ion-label h3',
+  );
   await expect(results.locator('mark').first()).toHaveText('Customers');
   expect(uploads).toBe(0);
 

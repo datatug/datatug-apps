@@ -262,7 +262,7 @@ export async function listLocalResults(scope?: LocalResultScope, onUnavailable?:
       try { result.push((await readMetadata(db)).descriptor); } finally { db.close(); }
     } catch (error) {
       const message = `${entry.id}: ${error instanceof Error ? error.message : 'No local result available.'}`;
-      if (!onUnavailable) throw new Error(message);
+      if (!onUnavailable) throw new Error(message, { cause: error });
       onUnavailable(message);
     }
   }

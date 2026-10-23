@@ -163,7 +163,6 @@ export class InvoiceDashboardComponent {
       if (pinnedRun?.run.executionAuthority === 'client' && !outcomeReported) {
         // Pinning is already durable. Terminalize preparation/source failures
         // without re-dispatching any widget that may have run.
-        outcomeReported = true;
         const failure: ContextWidgetOutcome[] = ['lines', 'genres'].map((id) => ({ id, state: 'failed', errorCode: 'DASHBOARD_CLIENT_EXECUTION_FAILED' }));
         if (!(await this.workspace.reportClientRun(sessionId, pinnedRun.runId, 'dashboard', failure)) && sessionId === this.sessionId()) this.error.set('The dashboard failed after its input was accepted; its failure receipt is unconfirmed. Check and recover the saved operation.');
       }

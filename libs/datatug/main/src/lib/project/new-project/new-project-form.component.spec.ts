@@ -439,6 +439,7 @@ describe('New project through authenticated common API', () => {
   it.each([
     ['authorization_required', 'access_denied'],
     ['reauthorization_required', 'expired'],
+    ['github_not_connected', 'not_connected'],
   ] as const)('reports %s on a replayed setup as %s, never claiming expiry without evidence', async (code, reason) => {
     const h = await harness();
     h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
@@ -1787,6 +1788,10 @@ describe('New project through authenticated common API', () => {
     [
       { status: 409, error: { error: { code: 'reauthorization_required' } } },
       'Reconnect GitHub',
+    ],
+    [
+      { status: 409, error: { error: { code: 'github_not_connected' } } },
+      'Connect GitHub, then try',
     ],
   ])(
     'explains a definitive create denial and preserves operation identity on retry',

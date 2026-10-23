@@ -497,7 +497,7 @@ export class CliChatPageComponent implements OnInit, OnDestroy {
   rawHttp(response: CliHTTPResponse): string {
     const cached = this.rawHttpCache.get(response);
     if (cached !== undefined) return cached;
-    let text = '';
+    let text: string;
     try { text = new TextDecoder().decode(Uint8Array.from(atob(response.Body || ''), (char) => char.charCodeAt(0))); }
     catch { text = 'Response body is unavailable.'; }
     text = text.slice(0, 65536);

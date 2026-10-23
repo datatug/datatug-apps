@@ -706,11 +706,22 @@ import {
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
+      /* Board, table and tag rows match the shared query row (QueryListItemComponent): a 24px icon, 18px to the
+         title, and the same title and secondary-line type, so every kind's title starts at the same x. */
+      ion-item > ion-icon[slot='start'] {
+        font-size: 24px;
+        margin-inline-end: 18px;
+      }
       ion-item ion-label h3 {
-        font-weight: 500;
+        font-size: 1rem;
+        font-weight: 400;
+        line-height: 1.35;
         overflow-wrap: anywhere;
       }
       ion-item ion-label p {
+        margin-top: 2px;
+        font-size: 0.875rem;
+        color: var(--dt-text-muted);
         overflow-wrap: anywhere;
       }
       mark {
