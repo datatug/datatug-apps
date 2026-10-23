@@ -492,7 +492,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream -- --project=chromium
+          # Two workers: a private repository's runner has 2 vCPUs, where Playwright's default is ONE worker and the
+          # full suite (160 tests) no longer fits the job timeout. Per-test times stay flat with two (the work is mostly
+          # waiting on the browser and the dev server).
+          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream -- --project=chromium --workers=2
 
       # Independent chart sources need the per-database customer queries the
       # browser catalog revision predates, so the spec runs against its
