@@ -3,6 +3,7 @@
 } @else if (tabs().length) {
   @if (showStrip()) {
     <ion-segment
+      #strip
       [value]="active()!.key"
       [scrollable]="true"
       [selectOnFocus]="true"

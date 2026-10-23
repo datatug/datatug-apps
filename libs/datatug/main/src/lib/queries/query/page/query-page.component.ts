@@ -648,6 +648,7 @@ import {
 } from '../../http-parameter-binding';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { UsageAnalyticsService } from '../../../analytics/usage-analytics';
+import { revealSegmentButton } from '../../../components/segment-reveal/reveal-segment-button';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
  * `confirmConflict()`'s own comment on why a confirmation is invalidated (not silently
@@ -4706,25 +4707,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private revealWorkspaceTab(tab: WorkspaceTab): void {
     const segment = this.workspaceTabBar?.nativeElement;
-    if (!segment?.isConnected || segment.getBoundingClientRect().width === 0)
-      return;
-    const button = segment.querySelector<HTMLElement>(
+    const button = segment?.querySelector<HTMLElement>(
       `ion-segment-button[value="${tab}"]`,
     );
-    if (!button || segment.scrollWidth <= segment.clientWidth) return;
-    const viewport = segment.getBoundingClientRect();
-    const selected = button.getBoundingClientRect();
-    const delta =
-      selected.left < viewport.left
-        ? selected.left - viewport.left
-        : selected.right > viewport.right
-          ? selected.right - viewport.right
-          : 0;
-    if (Math.abs(delta) > 1)
-      segment.scrollTo({
-        left: segment.scrollLeft + delta,
-        behavior: 'instant',
-      });
+    if (segment && button) revealSegmentButton(segment, button);
   }
 
   private scheduleWorkspaceTabReveal(): void {
