@@ -298,7 +298,17 @@ export function resolveBindings(
 
     const meta = param.meta;
     if (!meta) {
-      return unresolved(param.id, meta, param.required);
+      // No entity field means no selection or context candidate, but a declared default still applies: a required
+      // parameter with a default is supplied (demo walk item 4: `{date}`/`{amount}` showed their defaults and sent
+      // them, yet were reported "required — no value supplied" and blocked Run).
+      return param.defaultValue !== undefined
+        ? {
+            parameterId: param.id,
+            meta,
+            value: param.defaultValue,
+            origin: 'default',
+          }
+        : unresolved(param.id, meta, param.required);
     }
 
     // "Selection facts (`origin: 'selection'`) are unaffected" — a selection candidate

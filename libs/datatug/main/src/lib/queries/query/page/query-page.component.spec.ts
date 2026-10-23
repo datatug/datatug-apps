@@ -7107,7 +7107,8 @@ select (
         }),
       );
       expect(created.selectedSource()).toBe('chinook');
-      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).toHaveBeenCalledWith('local');
+      // The result's environment is selected, never remembered for the tab: the visitor did not choose it.
+      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).toHaveBeenCalledWith('local', { persist: false });
       // the saved rows are shown right away, as a snapshot, without a run
       expect(created.runResult()?.provenance).toMatchObject({ mode: 'snapshot', source: 'chinook' });
       expect(created.runResult()?.recordset.rows).toHaveLength(2);
@@ -7401,7 +7402,7 @@ select (
       select.mockClear();
       (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
       await Promise.resolve();
-      expect(select).toHaveBeenCalledWith('local');
+      expect(select).toHaveBeenCalledWith('local', { persist: false });
       // the person picks another environment: it is theirs, only a cleared one is put back
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
       select.mockClear();

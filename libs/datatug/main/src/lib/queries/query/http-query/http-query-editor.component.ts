@@ -162,6 +162,12 @@ export class HttpQueryEditorComponent {
   /** Declared parameters of the query (saved with it); `{id}` placeholders reference them. */
   readonly parameters = input<readonly IParameterDef[]>([]);
   readonly parametersChange = output<IParameterDef[]>();
+  /**
+   * A value typed for this run (empty text when cleared). When the page owns Run (a parameter bound from the
+   * selection or context, or a required one with no value), it takes the typed value as the parameter's binding, so
+   * typing the value the page asks for enables its Run. Never emitted for a credential.
+   */
+  readonly typedValueChange = output<{ readonly id: string; readonly text: string }>();
   /** The one result row this run was launched from, if any. */
   readonly rowBinding = input<HttpRowBinding | undefined>(undefined);
   /** Board or card parameter values (delivered by the board feature). */
@@ -170,6 +176,12 @@ export class HttpQueryEditorComponent {
   readonly bagEntries = input<readonly HttpBagEntry[]>([]);
   /** False when the page offers the one primary Run (the semantic path): this editor then only authors the request. */
   readonly showRun = input(true);
+  /**
+   * True when the visitor cannot save the query (a signed-out GitHub demo). The request and the parameter
+   * declarations are then shown read-only (no type/Required/remove/declare/add controls); the values for this run,
+   * the column a value comes from and Run stay editable, because running the query is still allowed.
+   */
+  readonly readonly = input(false);
 
   /** Columns picked in the run panel by parameter id (this run only). */
   protected readonly pickedColumns = signal<Readonly<Record<string, string>>>({});
@@ -559,7 +571,10 @@ export class HttpQueryEditorComponent {
   }
 
   protected setTypedValue(id: string, event: Event): void {
-    this.typedValues.set({ ...this.typedValues(), [id]: eventText(event) });
+    const text = eventText(event);
+    this.typedValues.set({ ...this.typedValues(), [id]: text });
+    if (!this.parameters().find((p) => p.id === id)?.isCredential)
+      this.typedValueChange.emit({ id, text });
   }
 
   /** The value shown under a parameter: where it came from and what will be sent. */

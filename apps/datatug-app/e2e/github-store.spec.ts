@@ -563,6 +563,44 @@ test.describe('GitHub-store project — every side-menu page loads without error
   });
 
   /**
+   * Demo walk item 2 (2026-10-23): opening a query that needs an agent (`albums/albums_by_title`) or an HTTP query
+   * wrote `sessionStorage["datatug:lastEnv:…"] = "local"`, and every browser-SQLite query in the tab then failed with
+   * "The selected connection is unavailable in this environment". Viewing a query must not remember an environment
+   * the visitor never chose, and a remembered one the query cannot use must not break it.
+   */
+  test('viewing agent and HTTP queries never poisons the environment of a browser-SQLite query', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = installErrorLoggerWatch(page);
+    const lastEnvKey = `datatug:lastEnv:github.com:${PROJECT_ID}`;
+    const openQuery = async (id: string, title: RegExp) => {
+      await page.goto(`${PAGES_URL}/query/${encodeURIComponent(id)}?id=${encodeURIComponent(id)}`);
+      await expect(page.locator('sneat-datatug-sql-editor .query-page-title')).toContainText(title, { timeout: 20_000 });
+    };
+    const runBrowserQuery = async () => {
+      const run = page.getByTestId('workspace-run');
+      await expect(run).toBeVisible();
+      await run.click();
+      // Ionic keeps earlier query pages in the DOM, hidden: only the visible page's Results count.
+      const results = page.getByRole('region', { name: 'Results' }).filter({ visible: true });
+      await expect(results.getByText(/^\s*\d+ rows\s*$/).first()).toBeVisible({ timeout: 25_000 });
+      await expect(page.getByText('unavailable in this environment')).toHaveCount(0);
+    };
+
+    await openQuery('albums/albums_by_title', /album/i);
+    await openQuery('reference/currency-rate-on-date', /currency/i);
+    expect(await page.evaluate((key) => sessionStorage.getItem(key), lastEnvKey)).toBeNull();
+
+    await openQuery('northwind/orders-by-customer', /orders/i);
+    await runBrowserQuery();
+
+    // A tab that already remembers an environment this connection does not serve still runs the pinned fixture.
+    await page.evaluate((key) => sessionStorage.setItem(key, 'local'), lastEnvKey);
+    await openQuery('demodb/chinook-top-customer-spend', /Top Customer Spend/);
+    await runBrowserQuery();
+    expect(errors).toEqual([]);
+  });
+
+  /**
    * S163 — founder-reported follow-ups (2): the Queries page's "Personal"
    * and "Shared" tabs listed the exact same shared folder tree on a
    * GitHub-store project (`QueriesService.getQueriesFolder()` used to
