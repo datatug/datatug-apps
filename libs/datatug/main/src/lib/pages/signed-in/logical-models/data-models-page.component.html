@@ -1,0 +1,156 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button />
+    </ion-buttons>
+    <ion-title>Data models</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  @let view = state();
+  <main class="data-models-page">
+    @if (!configured) {
+      <section class="data-model-state" aria-labelledby="data-models-not-configured">
+        <h1 id="data-models-not-configured">Data model catalog not configured</h1>
+        <p>This project does not have a local MeaningGraph DataModel catalog configured.</p>
+        <p><a href="https://meaninggraph.io/registry/models/" target="_blank" rel="noreferrer">Browse published DataModels in MeaningGraph</a></p>
+      </section>
+    } @else {
+      @switch (view.kind) {
+        @case ('loading') {
+          <p class="data-model-state" role="status">Loading DataModels…</p>
+        }
+        @case ('list-loading') {
+          <p class="data-model-state" role="status">Loading DataModels…</p>
+        }
+        @case ('not-configured') {
+          <p class="data-model-state" role="status">Data model catalog not configured.</p>
+        }
+        @case ('error') {
+          <section class="data-model-state" role="alert" aria-labelledby="data-models-error">
+            <h1 id="data-models-error">Could not load DataModels</h1>
+            <p>{{ view.message }}</p>
+          </section>
+        }
+        @case ('list') {
+          <section class="data-model-state" aria-labelledby="data-models-heading">
+            <h1 id="data-models-heading">Data models</h1>
+            <p>Logical ModelSpec definitions registered in this MeaningGraph catalog.</p>
+          </section>
+          @if (view.models.length === 0) {
+            <p class="data-model-state">No DataModels are registered in this catalog.</p>
+          } @else {
+            <ul class="data-model-list" aria-label="Registered DataModels">
+              @for (model of view.models; track model.id) {
+                <li>
+                  <a [routerLink]="modelUrl(model)">
+                    <span class="data-model-title">{{ model.title }}</span>
+                    <span class="data-model-identifier"><code>{{ model.address }}</code></span>
+                    <span>Module {{ model.moduleId }} · version {{ model.moduleVersion }}</span>
+                    <span class="data-model-commit">Pinned commit <code>{{ model.commit }}</code></span>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        }
+        @case ('detail-loading') {
+          <p class="data-model-state" role="status">Loading {{ view.modelId }} at commit {{ view.commit }}…</p>
+        }
+        @case ('detail') {
+          <article class="data-model-detail">
+            <p><a [routerLink]="listUrl">← All data models</a></p>
+            <header class="data-model-state">
+              <p>Logical DataModel</p>
+              <h1>{{ view.model.title }}</h1>
+              <p><code>{{ view.model.address }}</code></p>
+              <p>Module {{ view.model.moduleId }} · version {{ view.model.moduleVersion }}</p>
+              <p>Pinned source commit <code>{{ view.model.commit }}</code></p>
+            </header>
+            @if (view.model.sourceFiles.length > 0) {
+              <section aria-labelledby="data-model-sources">
+                <h2 id="data-model-sources">Source files</h2>
+                <ul>
+                  @for (file of view.model.sourceFiles; track file.name) {
+                    <li><a [href]="file.url" target="_blank" rel="noreferrer">{{ file.name }}</a></li>
+                  }
+                </ul>
+              </section>
+            }
+            <section aria-labelledby="data-model-record-types">
+              <h2 id="data-model-record-types">Record types</h2>
+              @if (view.model.records.length === 0) {
+                <p>This model declares no record types.</p>
+              }
+              @for (record of view.model.records; track record.name) {
+                <article class="data-model-declaration">
+                  <h3>{{ record.name }}</h3>
+                  @if (record.key.length > 0) {
+                    <p><strong>Key:</strong> @for (key of record.key; track key) { <code>{{ key }}</code> }</p>
+                  } @else {
+                    <p>No key declared.</p>
+                  }
+                  @if (record.uses.length > 0) {
+                    <p><strong>Uses:</strong> @for (component of record.uses; track component) { <code>{{ component }}</code> }</p>
+                  }
+                  @if (record.fields.length > 0) {
+                    <ul class="data-model-fields">
+                      @for (field of record.fields; track $index) {
+                        <li>
+                          <strong>{{ field.name }}</strong> <code>{{ field.type }}</code>
+                          @if (field.required !== undefined) { <span>{{ field.required ? 'Required' : 'Optional' }}</span> }
+                          @if (field.origin) { <small>Declared in {{ field.origin }}</small> }
+                          @if (field.constraints | keyvalue; as constraints) {
+                            @if (constraints.length > 0) {
+                              <dl><dt>Constraints</dt>@for (constraint of constraints; track constraint.key) { <dd><code>{{ constraint.key }}</code>: {{ constraint.value }}</dd> }</dl>
+                            }
+                          }
+                        </li>
+                      }
+                    </ul>
+                  }
+                </article>
+              }
+            </section>
+            @if (view.model.components.length > 0) {
+              <section aria-labelledby="data-model-components">
+                <h2 id="data-model-components">Components</h2>
+                @for (component of view.model.components; track component.name) {
+                  <article class="data-model-declaration">
+                    <h3>{{ component.name }}</h3>
+                    @if (component.key.length > 0) { <p><strong>Key:</strong> @for (key of component.key; track key) { <code>{{ key }}</code> }</p> }
+                    @if (component.uses.length > 0) { <p><strong>Uses:</strong> @for (used of component.uses; track used) { <code>{{ used }}</code> }</p> }
+                    <ul class="data-model-fields">
+                      @for (field of component.fields; track $index) {
+                        <li>
+                          <strong>{{ field.name }}</strong> <code>{{ field.type }}</code>
+                          @if (field.required !== undefined) { <span>{{ field.required ? 'Required' : 'Optional' }}</span> }
+                          @if (field.origin) { <small>Declared in {{ field.origin }}</small> }
+                          @if (field.constraints | keyvalue; as constraints) {
+                            @if (constraints.length > 0) {
+                              <dl><dt>Constraints</dt>@for (constraint of constraints; track constraint.key) { <dd><code>{{ constraint.key }}</code>: {{ constraint.value }}</dd> }</dl>
+                            }
+                          }
+                        </li>
+                      }
+                    </ul>
+                  </article>
+                }
+              </section>
+            }
+            @if (view.model.enums.length > 0) {
+              <section aria-labelledby="data-model-enums">
+                <h2 id="data-model-enums">Enums</h2>
+                @for (enumeration of view.model.enums; track enumeration.name) {
+                  <article class="data-model-declaration"><h3>{{ enumeration.name }}</h3><ul>@for (value of enumeration.values; track value) { <li><code>{{ value }}</code></li> }</ul></article>
+                }
+              </section>
+            }
+          </article>
+        }
+      }
+    }
+  </main>
+</ion-content>

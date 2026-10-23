@@ -39,6 +39,16 @@ describe('Detective Scenario routes', () => {
 });
 
 describe('datatugProjectRoutes', () => {
+  it.each([
+    ['data-models', 'DataModelsPageComponent'],
+    ['data-models/:modelId/versions/:commit', 'DataModelsPageComponent'],
+  ])('loads logical model route %s as %s', async (path, expectedName) => {
+    const route = datatugProjectRoutes.find((candidate) => candidate.path === path);
+    expect(route?.loadComponent).toBeTruthy();
+    const loaded = await route?.loadComponent?.();
+    expect((loaded as { name?: string })?.name).toBe(expectedName);
+  });
+
   it('resolves the "variables" route to InvestigationContextPageComponent, unconditionally (not gated behind ENABLE_EMPTY_SHELL_PAGES)', async () => {
     const route = datatugProjectRoutes.find((r) => r.path === 'variables');
     expect(route).toBeTruthy();

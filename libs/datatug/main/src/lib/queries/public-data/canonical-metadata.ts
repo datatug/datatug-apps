@@ -1,6 +1,6 @@
 import { strictJson } from './strict-json';
 export { strictJson } from './strict-json';
-import { boundedResponseText } from './bounded-federation';
+import { boundedResponseText } from './bounded-response';
 
 export interface ImmutableFile {
   readonly repository: string;
