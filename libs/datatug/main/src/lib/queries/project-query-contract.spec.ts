@@ -10,15 +10,29 @@ import {
 import {
   QueryType,
   type IHttpQueryRequest,
+  type IQueryDef,
   type ISqlQueryRequest,
 } from '../models/definition/query-def';
-import type { ProjectQueryReadWire, ProjectQueryWire } from './project-query-contract';
+import type {
+  ProjectQueryReadWire,
+  ProjectQueryWire,
+} from './project-query-contract';
 
 function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
   return { ...wire };
 }
 
 describe('common project query contract', () => {
+  it('retains creation dates on reads without sending store-owned metadata on saves', () => {
+    const wire = {
+      ...toProjectQueryWire(createHostedDemoDbQuery('q')),
+      createdAt: '2026-10-21T12:00:00Z',
+    };
+    const read = fromProjectQueryWire(wire);
+    expect(read.createdAt).toBe(wire.createdAt);
+    expect(toProjectQueryWire(read)).not.toHaveProperty('createdAt');
+    expect(read.createdAt).toBe(wire.createdAt);
+  });
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
     'round-trips complete %s source and DTQL body',
     (source) => {
@@ -37,7 +51,10 @@ describe('common project query contract', () => {
     const query = {
       id: 'q',
       title: 'SQL',
-      request: { queryType: QueryType.SQL, text: '\nSELECT 1;\n' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: '\nSELECT 1;\n',
+      } as ISqlQueryRequest,
     };
     expect(toProjectQueryWire(query, 'folder/q')).toMatchObject({
       folderPath: 'folder',
@@ -55,7 +72,10 @@ describe('common project query contract', () => {
     const query = {
       id: 'chinook-customer-genre-mix',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT Genre FROM Genre' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT Genre FROM Genre',
+      } as ISqlQueryRequest,
     };
     const wire = toProjectQueryWire(query, 'demodb/chinook-customer-genre-mix');
     expect(wire.connectionId).toBe('chinook-sqlite');
@@ -114,15 +134,23 @@ describe('common project query contract', () => {
     );
     expect(JSON.stringify(enriched)).toBe(before);
   });
-  it('refuses unsupported HTTP and asset fields rather than stripping them', () => {
+  it('refuses unsupported HTTP request fields and asset fields rather than stripping them', () => {
     expect(() =>
       toProjectQueryWire({
         id: 'q',
-        request: { queryType: QueryType.HTTP, url: '/foo', method: 'GET' } as IHttpQueryRequest,
+        request: {
+          queryType: QueryType.HTTP,
+          url: '/foo',
+          method: 'GET',
+          timeout: 5,
+        } as unknown as IHttpQueryRequest,
       }),
     ).toThrow(UnsupportedQueryContractError);
     expect(() =>
-      toProjectQueryWire({ ...createHostedDemoDbQuery('q'), parameters: [] }),
+      toProjectQueryWire({
+        ...createHostedDemoDbQuery('q'),
+        dbModel: 'legacy-model',
+      }),
     ).toThrow(UnsupportedQueryContractError);
   });
 });
@@ -166,4 +194,28 @@ it('preserves legacy request-specific fields on read and refuses a lossy write',
     custom: true,
   });
   expect(() => toProjectQueryWire(def)).toThrow(UnsupportedQueryContractError);
+});
+
+it('saves and reads back HTTP query parameters, refusing unknown parameter fields', () => {
+  const def = {
+    id: 'carrier-status',
+    title: 'Carrier',
+    request: {
+      queryType: QueryType.HTTP,
+      url: 'https://carrier.demodb.dev/v1/bookings?request_id={request_id}',
+      method: 'GET',
+    },
+    parameters: [
+      { id: 'request_id', type: 'string', isRequired: true, meta: { entity: 'ShippingRequest', field: 'id' } },
+    ],
+  } as IQueryDef;
+  const wire = toProjectQueryWire(def, 'shipping/carrier-status');
+  expect(wire.parameters).toEqual(def.parameters);
+  expect(fromProjectQueryWire(asReadWire(wire)).parameters).toEqual(def.parameters);
+  expect(() =>
+    toProjectQueryWire(
+      { ...def, parameters: [{ ...(def.parameters as NonNullable<IQueryDef['parameters']>)[0], lookup: { db: 'x', sql: 'y', keyFields: [] } }] },
+      'shipping/carrier-status',
+    ),
+  ).toThrow(UnsupportedQueryContractError);
 });

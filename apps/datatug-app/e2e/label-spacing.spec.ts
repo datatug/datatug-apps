@@ -1,6 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 
 /**
@@ -55,13 +54,6 @@ test.skip(
   'requires network access to github.com/api.github.com/raw.githubusercontent.com — set DATATUG_E2E_GITHUB_FAKE to use a local checkout or DATATUG_E2E_OFFLINE=1 to skip',
 );
 
-test.beforeEach(async ({ context }) => {
-  if (GITHUB_FAKE_DIR !== null) {
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
-    ]);
-  }
-});
 
 const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 const PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;

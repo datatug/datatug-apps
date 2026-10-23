@@ -31,39 +31,88 @@
     }
   </section>
 }
-<ion-card>
-  <header class="board-card-header">
-    <ion-item color="light" lines="none">
-      <ion-label class="ion-text-wrap">{{ headerTitle() }}</ion-label>
-      @if (raceWidget(); as race) {
-        <sneat-datatug-chart-view-tabs
-          slot="end"
-          [view]="widget.chartView()"
-          [hasTrend]="race.sources.length > 0 && !!race.sources[0].transform"
-          (viewChange)="widget.setChartView($event)"
+@if (bare()) {
+  <!-- Body only: the host supplies the surrounding card and its title (no card in a card). -->
+  <ng-container [ngTemplateOutlet]="content" />
+} @else {
+  <ion-card>
+    <ion-card-header class="board-card-header">
+      <ion-toolbar color="light">
+        <ion-item color="light" lines="none">
+          <ion-label class="ion-text-wrap">
+            <ion-card-title>{{ headerTitle() }}</ion-card-title>
+          </ion-label>
+          @if (raceWidget(); as race) {
+            <sneat-datatug-chart-view-tabs
+              slot="end"
+              [view]="widget()?.chartView() ?? 'chart'"
+              [hasTrend]="race.sources.length > 0 && !!race.sources[0].transform"
+              (viewChange)="widget()?.setChartView($event)"
+            />
+          } @else if (!hasSwitchingTabs() && widget()?.hasHeaderActions()) {
+            <ion-buttons slot="end"
+              ><ng-container
+                [ngTemplateOutlet]="widget()?.headerActions() || null"
+            /></ion-buttons>
+          }
+        </ion-item>
+      </ion-toolbar>
+    </ion-card-header>
+    <ng-container [ngTemplateOutlet]="content" />
+  </ion-card>
+}
+<ng-template #content>
+  @if (refDef(); as ref) {
+    @switch (refState().kind) {
+      @case ('ready') {
+        <!-- The referenced card renders through this same component, body only: no card in a card. -->
+        <sneat-datatug-board-card
+          [bare]="true"
+          [cardMode]="true"
+          [boarCardDef]="refBoardCard()"
+          [boardContext]="refContext()"
+          [projectRef]="projectRef()"
+          [boardId]="boardId()"
+          [resultCache]="resultCache()"
         />
-      } @else if (!hasSwitchingTabs()) {
-        <ion-buttons slot="end"
-          ><ng-container
-            *ngTemplateOutlet="
-              widget.actionsTemplate() || null;
-              context: { iconOnly: true }
-            "
-        /></ion-buttons>
       }
-    </ion-item>
-  </header>
-  <sneat-datatug-board-widget
-    #widget
-    [headerInCard]="true"
-    [actionsInCardHeader]="!hasSwitchingTabs()"
-    [level]="0"
-    [cardTab]="boardCardTab.currentTab"
-    [widgetDef]="boarCardDef()?.widget"
-    [boardContext]="boardContext()"
-    [projectRef]="projectRef()"
-    [boardId]="boardId()"
-    [cardId]="boarCardDef()?.id"
-    [readBoardForRun]="readBoardForRun()"
-  />
-</ion-card>
+      @case ('missing') {
+        <p class="ion-padding" role="alert">Card not found: {{ ref.cardId }}</p>
+      }
+      @case ('error') {
+        <div class="ion-padding">
+          <p role="alert">{{ $any(refState()).message }}</p>
+          <ion-button size="small" fill="outline" (click)="retryRef()"
+            >Retry</ion-button
+          >
+        </div>
+      }
+      @default {
+        <div class="ion-padding">
+          <ion-skeleton-text [animated]="true" style="width: 70%" />
+          <ion-skeleton-text [animated]="true" style="width: 50%" />
+          <p role="status" class="visually-hidden">Loading card…</p>
+        </div>
+      }
+    }
+  } @else {
+    <!-- Embedded: the card header above (or the bare host) owns the title and actions. -->
+    <sneat-datatug-board-widget
+      #widget
+      [embedded]="true"
+      [headerInCard]="!bare()"
+      [actionsInCardHeader]="!hasSwitchingTabs()"
+      [cardTitle]="boarCardDef()?.title"
+      [level]="0"
+      [cardTab]="boardCardTab.currentTab"
+      [widgetDef]="boarCardDef()?.widget"
+      [boardContext]="boardContext()"
+      [projectRef]="projectRef()"
+      [boardId]="boardId()"
+      [cardId]="boarCardDef()?.id"
+      [readBoardForRun]="readBoardForRun()"
+      [cardMode]="cardMode()"
+      [resultCache]="resultCache()"
+    />
+  }
+</ng-template>

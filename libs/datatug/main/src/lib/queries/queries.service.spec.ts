@@ -1,6 +1,7 @@
+import coreComparison from './testdata/core-v070-query-comparison.json';
 import { DevicePersonalQueries } from './device-personal-queries';
 import { TestBed } from '@angular/core/testing';
-import { lastValueFrom, of } from 'rxjs';
+import { firstValueFrom, lastValueFrom, of } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 
@@ -95,6 +96,11 @@ describe('QueriesService — GitHub-store getQuery (S155)', () => {
     return TestBed.inject(QueriesService);
   }
 
+  it('preserves and validates Core70 comparison metadata in the ordinary query adapter', async () => {
+    const service = createService(() => of(coreComparison));
+    expect(await firstValueFrom(service.getQuery({ storeId: 'github.com', projectId: 'o/r' }, 'pair')))
+      .toMatchObject({ comparison: coreComparison.comparison, parameters: coreComparison.parameters, recordsets: coreComparison.recordsets });
+  });
   it('the legacy ".sql.json" shape (no parameters/recordsets at all, e.g. real demo-project-1 artists_with_albums) — text comes through, no linked entities to report', () => {
     const service = createService(() =>
       of({

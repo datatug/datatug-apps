@@ -1,0 +1,1025 @@
+{
+  "request": {
+    "run": {
+      "storeId": "firestore",
+      "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+      "environment": "demo",
+      "checkId": "carrier-assignment",
+      "checkVersion": 1,
+      "runId": "run-a9026baf6e7e743254585ecd7761461f"
+    },
+    "recovery": {
+      "storeId": "firestore",
+      "spaceID": "project_space",
+      "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+      "sourceId": "shipping-working-copy",
+      "receiptActorId": "project_actor",
+      "operationId": "http-resolve-replay",
+      "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+      "result": {
+        "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+        "revision": 3,
+        "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+      }
+    },
+    "humanNote": "Replayed the request after correcting the carrier route, then verified the accepted assignment.",
+    "criterionVersion": 2,
+    "storage": "firestore",
+    "spaceID": "project_space",
+    "project": "detective-demo-a8bed8b25382b9518b1b4f7d",
+    "operationId": "http-human-resolve",
+    "expectedSeq": 7,
+    "type": "resolve",
+    "incidentRef": "native-incidents-415933ba5c60b676/INC-1",
+    "environment": "demo"
+  },
+  "success": {
+    "event": {
+      "id": "resolve-run-db98c0b9f8281b89525422b6e313db2c",
+      "seq": 8,
+      "at": "2026-10-21T12:00:00Z",
+      "visibleAt": "2026-10-21T12:00:00Z",
+      "incident": {
+        "storeId": "native-incidents-415933ba5c60b676",
+        "incidentId": "INC-1"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "project_actor",
+        "via": "web"
+      },
+      "type": "incident.resolved",
+      "assertion": {
+        "kind": "claim"
+      },
+      "refs": [
+        {
+          "kind": "check-run",
+          "checkRun": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          }
+        },
+        {
+          "kind": "execution",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+          }
+        },
+        {
+          "sourceOperation": {
+            "storeId": "firestore",
+            "spaceID": "project_space",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "sourceId": "shipping-working-copy",
+            "receiptActorId": "project_actor",
+            "operationId": "http-resolve-replay",
+            "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+            "result": {
+              "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+              "revision": 3,
+              "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+            }
+          },
+          "kind": "source-operation"
+        }
+      ],
+      "payload": {
+        "humanNote": "Replayed the request after correcting the carrier route, then verified the accepted assignment.",
+        "proof": {
+          "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+          "criterionVersion": 2,
+          "scope": {
+            "project": {
+              "storeId": "firestore",
+              "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+              "environment": "demo"
+            },
+            "sourceID": "shipping-working-copy",
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "affectedInputs": {
+              "order_id": {
+                "type": "integer",
+                "value": "11045"
+              }
+            },
+            "sessionRef": "shipping-session",
+            "bagID": "shipping-bag",
+            "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+          },
+          "run": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          },
+          "evaluatedAt": "2026-10-21T12:00:00Z",
+          "outcome": "pass",
+          "observationRefs": [
+            {
+              "kind": "execution",
+              "execution": {
+                "storeId": "firestore",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+              }
+            }
+          ],
+          "recoveryRefs": [
+            {
+              "sourceOperation": {
+                "storeId": "firestore",
+                "spaceID": "project_space",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "sourceId": "shipping-working-copy",
+                "receiptActorId": "project_actor",
+                "operationId": "http-resolve-replay",
+                "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+                "result": {
+                  "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+                  "revision": 3,
+                  "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+                }
+              },
+              "kind": "source-operation"
+            }
+          ]
+        }
+      }
+    },
+    "incident": {
+      "resolutionCriterion": {
+        "finalizedAt": "2026-10-21T12:00:00Z",
+        "version": 2,
+        "finalized": true,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+        },
+        "checkID": "carrier-assignment",
+        "checkVersion": 1,
+        "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+        "maxAgeSeconds": 3600
+      },
+      "resolution": {
+        "humanNote": "Replayed the request after correcting the carrier route, then verified the accepted assignment.",
+        "proof": {
+          "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+          "criterionVersion": 2,
+          "scope": {
+            "project": {
+              "storeId": "firestore",
+              "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+              "environment": "demo"
+            },
+            "sourceID": "shipping-working-copy",
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "affectedInputs": {
+              "order_id": {
+                "type": "integer",
+                "value": "11045"
+              }
+            },
+            "sessionRef": "shipping-session",
+            "bagID": "shipping-bag",
+            "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+          },
+          "run": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          },
+          "evaluatedAt": "2026-10-21T12:00:00Z",
+          "outcome": "pass",
+          "observationRefs": [
+            {
+              "kind": "execution",
+              "execution": {
+                "storeId": "firestore",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+              }
+            }
+          ],
+          "recoveryRefs": [
+            {
+              "sourceOperation": {
+                "storeId": "firestore",
+                "spaceID": "project_space",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "sourceId": "shipping-working-copy",
+                "receiptActorId": "project_actor",
+                "operationId": "http-resolve-replay",
+                "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+                "result": {
+                  "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+                  "revision": 3,
+                  "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+                }
+              },
+              "kind": "source-operation"
+            }
+          ]
+        }
+      },
+      "ref": {
+        "storeId": "native-incidents-415933ba5c60b676",
+        "incidentId": "INC-1"
+      },
+      "uid": "Detective-create-incident",
+      "title": "Shipping request",
+      "status": "resolved",
+      "projects": [
+        {
+          "storeId": "firestore",
+          "projectId": "415933ba5c60b67642608961e3c41d905880c9ca5b5ee675f24a1ef1bb4e48d8",
+          "environment": "demo"
+        }
+      ],
+      "participants": [
+        {
+          "actor": {
+            "kind": "human",
+            "id": "project_actor",
+            "via": "web"
+          },
+          "role": "reporter"
+        }
+      ],
+      "canonicalContext": {
+        "facts": [
+          {
+            "id": "detective:scalar:order_id",
+            "entity": "case",
+            "field": "order_id",
+            "value": {
+              "type": "integer",
+              "value": "11045"
+            },
+            "origin": "context",
+            "enabled": false,
+            "scope": {
+              "storeId": "firestore",
+              "projectId": "415933ba5c60b67642608961e3c41d905880c9ca5b5ee675f24a1ef1bb4e48d8",
+              "environment": "demo"
+            }
+          }
+        ]
+      },
+      "notes": [
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Replayed the request after correcting the carrier route, then verified the accepted assignment."
+      ],
+      "lastSeq": 8
+    },
+    "receipt": "http-human-resolve"
+  },
+  "retry": {
+    "event": {
+      "id": "resolve-run-db98c0b9f8281b89525422b6e313db2c",
+      "seq": 8,
+      "at": "2026-10-21T12:00:00Z",
+      "visibleAt": "2026-10-21T12:00:00Z",
+      "incident": {
+        "storeId": "native-incidents-415933ba5c60b676",
+        "incidentId": "INC-1"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "project_actor",
+        "via": "web"
+      },
+      "type": "incident.resolved",
+      "assertion": {
+        "kind": "claim"
+      },
+      "refs": [
+        {
+          "kind": "check-run",
+          "checkRun": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          }
+        },
+        {
+          "kind": "execution",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+          }
+        },
+        {
+          "sourceOperation": {
+            "storeId": "firestore",
+            "spaceID": "project_space",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "sourceId": "shipping-working-copy",
+            "receiptActorId": "project_actor",
+            "operationId": "http-resolve-replay",
+            "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+            "result": {
+              "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+              "revision": 3,
+              "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+            }
+          },
+          "kind": "source-operation"
+        }
+      ],
+      "payload": {
+        "humanNote": "Replayed the request after correcting the carrier route, then verified the accepted assignment.",
+        "proof": {
+          "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+          "criterionVersion": 2,
+          "scope": {
+            "project": {
+              "storeId": "firestore",
+              "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+              "environment": "demo"
+            },
+            "sourceID": "shipping-working-copy",
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "affectedInputs": {
+              "order_id": {
+                "type": "integer",
+                "value": "11045"
+              }
+            },
+            "sessionRef": "shipping-session",
+            "bagID": "shipping-bag",
+            "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+          },
+          "run": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          },
+          "evaluatedAt": "2026-10-21T12:00:00Z",
+          "outcome": "pass",
+          "observationRefs": [
+            {
+              "kind": "execution",
+              "execution": {
+                "storeId": "firestore",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+              }
+            }
+          ],
+          "recoveryRefs": [
+            {
+              "sourceOperation": {
+                "storeId": "firestore",
+                "spaceID": "project_space",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "sourceId": "shipping-working-copy",
+                "receiptActorId": "project_actor",
+                "operationId": "http-resolve-replay",
+                "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+                "result": {
+                  "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+                  "revision": 3,
+                  "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+                }
+              },
+              "kind": "source-operation"
+            }
+          ]
+        }
+      }
+    },
+    "replayed": true,
+    "incident": {
+      "resolutionCriterion": {
+        "finalizedAt": "2026-10-21T12:00:00Z",
+        "version": 2,
+        "finalized": true,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+        },
+        "checkID": "carrier-assignment",
+        "checkVersion": 1,
+        "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+        "maxAgeSeconds": 3600
+      },
+      "resolution": {
+        "humanNote": "Replayed the request after correcting the carrier route, then verified the accepted assignment.",
+        "proof": {
+          "definitionDigest": "e0679a2dc2f9bbd0e11822bcdc1882b9e86342ccd201115160612732ff7f4ed3",
+          "criterionVersion": 2,
+          "scope": {
+            "project": {
+              "storeId": "firestore",
+              "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+              "environment": "demo"
+            },
+            "sourceID": "shipping-working-copy",
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "affectedInputs": {
+              "order_id": {
+                "type": "integer",
+                "value": "11045"
+              }
+            },
+            "sessionRef": "shipping-session",
+            "bagID": "shipping-bag",
+            "appliedManifestRef": "applied-988f59f546ff77e758938589c37767b01172a818fc571fcbef8b1dd7b9a5cf01"
+          },
+          "run": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "environment": "demo",
+            "checkId": "carrier-assignment",
+            "checkVersion": 1,
+            "runId": "run-a9026baf6e7e743254585ecd7761461f"
+          },
+          "evaluatedAt": "2026-10-21T12:00:00Z",
+          "outcome": "pass",
+          "observationRefs": [
+            {
+              "kind": "execution",
+              "execution": {
+                "storeId": "firestore",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+              }
+            }
+          ],
+          "recoveryRefs": [
+            {
+              "sourceOperation": {
+                "storeId": "firestore",
+                "spaceID": "project_space",
+                "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+                "sourceId": "shipping-working-copy",
+                "receiptActorId": "project_actor",
+                "operationId": "http-resolve-replay",
+                "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+                "result": {
+                  "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+                  "revision": 3,
+                  "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+                }
+              },
+              "kind": "source-operation"
+            }
+          ]
+        }
+      },
+      "ref": {
+        "storeId": "native-incidents-415933ba5c60b676",
+        "incidentId": "INC-1"
+      },
+      "uid": "Detective-create-incident",
+      "title": "Shipping request",
+      "status": "resolved",
+      "projects": [
+        {
+          "storeId": "firestore",
+          "projectId": "415933ba5c60b67642608961e3c41d905880c9ca5b5ee675f24a1ef1bb4e48d8",
+          "environment": "demo"
+        }
+      ],
+      "participants": [
+        {
+          "actor": {
+            "kind": "human",
+            "id": "project_actor",
+            "via": "web"
+          },
+          "role": "reporter"
+        }
+      ],
+      "canonicalContext": {
+        "facts": [
+          {
+            "id": "detective:scalar:order_id",
+            "entity": "case",
+            "field": "order_id",
+            "value": {
+              "type": "integer",
+              "value": "11045"
+            },
+            "origin": "context",
+            "enabled": false,
+            "scope": {
+              "storeId": "firestore",
+              "projectId": "415933ba5c60b67642608961e3c41d905880c9ca5b5ee675f24a1ef1bb4e48d8",
+              "environment": "demo"
+            }
+          }
+        ]
+      },
+      "notes": [
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Attached retained execution evidence.",
+        "Replayed the request after correcting the carrier route, then verified the accepted assignment."
+      ],
+      "lastSeq": 8
+    },
+    "receipt": "http-human-resolve"
+  },
+  "baseline": {
+    "run": {
+      "id": "run-c2764b349022655d76f83c9463205fc9",
+      "kind": "check",
+      "checkId": "shipping-request-received",
+      "definition": {
+        "id": "shipping-request-received",
+        "title": "Request received",
+        "description": "Synthetic training; queries are read-only. Source failures must remain unavailable, never pass.",
+        "version": 1,
+        "inputs": [
+          {
+            "name": "order_id",
+            "type": "integer",
+            "cardinality": "scalar",
+            "required": true
+          }
+        ],
+        "steps": [
+          {
+            "id": "matching-receipt",
+            "kind": "query",
+            "queryId": "shipping/request-receipt",
+            "bindings": [
+              {
+                "input": "order_id",
+                "fromInput": "order_id"
+              }
+            ],
+            "validators": [
+              {
+                "id": "matching-receipt",
+                "scope": "set",
+                "kind": "row-count",
+                "severity": "error",
+                "expected": {
+                  "type": "integer",
+                  "value": "1"
+                },
+                "onUnavailable": "block"
+              }
+            ],
+            "onUnavailable": "block"
+          }
+        ],
+        "updatedAt": "2026-10-21T12:00:00Z",
+        "updatedBy": "project_actor"
+      },
+      "dependencies": null,
+      "publishedValidators": null,
+      "queryValidators": null,
+      "environment": "demo",
+      "inputNames": [
+        "order_id"
+      ],
+      "executionStatus": "completed",
+      "outcome": "pass",
+      "steps": [
+        {
+          "stepId": "matching-receipt",
+          "kind": "query",
+          "queryId": "shipping/request-receipt",
+          "source": "datatug-shipping:///g-997ea21a790b9aa72dd3ca0ebedd088d/1?sha256=fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25",
+          "observedAt": "2026-10-21T12:00:00Z",
+          "executionProfile": "opaque-privileged",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-c2764b349022655d76f83c9463205fc9-node-1"
+          },
+          "queryRevision": "q1-7eec0df61ae6e5e3c214d5e5f55db5a16a696464c86c013410f8e9c7d337233d",
+          "resultFingerprint": "9658a64abd5934625d0c23b2a650acca6699e9a7218d59e0c55c22d2948a1d3f",
+          "durationMs": 1,
+          "executionStatus": "completed",
+          "outcome": "pass",
+          "evidenceOutcome": "pass",
+          "rowCount": 1,
+          "validators": [
+            {
+              "validatorId": "matching-receipt",
+              "executionStatus": "completed",
+              "outcome": "pass",
+              "evidenceOutcome": "pass",
+              "severity": "error"
+            }
+          ]
+        }
+      ],
+      "startedAt": "2026-10-21T12:00:00Z",
+      "durationMs": 1,
+      "checkInvocations": 1,
+      "queryExecutions": 1,
+      "actor": "project_actor"
+    },
+    "revision": 2,
+    "receipt": "http-resolve-baseline"
+  },
+  "red": {
+    "run": {
+      "id": "run-a98b2971a95a5f49b62760828a3bfa0d",
+      "kind": "check",
+      "checkId": "carrier-assignment",
+      "definition": {
+        "id": "carrier-assignment",
+        "title": "Carrier assignment",
+        "version": 1,
+        "inputs": [
+          {
+            "name": "order_id",
+            "type": "integer",
+            "cardinality": "scalar",
+            "required": true
+          }
+        ],
+        "steps": [
+          {
+            "id": "assignment",
+            "kind": "query",
+            "queryId": "shipping/assignment-outcome",
+            "bindings": [
+              {
+                "input": "order_id",
+                "fromInput": "order_id"
+              }
+            ],
+            "validators": [
+              {
+                "id": "accepted",
+                "scope": "set",
+                "kind": "row-count",
+                "severity": "error",
+                "expected": {
+                  "type": "integer",
+                  "value": "1"
+                }
+              }
+            ]
+          }
+        ],
+        "updatedAt": "2026-10-21T12:00:00Z",
+        "updatedBy": "project_actor"
+      },
+      "dependencies": null,
+      "publishedValidators": null,
+      "queryValidators": null,
+      "caseId": "carrier-case",
+      "environment": "demo",
+      "inputNames": [
+        "order_id"
+      ],
+      "executionStatus": "completed",
+      "outcome": "fail",
+      "severity": "error",
+      "steps": [
+        {
+          "stepId": "assignment",
+          "kind": "query",
+          "queryId": "shipping/assignment-outcome",
+          "source": "datatug-shipping:///g-997ea21a790b9aa72dd3ca0ebedd088d/1?sha256=fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25",
+          "observedAt": "2026-10-21T12:00:00Z",
+          "executionProfile": "opaque-privileged",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-a98b2971a95a5f49b62760828a3bfa0d-node-1"
+          },
+          "queryRevision": "q1-95ca90ee521285a9e60b7b359e52c2c3dff7252053b31566edbe227662eba1f8",
+          "resultFingerprint": "87c5b66196273ca1eadc14b306693c11f3cb15a34b4e39919d9f5ff260bd6f44",
+          "durationMs": 1,
+          "executionStatus": "completed",
+          "outcome": "fail",
+          "evidenceOutcome": "fail",
+          "severity": "error",
+          "validators": [
+            {
+              "validatorId": "accepted",
+              "executionStatus": "completed",
+              "outcome": "fail",
+              "evidenceOutcome": "fail",
+              "severity": "error"
+            }
+          ]
+        }
+      ],
+      "startedAt": "2026-10-21T12:00:00Z",
+      "durationMs": 1,
+      "checkInvocations": 1,
+      "queryExecutions": 1,
+      "actor": "project_actor"
+    },
+    "revision": 2,
+    "receipt": "http-resolve-red",
+    "caseLinkStatus": "linked"
+  },
+  "stillRed": {
+    "run": {
+      "id": "run-2706de4c49ccbd7a6ebf37de0c63b2b4",
+      "kind": "check",
+      "checkId": "carrier-assignment",
+      "definition": {
+        "id": "carrier-assignment",
+        "title": "Carrier assignment",
+        "version": 1,
+        "inputs": [
+          {
+            "name": "order_id",
+            "type": "integer",
+            "cardinality": "scalar",
+            "required": true
+          }
+        ],
+        "steps": [
+          {
+            "id": "assignment",
+            "kind": "query",
+            "queryId": "shipping/assignment-outcome",
+            "bindings": [
+              {
+                "input": "order_id",
+                "fromInput": "order_id"
+              }
+            ],
+            "validators": [
+              {
+                "id": "accepted",
+                "scope": "set",
+                "kind": "row-count",
+                "severity": "error",
+                "expected": {
+                  "type": "integer",
+                  "value": "1"
+                }
+              }
+            ]
+          }
+        ],
+        "updatedAt": "2026-10-21T12:00:00Z",
+        "updatedBy": "project_actor"
+      },
+      "dependencies": null,
+      "publishedValidators": null,
+      "queryValidators": null,
+      "caseId": "carrier-case",
+      "environment": "demo",
+      "inputNames": [
+        "order_id"
+      ],
+      "executionStatus": "completed",
+      "outcome": "fail",
+      "severity": "error",
+      "steps": [
+        {
+          "stepId": "assignment",
+          "kind": "query",
+          "queryId": "shipping/assignment-outcome",
+          "source": "datatug-shipping:///g-997ea21a790b9aa72dd3ca0ebedd088d/2?sha256=1417091e0dd8495f96edaf2e6c1baddc62197cf8df543200644b9e7595951707",
+          "observedAt": "2026-10-21T12:00:00Z",
+          "executionProfile": "opaque-privileged",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-2706de4c49ccbd7a6ebf37de0c63b2b4-node-1"
+          },
+          "queryRevision": "q1-95ca90ee521285a9e60b7b359e52c2c3dff7252053b31566edbe227662eba1f8",
+          "resultFingerprint": "d1f32cb53b5bab5e15ec47611496606c05fdfc082c7df02f899c1ebccc601636",
+          "durationMs": 2,
+          "executionStatus": "completed",
+          "outcome": "fail",
+          "evidenceOutcome": "fail",
+          "severity": "error",
+          "validators": [
+            {
+              "validatorId": "accepted",
+              "executionStatus": "completed",
+              "outcome": "fail",
+              "evidenceOutcome": "fail",
+              "severity": "error"
+            }
+          ]
+        }
+      ],
+      "startedAt": "2026-10-21T12:00:00Z",
+      "durationMs": 2,
+      "checkInvocations": 1,
+      "queryExecutions": 1,
+      "actor": "project_actor"
+    },
+    "revision": 2,
+    "receipt": "http-resolve-corrected-red",
+    "caseLinkStatus": "linked"
+  },
+  "green": {
+    "run": {
+      "id": "run-a9026baf6e7e743254585ecd7761461f",
+      "kind": "check",
+      "checkId": "carrier-assignment",
+      "definition": {
+        "id": "carrier-assignment",
+        "title": "Carrier assignment",
+        "version": 1,
+        "inputs": [
+          {
+            "name": "order_id",
+            "type": "integer",
+            "cardinality": "scalar",
+            "required": true
+          }
+        ],
+        "steps": [
+          {
+            "id": "assignment",
+            "kind": "query",
+            "queryId": "shipping/assignment-outcome",
+            "bindings": [
+              {
+                "input": "order_id",
+                "fromInput": "order_id"
+              }
+            ],
+            "validators": [
+              {
+                "id": "accepted",
+                "scope": "set",
+                "kind": "row-count",
+                "severity": "error",
+                "expected": {
+                  "type": "integer",
+                  "value": "1"
+                }
+              }
+            ]
+          }
+        ],
+        "updatedAt": "2026-10-21T12:00:00Z",
+        "updatedBy": "project_actor"
+      },
+      "dependencies": null,
+      "publishedValidators": null,
+      "queryValidators": null,
+      "caseId": "carrier-case",
+      "environment": "demo",
+      "inputNames": [
+        "order_id"
+      ],
+      "executionStatus": "completed",
+      "outcome": "pass",
+      "steps": [
+        {
+          "stepId": "assignment",
+          "kind": "query",
+          "queryId": "shipping/assignment-outcome",
+          "source": "datatug-shipping:///g-997ea21a790b9aa72dd3ca0ebedd088d/3?sha256=5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e",
+          "observedAt": "2026-10-21T12:00:00Z",
+          "executionProfile": "opaque-privileged",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+            "executionId": "run-a9026baf6e7e743254585ecd7761461f-node-1"
+          },
+          "queryRevision": "q1-95ca90ee521285a9e60b7b359e52c2c3dff7252053b31566edbe227662eba1f8",
+          "resultFingerprint": "73f8407c00224b7650b192f40b3aef69e2a46386bcb68194df42130c70b6b5a0",
+          "durationMs": 1,
+          "executionStatus": "completed",
+          "outcome": "pass",
+          "evidenceOutcome": "pass",
+          "rowCount": 1,
+          "validators": [
+            {
+              "validatorId": "accepted",
+              "executionStatus": "completed",
+              "outcome": "pass",
+              "evidenceOutcome": "pass",
+              "severity": "error"
+            }
+          ]
+        }
+      ],
+      "startedAt": "2026-10-21T12:00:00Z",
+      "durationMs": 1,
+      "checkInvocations": 1,
+      "queryExecutions": 1,
+      "actor": "project_actor"
+    },
+    "revision": 2,
+    "receipt": "http-resolve-green",
+    "caseLinkStatus": "linked"
+  },
+  "discovery": {
+    "operations": [
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "project_space",
+          "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "project_actor",
+          "operationId": "http-resolve-correct",
+          "requestSHA256": "170d8d8256b2c1f3f29515918ba34e9f713d15db1766f5d362a9bbb3f8e22580",
+          "result": {
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "revision": 2,
+            "sha256": "1417091e0dd8495f96edaf2e6c1baddc62197cf8df543200644b9e7595951707"
+          }
+        },
+        "action": "correct",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "project_space",
+          "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "project_actor",
+          "operationId": "initialize",
+          "requestSHA256": "e9f18333a449877a79a490aba8deb5ae07a0d06be92585ebd61defd87cdb97b0",
+          "result": {
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "revision": 1,
+            "sha256": "fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25"
+          }
+        },
+        "action": "initialize",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "project_space",
+          "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "project_actor",
+          "operationId": "http-resolve-replay",
+          "requestSHA256": "bfd138a0c5f15025bab45d44b1a56a8c00f8d937a4d92126364468c4aa0bdb56",
+          "result": {
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "revision": 3,
+            "sha256": "5acf2b2ca3905ef75cf84a612529f1a82d315cd5d1d4e0a07a71f58a92869a2e"
+          }
+        },
+        "action": "replay",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      }
+    ]
+  }
+}

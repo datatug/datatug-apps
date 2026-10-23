@@ -1,29 +1,37 @@
 @if (level() >= maxDepth) {
   <p role="alert">This board has too many nested tabs to display.</p>
 } @else if (tabs().length) {
-  <ion-segment
-    [value]="active()!.key"
-    [scrollable]="true"
-    [selectOnFocus]="true"
-    (ionChange)="select($any($event).detail.value)"
-    aria-label="Board tabs"
-  >
-    @for (entry of tabs(); track entry.key) {
-      <ion-segment-button [value]="entry.key" [id]="tabDOMID(entry.key)" [attr.aria-controls]="panelID" [sneatSegmentPanel]="panel" [panelSelected]="active()!.key === entry.key">
-        <ion-label style="text-transform: none">{{
-          entry.tab.title
-        }}</ion-label>
-      </ion-segment-button>
-    }
-  </ion-segment>
-  <div #panel role="tabpanel" [id]="panelID" [attr.aria-labelledby]="tabDOMID(active()!.key)" tabindex="0">
-  @if (active()!.tab.widget) {
-    <ng-container
-      *ngComponentOutlet="boardWidgetComponent(); inputs: childInputs()"
-    />
-  } @else {
-    <p role="status">This tab has no widget.</p>
+  @if (showStrip()) {
+    <ion-segment
+      [value]="active()!.key"
+      [scrollable]="true"
+      [selectOnFocus]="true"
+      (ionChange)="select($any($event).detail.value)"
+      aria-label="Board tabs"
+    >
+      @for (entry of tabs(); track entry.key) {
+        <ion-segment-button [value]="entry.key" [id]="tabDOMID(entry.key)" [attr.aria-controls]="panelID" [sneatSegmentPanel]="panel" [panelSelected]="active()!.key === entry.key">
+          <ion-label style="text-transform: none">{{
+            entry.tab.title
+          }}</ion-label>
+        </ion-segment-button>
+      }
+    </ion-segment>
   }
+  <div
+    #panel
+    [attr.role]="showStrip() ? 'tabpanel' : null"
+    [id]="panelID"
+    [attr.aria-labelledby]="showStrip() ? tabDOMID(active()!.key) : null"
+    [attr.tabindex]="showStrip() ? 0 : null"
+  >
+    @for (child of children(); track child.key) {
+      <ng-container
+        *ngComponentOutlet="boardWidgetComponent(); inputs: child.inputs"
+      />
+    } @empty {
+      <p role="status">This tab has no widget.</p>
+    }
   </div>
 } @else {
   <p role="status">This board has no tabs.</p>

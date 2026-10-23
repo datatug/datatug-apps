@@ -1,0 +1,194 @@
+{
+  "northwind": {
+    "basis": "read-only aggregate of repository-pinned SQLite fixture; not captured server response",
+    "fixtureSha256": "279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20",
+    "rows": [
+      {
+        "country": "Argentina",
+        "customers": 3
+      },
+      {
+        "country": "Austria",
+        "customers": 2
+      },
+      {
+        "country": "Belgium",
+        "customers": 2
+      },
+      {
+        "country": "Brazil",
+        "customers": 9
+      },
+      {
+        "country": "Canada",
+        "customers": 3
+      },
+      {
+        "country": "Denmark",
+        "customers": 2
+      },
+      {
+        "country": "Finland",
+        "customers": 2
+      },
+      {
+        "country": "France",
+        "customers": 11
+      },
+      {
+        "country": "Germany",
+        "customers": 11
+      },
+      {
+        "country": "Ireland",
+        "customers": 1
+      },
+      {
+        "country": "Italy",
+        "customers": 3
+      },
+      {
+        "country": "Mexico",
+        "customers": 5
+      },
+      {
+        "country": "Norway",
+        "customers": 1
+      },
+      {
+        "country": "Poland",
+        "customers": 1
+      },
+      {
+        "country": "Portugal",
+        "customers": 2
+      },
+      {
+        "country": "Spain",
+        "customers": 5
+      },
+      {
+        "country": "Sweden",
+        "customers": 2
+      },
+      {
+        "country": "Switzerland",
+        "customers": 2
+      },
+      {
+        "country": "UK",
+        "customers": 7
+      },
+      {
+        "country": "USA",
+        "customers": 13
+      },
+      {
+        "country": "Venezuela",
+        "customers": 4
+      }
+    ]
+  },
+  "chinook": {
+    "basis": "read-only aggregate of repository-pinned SQLite fixture; not captured server response",
+    "fixtureSha256": "7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15",
+    "rows": [
+      {
+        "country": "Argentina",
+        "customers": 1
+      },
+      {
+        "country": "Australia",
+        "customers": 1
+      },
+      {
+        "country": "Austria",
+        "customers": 1
+      },
+      {
+        "country": "Belgium",
+        "customers": 1
+      },
+      {
+        "country": "Brazil",
+        "customers": 5
+      },
+      {
+        "country": "Canada",
+        "customers": 8
+      },
+      {
+        "country": "Chile",
+        "customers": 1
+      },
+      {
+        "country": "Czech Republic",
+        "customers": 2
+      },
+      {
+        "country": "Denmark",
+        "customers": 1
+      },
+      {
+        "country": "Finland",
+        "customers": 1
+      },
+      {
+        "country": "France",
+        "customers": 5
+      },
+      {
+        "country": "Germany",
+        "customers": 4
+      },
+      {
+        "country": "Hungary",
+        "customers": 1
+      },
+      {
+        "country": "India",
+        "customers": 2
+      },
+      {
+        "country": "Ireland",
+        "customers": 1
+      },
+      {
+        "country": "Italy",
+        "customers": 1
+      },
+      {
+        "country": "Netherlands",
+        "customers": 1
+      },
+      {
+        "country": "Norway",
+        "customers": 1
+      },
+      {
+        "country": "Poland",
+        "customers": 1
+      },
+      {
+        "country": "Portugal",
+        "customers": 2
+      },
+      {
+        "country": "Spain",
+        "customers": 1
+      },
+      {
+        "country": "Sweden",
+        "customers": 1
+      },
+      {
+        "country": "USA",
+        "customers": 13
+      },
+      {
+        "country": "United Kingdom",
+        "customers": 3
+      }
+    ]
+  }
+}

@@ -134,7 +134,7 @@ describe('tutorial scenario uses standard session actions', () => {
     ).toBe('chart');
     expect(currentTutorialStep(session).step.action).toBeUndefined();
     expect(currentTutorialStep(session).step.limitation).toContain(
-      'unavailable',
+      'no independent-source comparison configured',
     );
     expect(session.previous()).toBe(true);
     expect(currentTutorialStep(session).step.action?.type).toBe('select-tab');
@@ -196,8 +196,8 @@ describe('tutorial scenario uses standard session actions', () => {
     expect(restored.dispatch(action)).toBe(true);
     const finalStep = currentTutorialStep(restored);
     expect(finalStep.index).toBe(7);
-    expect(finalStep.step.limitation).toContain('Chinook billing');
-    expect(finalStep.step.limitation).toContain('Northwind chart');
+    expect(finalStep.step.limitation).toContain('separate saved-query tabs');
+    expect(finalStep.step.limitation).toContain('declared common unit');
     expect(finalStep.step.limitation).not.toContain('PostgreSQL');
   });
 
@@ -224,4 +224,23 @@ describe('tutorial scenario uses standard session actions', () => {
     session.restart();
     expect(currentTutorialStep(session).index).toBe(0);
   });
+  it('seeds a genuine two-source canonical card with one binding then adds the second through the normal source action', async () => {
+    const chart: ChartWidgetDef = { sources: [{ id: 'northwind', queryId: 'demo/n' }, { id: 'chinook', queryId: 'demo/c' }], chart: { type: 'bar', categoryColumn: 'country', valueColumn: 'customers', unit: 'customer records' }, defaultView: 'chart' };
+    const board: Board = { id: 'showcase', title: 'Sources', rows: [{ cards: [{ id: 'sources', title: 'Independent sources', widget: { name: 'chart', data: chart } }] }] };
+    const session = await TutorialBoardSession.open(board, 'source-guide');
+    expect(currentTutorialStep(session).step.action).toEqual({ type: 'add-card', cardId: 'sources', initialSourceIds: ['northwind'] });
+    const seed = currentTutorialStep(session).step.action;
+    if (!seed) throw new Error('Missing seed action');
+    session.dispatch(seed);
+    expect((session.board.rows?.[0].cards?.[0].widget?.data as ChartWidgetDef).sources).toEqual([chart.sources[0]]);
+    expect(currentTutorialStep(session).step.action).toEqual({ type: 'add-chart-source', cardId: 'sources', sourceId: 'chinook', queryId: 'demo/c' });
+    // The ordinary editor supplies properties in a different order and an empty path.
+    session.dispatch({ type: 'add-chart-source', sourceId: 'chinook', queryId: 'demo/c', cardId: 'sources', widgetPath: [] });
+    expect(session.board).toEqual(board);
+    expect(currentTutorialStep(session).step.action).toBeUndefined();
+    session.previous();
+    expect(currentTutorialStep(session).step.action?.type).toBe('add-chart-source');
+    session.next(); expect(session.board).toEqual(board);
+  });
+
 });

@@ -201,7 +201,7 @@ for (const [name, viewport] of [
         race.getByRole('spinbutton', { name: 'Top', exact: true }),
       ).toHaveValue('5');
       const details = paired.locator('.source-details');
-      await details.locator('summary').click();
+      await details.locator(':scope > summary').click();
       await expect(details).toContainText(
         'https://cloud.openvaultdb.com/v1/dtql',
       );
@@ -254,7 +254,7 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
         ledger.posts.filter((value) => value === 'comparison'),
       ).toHaveLength(1);
       await paired
-        .getByRole('button', { name: 'Retry chart', exact: true })
+        .getByRole('button', { name: /^Retry chart · / })
         .click();
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
       expect(
@@ -334,7 +334,7 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
   await tabs.nth(1).click();
   await expect(inspector).toContainText('21 rows · 2 columns');
   await expect(
-    inspector.getByRole('button', { name: 'Run on board', exact: true }),
+    inspector.getByRole('button', { name: /^Refresh on board · / }),
   ).toBeEnabled();
   expect(
     ledger.posts.filter((value) => value === 'inspector-counts'),
@@ -347,7 +347,7 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
     ledger.posts.filter((value) => value === 'inspector-counts'),
   ).toHaveLength(1);
   await inspector
-    .getByRole('button', { name: 'Run on board', exact: true })
+    .getByRole('button', { name: /^Refresh on board · / })
     .click();
   await expect
     .poll(
@@ -355,7 +355,7 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
     )
     .toBe(2);
   await expect(
-    inspector.getByRole('button', { name: 'Run on board', exact: true }),
+    inspector.getByRole('button', { name: /^Refresh on board · / }),
   ).toBeEnabled();
   expect(
     ledger.posts.filter((value) => value === 'inspector-counts'),

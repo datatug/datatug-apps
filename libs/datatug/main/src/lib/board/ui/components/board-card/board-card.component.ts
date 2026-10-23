@@ -5,14 +5,39 @@ import {
   inject,
   input,
   computed,
+  effect,
+  signal,
+  viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { ChartViewTabsComponent } from '../board-widget/chart-view-tabs.component';
-import { IonCard, IonItem, IonLabel, IonButtons } from '@ionic/angular';
+import {
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonItem,
+  IonLabel,
+  IonSkeletonText,
+  IonToolbar,
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
-import { BoardCard, BoardWidgetName,
+import {
+  BoardCard,
+  BoardWidgetName,
   ChartWidgetDef,
+  ProjectCard,
 } from '@datatug/board-models';
+import {
+  CardNotFoundError,
+  ProjectCardsService,
+} from '../../../../cards/project-cards.service';
+import {
+  cardBoardContext,
+  refParameterValues,
+} from '../../../../cards/card-parameters';
+import type { BoardQueryResults } from '../../../core/board-query-results.service';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
 import { QueryType } from '../../../../models/definition/query-def';
@@ -43,9 +68,17 @@ export class BoardCardTabService {
   providers: [BoardCardTabService],
   imports: [
     NgTemplateOutlet,
-    IonButtons,
     ChartViewTabsComponent,
-    IonCard, IonItem, IonLabel, BoardWidgetComponent,
+    IonButton,
+    IonButtons,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonItem,
+    IonLabel,
+    IonSkeletonText,
+    IonToolbar,
+    BoardWidgetComponent,
   ],
   host: {
     '[attr.data-board-card-id]': 'boarCardDef()?.id',
@@ -55,6 +88,22 @@ export class BoardCardTabService {
   },
   styles: [
     `
+      ion-card {
+        container: datatug-board-header / inline-size;
+      }
+      ion-card-header {
+        padding: 0;
+      }
+      ion-toolbar {
+        --min-height: 3rem;
+        --padding-start: 1rem;
+        --padding-end: 0.5rem;
+      }
+      ion-card-title {
+        font-size: 1rem;
+        padding-block: 0.65rem;
+        overflow-wrap: anywhere;
+      }
       .tutorial-card-guide {
         margin: 0.75rem;
         padding: 1rem;
@@ -88,6 +137,14 @@ export class BoardCardTabService {
         outline: 3px solid #2563eb;
         outline-offset: 2px;
       }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
     `,
   ],
 })
@@ -102,9 +159,6 @@ export class BoardCardComponent {
   });
   readonly hasSwitchingTabs = computed(
     () => !!this.raceWidget() || this.boarCardDef()?.widget?.name === 'tabs',
-  );
-  readonly headerTitle = computed(
-    () => this.boarCardDef()?.title || this.raceWidget()?.title || 'Board card',
   );
   readonly tutorialRuntime = inject(TutorialBoardRuntime, { optional: true });
   readonly tutorialNotice = computed(() => {
@@ -122,4 +176,103 @@ export class BoardCardComponent {
   readonly projectRef = input<IProjectRef>();
   readonly boardId = input<string>();
   readonly readBoardForRun = input<BoardReadForRun>();
+  /**
+   * Standalone project-card rendering (a card beside a grid, or a card a
+   * dashboard cell references): loading / error / empty states on every
+   * widget, runs start by themselves.
+   */
+  readonly cardMode = input(false);
+  /** Renders the body only; the host supplies the surrounding card and title. */
+  readonly bare = input(false);
+  /** A shared result cache for this card; dashboards fall back to their own. */
+  readonly resultCache = input<BoardQueryResults>();
+
+  /** The inline widget (absent for a card reference); its title and actions fill the card header. */
+  readonly widget = viewChild<BoardWidgetComponent>('widget');
+  /** The card header title: the cell title, else the referenced card's, else the widget's. */
+  readonly headerTitle = computed(
+    () =>
+      this.boarCardDef()?.title ||
+      this.refReady()?.title ||
+      this.widget()?.displayTitle() ||
+      this.raceWidget()?.title ||
+      'Board card',
+  );
+
+  private readonly cards = inject(ProjectCardsService);
+  readonly refDef = computed(() => this.boarCardDef()?.ref);
+  /** Resolution of a `ref` cell: the project card, or why there is none. */
+  readonly refState = signal<
+    | { kind: 'loading' }
+    | { kind: 'ready'; card: ProjectCard }
+    | { kind: 'missing'; cardId: string }
+    | { kind: 'error'; message: string }
+  >({ kind: 'loading' });
+  private readonly reload = signal(0);
+  readonly refReady = computed(() => {
+    const state = this.refState();
+    return state.kind === 'ready' ? state.card : undefined;
+  });
+  /** The referenced card as a plain board card, bound to this cell's id. */
+  readonly refBoardCard = computed<BoardCard | undefined>(() => {
+    const card = this.refReady();
+    const cell = this.boarCardDef();
+    return card && cell
+      ? { id: cell.id, title: '', widget: card.widget }
+      : undefined;
+  });
+  /** The referenced card's parameters bound from the cell's `ref.parameters`. */
+  readonly refContext = computed(() => {
+    const card = this.refReady();
+    const ref = this.refDef();
+    if (!card || !ref) return undefined;
+    const board = this.boardContext();
+    return cardBoardContext(
+      board,
+      card,
+      refParameterValues(card, ref, board),
+    );
+  });
+
+  /** Only the environment of the context matters to loading the card, not every parameter change. */
+  private readonly environment = computed(() => this.boardContext()?.environment);
+
+  constructor() {
+    effect((onCleanup) => {
+      const ref = this.refDef();
+      const project = this.projectRef();
+      const environment = this.environment();
+      this.reload();
+      if (!ref) return;
+      if (!project) {
+        this.refState.set({ kind: 'loading' });
+        return;
+      }
+      this.refState.set({ kind: 'loading' });
+      const subscription = this.cards
+        .getCard(project, ref.cardId, environment)
+        .subscribe({
+          next: (card) => this.refState.set({ kind: 'ready', card }),
+          error: (error: unknown) =>
+            this.refState.set(
+              error instanceof CardNotFoundError
+                ? { kind: 'missing', cardId: ref.cardId }
+                : {
+                    kind: 'error',
+                    message:
+                      error instanceof Error && error.message
+                        ? error.message
+                        : 'The card could not be loaded.',
+                  },
+            ),
+        });
+      onCleanup(() => subscription.unsubscribe());
+    });
+  }
+
+  retryRef(): void {
+    const project = this.projectRef();
+    if (project) this.cards.invalidate(project);
+    this.reload.update((n) => n + 1);
+  }
 }

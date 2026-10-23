@@ -94,6 +94,15 @@ describe('QueriesUiService', () => {
       .toEqual(['SQL', 'HTTP']);
   });
 
+  it('offers HTTP, but not TugQL, for a shared (Firestore) project', async () => {
+    await TestBed.inject(QueriesUiService).openNewQuery({
+      storeId: 'firestore', projectId: 'p1', spaceID: 's1',
+    });
+    const texts = sheetOptions.buttons.map((button) => button.text);
+    expect(texts).toContain('HTTP');
+    expect(texts).not.toContain('Hosted DemoDB table (TugQL)');
+  });
+
   it('marks a new SQL navigation and carries its generated title for route restoration', async () => {
     const projectRef = { storeId: 'github.com', projectId: 'owner/repo' };
     newQuery.mockImplementationOnce((state: unknown) => ({

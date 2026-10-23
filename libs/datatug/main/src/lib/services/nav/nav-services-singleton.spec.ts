@@ -4,7 +4,6 @@ import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
 import { DatatugNavContextService } from './datatug-nav-context.service';
@@ -13,6 +12,7 @@ import { DatatugServicesNavModule } from './datatug-services-nav.module';
 import { DatatugServicesProjectModule } from '../project/datatug-services-project.module';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 /**
  * Regression (nav-context-root-singletons, follows lane S79/S92's
@@ -113,13 +113,7 @@ describe('nav/project services are app singletons across independently-mounted s
           provide: NavController,
           useValue: { navigateForward: vi.fn(), navigateRoot: vi.fn() },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         // ProjectService is `providedIn: 'root'` too on this branch — faked
         // here purely because the real class pulls in the Firestore/
         // store-factory dependency chain (`DatatugStoreServiceFactory`) that

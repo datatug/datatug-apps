@@ -103,13 +103,22 @@ export async function executeBrowserSqlite(
 }
 
 if (typeof self !== 'undefined' && 'postMessage' in self && typeof Window === 'undefined') {
-  self.onmessage = (event: MessageEvent<BrowserSqliteWorkerRequest>) => {
-    void executeBrowserSqlite(event.data).then(
-      (result) => self.postMessage({ ok: true, result } satisfies BrowserSqliteWorkerReply),
+  // A worker kept for a session (several statements) compiles the SQLite engine once.
+  let engine: Promise<import('sql.js').SqlJsStatic> | undefined;
+  const loadEngine = () => {
+    engine ??= initSqlJs({ locateFile: () => new URL('/assets/sql-wasm.wasm', self.location.origin).href });
+    engine.catch(() => { engine = undefined; });
+    return engine;
+  };
+  self.onmessage = (event: MessageEvent<BrowserSqliteWorkerRequest & { readonly id?: number }>) => {
+    const id = event.data.id;
+    void executeBrowserSqlite(event.data, loadEngine).then(
+      (result) => self.postMessage({ ok: true, result, id } satisfies BrowserSqliteWorkerReply & { id?: number }),
       (error: unknown) => self.postMessage({
         ok: false,
         error: error instanceof Error ? error.message : 'The browser SQLite query failed.',
-      } satisfies BrowserSqliteWorkerReply),
+        id,
+      } satisfies BrowserSqliteWorkerReply & { id?: number }),
     );
   };
 }

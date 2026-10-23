@@ -141,11 +141,13 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
 const RELATIVE_LINK_PATH =
   /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
-const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
+const LINK_FRAGMENT_PARTS =
+  /#(?:[^\s"'<>`#]*&)?(?:code|pk|evidence)=[^\s"'<>`]*/g;
 
 /**
  * Free text (an error message, a breadcrumb message, a span description) as telemetry may see it: every absolute
- * address and every `/store/…` path in it goes through {@link scrubUrl}, and any `#code=`/`#pk=` fragment is cut.
+ * address and every `/store/…` path in it goes through {@link scrubUrl}, and any `#code=`/`#pk=`/`#evidence=` fragment is cut
+ * (`#evidence=` is a copied evidence link, evidence-records REQ:copyable-evidence-link).
  */
 export function scrubText(text: string, dropQuery: boolean): string {
   // A bare path (`url.path` of a span, the router's own URL) is no address the patterns below see.

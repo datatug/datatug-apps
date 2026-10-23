@@ -6,9 +6,20 @@ When changing visible copy or selectors, search all browser and unit specs for t
 
 Run lint through the owning Nx project target, such as `pnpm nx lint datatug-main` for library UI and `pnpm nx lint datatug-app` for app/E2E code. A direct ESLint command from the workspace root does not load every project's Angular rules and cannot substitute for these checks. For a file-only command, explicitly select that project's ESLint configuration.
 
-For a group of related changes, keep them on one integration branch and PR. Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
+For a group of related changes, keep them on one integration branch; lane branches merge into it locally without PRs, and only the one integration-to-main PR runs full CI (`rule:integration-branch-default-flow` in `sneat-co/backstage`). Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
 
 There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the offline browser and real-agent lanes and their deploy gate requires them together with build and unit tests; the one live-API test is `e2e-postgres-ovdb.yml` (below). Focused tests still run during development. Do not skip the required build, test, or coverage gates.
+
+## Keeping the suites fast
+
+Unit tests (`datatug-main`, `datatug-semantic`) share one module graph per worker (`isolate: false`, `moduleSharing` in `vite.config.base.ts`): Angular, Ionic and the app's modules are evaluated once per worker instead of once per spec file, which used to be most of the suite's run time. Two consequences for spec authors:
+
+- A spec file that calls `vi.mock`, `vi.doMock`, `vi.doUnmock` or `vi.resetModules` is found automatically and runs isolated, in the separate `test-isolated` target that `test` depends on. It is slower, so prefer TestBed providers, injected fakes and `vi.stubGlobal` over module mocks. `test-focused` runs any chosen files isolated, as before.
+- Every file starts from a clean set of shared globals: real timers, no stubbed globals or envs, no active spies, empty storage, the real `window.history` at `/`, and an empty body (`resetSharedGlobals` in `libs/testing`). Any other global a spec replaces (a `window` property, a prototype method) must be restored by that spec.
+
+Shared test doubles live in `libs/datatug/main/src/lib/testing/` (for example `provideMockErrorLogger()`); reuse them instead of copying a mock into each spec. Domain fixtures stay in `*.spec-helper.ts` files next to the code they serve.
+
+Browser lanes run their tests in parallel workers unless the tests share state that cannot be partitioned. Wait for the event an assertion depends on (a request, `networkidle`, a visible element) instead of `waitForTimeout`. Run a behaviour once in the browser where it can differ, and once elsewhere; for example, the per-dataset DemoDB matrix runs in Chromium only, while the OPFS and in-memory storage paths run in all three browsers.
 
 ## SpecScore status-only CI path
 
@@ -24,17 +35,20 @@ Pull requests, merge groups and pushes run the offline browser and real-agent la
 
 The AdventureWorks in-browser journey (download through the chunked gzip parts, verify, open, read, edit, reload, Reset) is its own workflow, `.github/workflows/demo-sqlite-adventureworks.yml`, in Chromium only, because the file is 126.8 MB unpacked and is downloaded twice. It runs on a pull request and on a push to `main` only when demo SQLite code, its catalog, the DemoDB guard or fixtures, the lane itself or the dependencies changed, and by hand; never on a schedule, and it is not part of `deploy-gate`. It sends no request to a DemoDB host: the gzip parts come from the `demo-db/adventureworks` GitHub repository (`apps/datatug-app/e2e/README.md`, "DemoDB fixtures"). When you change demo SQLite code, run `pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks` locally.
 
-The Chromium app and Query mobile WebKit jobs use the validated demo catalog revision
-`1e7d7ea16d76d5b09844c9f14a9c12e871d42efb` (it carries the server-comparison query the showcase specs read), and the demo
-SQLite job uses `f40286a57ea3a04b93875335234665ece2595ed0`, through the fake GitHub
-reader. The app job verifies GitHub's API, tree and raw source at its commit. The demo SQLite job includes the edited-copy Board to Query acceptance
-in its existing three-browser suite. The demo catalog admits the relative
-bundled Chinook asset and rights sidecar; the app serves those exact checked
-bytes and the real SQLite worker executes them. The standalone `/demo/sqlite`
-import and comparison baseline still use their declared public URLs, served
-from the same checked-in bundled bytes only in focused browser journeys.
-Other live dataset checks and demo checkouts remain independent of this
-browser catalog pin.
+Every GitHub repository the e2e suites read is pinned in ONE place, `apps/datatug-app/e2e/github-pins.json`
+(see `apps/datatug-app/e2e/README.md`, "GitHub checkouts"). The browser lanes (Chromium app, Query mobile WebKit,
+demo SQLite) read the demo project at pin `demo-browser` (the validated catalog revision: required creation dates on
+all 59 query definitions and the server-comparison query the showcase specs read); the independent chart sources
+journey (`showcase-independent-sources.spec.ts`), which needs per-database customer queries that pin predates, runs
+through `datatug-app:e2e-showcase-independent` at pin `demo-independent`; the real-agent journey and card-link jobs
+check out pin `demo-agent`. The guard answers `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net`
+from shallow checkouts of those commits and fails a test whose GitHub request reaches the network or names a commit
+or branch no pin answers. The one lane that reads the real GitHub, and checks every pin still exists there, is
+`.github/workflows/github-live-smoke.yml` (push to `main`, or by hand). The demo SQLite job includes the edited-copy
+Board to Query acceptance in its three-browser suite. The demo catalog admits the relative bundled Chinook asset and
+rights sidecar; the app serves those exact checked bytes and the real SQLite worker executes them. The standalone
+`/demo/sqlite` import and comparison baseline still use their declared public URLs, served from the same checked-in
+bundled bytes only in focused browser journeys. Bump a pin deliberately, together with the specs that read it.
 
 ## Project Meanings acceptance
 

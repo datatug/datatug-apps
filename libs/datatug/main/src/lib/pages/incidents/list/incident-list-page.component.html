@@ -5,36 +5,43 @@
       <ion-back-button />
     </ion-buttons>
     <ion-title>Incidents</ion-title>
+    @if (
+      requestContext() &&
+      incidents()?.length &&
+      !isLoading() &&
+      !unavailableMessage()
+    ) {
+      <ion-buttons slot="end">
+        <ion-button
+          [routerLink]="newIncidentLink()"
+          [queryParams]="incidentNavigationQueryParams()"
+        >
+          <ion-icon slot="start" name="add-outline" />Report an incident
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <ion-card>
-    <ion-card-content>
-      <ion-button
-        expand="block"
-        color="danger"
-        routerLink="/incidents/new"
-        [queryParams]="scopeQueryParams()"
-      >
-        <ion-icon slot="start" name="rocket-outline" />
-        Houston, we've got a problem
-      </ion-button>
-    </ion-card-content>
-  </ion-card>
-
   @if (!requestContext()) {
-    <ion-card>
-      <ion-card-content>
-        <p>Open a project and environment connected to a DataTug server to load local Incidents.</p>
-        <p>Create a private project to record your first hosted Incident, or open your existing private project.</p>
+    <sneat-datatug-incident-empty-state>
+      <div class="ion-padding">
+        <p>
+          Open a project and environment connected to a DataTug server to load
+          local Incidents.
+        </p>
+        <p>
+          Create a private project to record your first hosted Incident, or open
+          your existing private project.
+        </p>
         @if (hostedIncidentsHref(); as href) {
           <ion-button [routerLink]="href">Open private Incidents</ion-button>
         } @else {
           <sneat-datatug-detective-demo-starter destination="incidents" />
         }
-      </ion-card-content>
-    </ion-card>
+      </div>
+    </sneat-datatug-incident-empty-state>
   } @else if (unavailableMessage()) {
     <ion-card>
       <ion-card-content>
@@ -50,8 +57,8 @@
       </ion-card-content>
     </ion-card>
   } @else if (incidents(); as items) {
-    <ion-card>
-      @if (items.length) {
+    @if (items.length) {
+      <ion-card>
         <ion-list>
           @for (
             incident of items;
@@ -59,7 +66,7 @@
           ) {
             <ion-item
               [routerLink]="incidentLink(incident)"
-              [queryParams]="scopeQueryParams()"
+              [queryParams]="incidentNavigationQueryParams()"
               button
               detail
             >
@@ -70,11 +77,12 @@
             </ion-item>
           }
         </ion-list>
-      } @else {
-        <ion-card-content>
-          <p>No incidents yet.</p>
-        </ion-card-content>
-      }
-    </ion-card>
+      </ion-card>
+    } @else {
+      <sneat-datatug-incident-empty-state
+        [createLink]="newIncidentLink()"
+        [queryParams]="incidentNavigationQueryParams()"
+      />
+    }
   }
 </ion-content>

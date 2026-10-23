@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// A live read of the deployed product: GitHub is the real one, under the guard's live budget (e2e/helpers/demodb-guard.ts).
+process.env['GITHUB_E2E_MODE'] ??= 'live';
+
 // Live, opt-in journey against the deployed datatug-cloud-preview (Stripe TEST
 // keys only). It serves the `business-preview` build on http://localhost:18782,
 // the one origin the preview admits (`localhost`, never 127.0.0.1).

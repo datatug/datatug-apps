@@ -27,15 +27,23 @@ import {
   IProjectContext,
   parseProjectUrl,
 } from '../../../nav/nav-models';
-import { isSharedProjectRef } from '../../../core/project-context';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import {
+  incidentPageQueryParams,
+  incidentProjectRefFromUrl,
+  incidentProjectRouteScope,
+} from '../../../incidents/incident-navigation';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
 import { addIcons } from 'ionicons';
-import { chatbubblesOutline, warningOutline } from 'ionicons/icons';
+import {
+  chatbubblesOutline,
+  idCardOutline,
+  warningOutline,
+} from 'ionicons/icons';
 
-addIcons({ chatbubblesOutline, warningOutline });
+addIcons({ chatbubblesOutline, idCardOutline, warningOutline });
 
 interface IProjectTopLevelPage {
   path: ProjectTopLevelPage;
@@ -94,23 +102,42 @@ export class ProjectMenuTopComponent implements OnDestroy {
   // Signal mirror of the plain `project` field so the computed above
   // recomputes on context change (zoneless: plain fields notify nothing).
   private readonly currentProjectId = signal<string | undefined>(undefined);
+  private readonly currentUrl = signal('');
   // Context carry-over from the retired sidebar card: link the incident list
   // to the active store/project/environment scope when all three are known.
   protected readonly incidentQueryParams = computed(() => {
+    const currentUrl = this.currentUrl();
+    if (incidentProjectRefFromUrl(currentUrl)) {
+      const explicit = incidentProjectRouteScope(currentUrl);
+      return incidentPageQueryParams(
+        currentUrl,
+        explicit
+          ? incidentContextQueryParams({
+              agentStoreId: explicit.agentStoreId,
+              scope: explicit,
+            })
+          : undefined,
+      );
+    }
     const agentStoreId = this.currentStoreId();
     const project = this.currentProjectId();
     const environment = this.currentEnvironment()?.id;
-    if (!agentStoreId || !project || !environment) {
-      return undefined;
-    }
-    return incidentContextQueryParams({
-      agentStoreId,
-      scope: {
-        storeId: project,
-        project,
-        environment,
-      },
-    });
+    const scope =
+      agentStoreId && project && environment
+        ? incidentContextQueryParams({
+            agentStoreId,
+            scope: {
+              storeId: project,
+              project,
+              environment,
+            },
+          })
+        : undefined;
+    const projectRef = this.project?.ref;
+    return incidentPageQueryParams(
+      projectRef ? projectPageHref(projectRef, 'incidents') : '/incidents',
+      scope,
+    );
   });
 
   // Widgets, Tags and DB models are empty-shell pages — see
@@ -141,7 +168,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
     ...ProjectMenuTopComponent.sortProjectPages([
       { path: 'tags', title: 'Tags', icon: 'pricetags-outline' },
       { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
-
+      { path: 'incidents', title: 'Incidents', icon: 'warning-outline' },
       {
         path: 'sessions',
         title: 'Sessions',
@@ -151,6 +178,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
         path: 'chat',
         title: 'Chat',
         icon: 'chatbubbles-outline',
+      },
+      {
+        path: 'cards',
+        title: 'Cards',
+        icon: 'id-card-outline',
       },
       {
         path: 'checks',
@@ -180,7 +212,6 @@ export class ProjectMenuTopComponent implements OnDestroy {
         icon: 'book-outline',
       },
       {
-
         path: 'servers',
         title: 'Servers',
         icon: 'server-outline',
@@ -228,6 +259,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   constructor() {
     const syncSession = () => {
+      this.currentUrl.set(this.router?.url || location.href);
       const parsed = this.router
         ? parseProjectUrl(this.router.url.split('?')[0])
         : undefined;
@@ -290,15 +322,10 @@ export class ProjectMenuTopComponent implements OnDestroy {
     return isCanonicalPublicDemo(this.project?.ref);
   }
 
-  incidentsProjectRoute(): UrlTree | string {
+  incidentsProjectRoute(): string {
     const projectRef = this.project?.ref;
-    if (
-      (isCanonicalPublicDemo(projectRef) ||
-        (projectRef && isSharedProjectRef(projectRef))) &&
-      this.router &&
-      projectRef
-    ) {
-      return this.router.parseUrl(projectPageHref(projectRef, 'incidents'));
+    if (projectRef) {
+      return projectPageHref(projectRef, 'incidents').split('?')[0];
     }
     return '/incidents';
   }
@@ -323,6 +350,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'sessions',
           'boards',
           'tags',
+          'cards',
         ].includes(page))
     )
       return false;

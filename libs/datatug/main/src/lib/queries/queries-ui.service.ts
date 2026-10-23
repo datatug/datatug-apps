@@ -63,12 +63,13 @@ export class QueriesUiService {
           text: 'Hosted DemoDB table (TugQL)',
           role: 'selected',
           handler: createNewQuery(QueryType.DTQL),
-        }, {
+        }] : []),
+        {
           // icon: 'browser-outline',
           text: 'HTTP',
           role: 'selected',
           handler: createNewQuery(QueryType.HTTP),
-        }] : []),
+        },
         {
           // icon: 'cancel',
           text: 'Cancel',

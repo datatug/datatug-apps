@@ -36,3 +36,38 @@ export const loadDemoOvdbPage = () =>
 // Direct OVDB evidence view: fields are explicitly mapped in DataTug, not OVDB.
 export const loadDemoLogsPage = () =>
   import('./lib/pages/demo-logs/demo-logs-page.component').then((m) => m.DemoLogsPageComponent);
+
+// The app-level 404 (datatug-app-routes.ts): any address no route answers, instead of NG04002 and the crash dialog.
+export const loadNotFoundPage = () =>
+  import('./lib/routes/project-not-found-page.component').then((m) => m.ProjectNotFoundPageComponent);
+
+export {
+  ErrorStateComponent,
+  type ErrorStateLink,
+} from './lib/components/error-state/error-state.component';
+
+// Project cards (spec/features/project-cards): storage service, standalone card view and the shared result cache.
+export {
+  ProjectCardsService,
+  CardNotFoundError,
+  cardBrief,
+} from './lib/cards/project-cards.service';
+export {
+  ProjectCardViewComponent,
+  cardQueryIds,
+} from './lib/cards/project-card-view.component';
+export {
+  cardBoardContext,
+  refParameterValues,
+  missingRequired,
+} from './lib/cards/card-parameters';
+export {
+  BoardQueryResults,
+  BOARD_QUERY_RESULTS_OPTIONS,
+  PROJECT_CARD_RESULTS,
+  PROJECT_CARD_RESULTS_OPTIONS,
+  cardResultKey,
+  cardResultScope,
+  canonicalJson,
+} from './lib/board/core/board-query-results.service';
+export * from './lib/analytics/usage-analytics';

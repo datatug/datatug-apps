@@ -3,8 +3,10 @@ import { TagFilterState } from '../../../tags/tag-filter-state';
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
+import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { ErrorLogger, STORE_ID_GITHUB_COM } from '@sneat/core';
-import { map, of, Subject } from 'rxjs';
+import { map, of, Subject, throwError } from 'rxjs';
+import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 
 import { ServersPageComponent } from './servers-page.component';
 import { ProjectDatabaseSourcesComponent } from './project-database-sources.component';
@@ -16,6 +18,7 @@ import { EnvironmentService } from '../../../services/unsorted/environment.servi
 import { IProjectRef } from '../../../core/project-context';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { IProjDbServerSummary } from '../../../models/definition/apis/database';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 // Every describe block below provides these two — `EnvironmentService` and
 // `ProjectService` — because the constructor unconditionally calls
@@ -53,13 +56,7 @@ describe('ServersPage', () => {
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -90,6 +87,215 @@ describe('ServersPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('ServersPage signed-out public GitHub declarations', () => {
+  const conn = (id: string, dataset: string, storage: string) => ({
+    id,
+    dataset,
+    storage,
+    readiness: 'public-api',
+    environments: ['dev'],
+  });
+
+  async function render(options: {
+    storeId?: string;
+    apiError: unknown;
+    files: Record<string, string>;
+    summaries?: Record<string, unknown>;
+  }) {
+    const connectionCatalog = vi.fn(() => throwError(() => options.apiError));
+    const listDirectory = vi.fn(() =>
+      of(
+        [...Object.keys(options.files), 'connections/notes.md'].map((path) => ({
+          name: path.split('/').pop() as string,
+          path: `x/${path}`,
+          type: 'file' as const,
+        })),
+      ),
+    );
+    await TestBed.configureTestingModule({
+      imports: [ServersPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of({
+              storeId: options.storeId ?? STORE_ID_GITHUB_COM,
+              projectId: 'datatug-demo-project@datatug@demo-project-1',
+            }),
+          },
+        },
+        provideMockErrorLogger(),
+        { provide: ModalController, useValue: { create: vi.fn() } },
+        { provide: NavController, useValue: { navigateForward: vi.fn() } },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers: vi.fn(() => of([])),
+            deleteDbServer: vi.fn(),
+          },
+        },
+        {
+          provide: EnvironmentService,
+          useValue: {
+            listEnvironments: vi.fn(() => of([{ id: 'dev' }, { id: 'QA' }])),
+          },
+        },
+        noopProjectServiceProvider,
+        { provide: ProjectQueryApiService, useValue: { connectionCatalog } },
+        {
+          provide: GithubProjectReaderService,
+          useValue: {
+            listDirectory,
+            getRawText: vi.fn((_project: string, path: string) =>
+              of(options.files[path]),
+            ),
+            getEnvironmentSummary: vi.fn((_project: string, id: string) =>
+              options.summaries?.[id]
+                ? of(options.summaries[id])
+                : throwError(() => new Error(`no ${id}.env.json`)),
+            ),
+          },
+        },
+      ],
+    })
+      .overrideComponent(ServersPageComponent, {
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(ServersPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    const html = fixture.nativeElement.innerHTML as string;
+    return {
+      html,
+      listDirectory,
+      row: (dataset: string) =>
+        fixture.nativeElement.querySelector(
+          `[data-testid="database-database:${dataset}"]`,
+        )?.innerHTML as string | undefined,
+    };
+  }
+
+  it.each([
+    ['answers 401', { status: 401 }],
+    ['answers 403', { status: 403 }],
+    ['answers 404', { status: 404 }],
+    ['refuses a signed-out visitor', SneatApiNotAuthenticatedError],
+  ])(
+    'lists Northwind from connections/*.json when the catalogue API %s',
+    async (_, apiError) => {
+      const view = await render({
+        apiError,
+        files: {
+          'connections/demo-db.json': JSON.stringify({
+            connections: [
+              conn('northwind-sqlite', 'northwind', 'sqlite'),
+              conn('northwind-postgresql', 'northwind', 'postgresql'),
+            ],
+          }),
+          'connections/shipping.json': JSON.stringify({ connections: [] }),
+        },
+      });
+      expect(view.row('northwind')).toContain('northwind-sqlite');
+      expect(view.row('northwind')).toContain('northwind-postgresql');
+      expect(view.html).not.toContain('could not be loaded');
+    },
+  );
+
+  it("lists a public GitHub project's registered catalogs from its environment files", async () => {
+    const view = await render({
+      apiError: SneatApiNotAuthenticatedError,
+      files: {},
+      summaries: {
+        dev: {
+          id: 'dev',
+          title: 'dev',
+          editionConnections: ['private'],
+          dbServers: [
+            {
+              id: 'sqlite3:chinook',
+              driver: 'sqlite3',
+              host: '',
+              path: 'chinook.sqlite',
+              catalogs: ['chinook'],
+            },
+          ],
+        },
+      },
+    });
+    expect(view.row('chinook')).toContain('Registered catalog');
+    expect(view.row('chinook')).toContain('sqlite3');
+    expect(view.html).not.toContain('private');
+    expect(view.html).not.toContain('Environments could not be loaded');
+  });
+
+  it.each([{ status: 500 }, { status: 0 }, new Error('boom')])(
+    'keeps the error banner and does not read the repository when the API fails with %o',
+    async (apiError) => {
+      const view = await render({
+        apiError,
+        files: {
+          'connections/demo-db.json': JSON.stringify({
+            connections: [conn('northwind-sqlite', 'northwind', 'sqlite')],
+          }),
+        },
+      });
+      expect(view.listDirectory).not.toHaveBeenCalled();
+      expect(view.row('northwind')).toBeUndefined();
+      expect(view.html).toContain(
+        'Database connection declarations could not be loaded.',
+      );
+    },
+  );
+
+  it('never falls back for a non-GitHub store', async () => {
+    const view = await render({
+      storeId: 'http://agent',
+      apiError: { status: 401 },
+      files: {},
+    });
+    expect(view.listDirectory).not.toHaveBeenCalled();
+    expect(view.html).toContain(
+      'Database connection declarations could not be loaded.',
+    );
+  });
+
+  it('dedupes connections by id (first sorted file wins) and skips a malformed file', async () => {
+    const view = await render({
+      apiError: { status: 401 },
+      files: {
+        'connections/a.json': JSON.stringify({
+          connections: [conn('northwind-sqlite', 'northwind', 'sqlite')],
+        }),
+        'connections/b.json': '{ not json',
+        'connections/c.json': JSON.stringify({
+          connections: [
+            conn('northwind-sqlite', 'pubs', 'sqlite'),
+            conn('pubs-sqlite', 'pubs', 'sqlite'),
+          ],
+        }),
+      },
+    });
+    const northwind = view.row('northwind') ?? '';
+    expect(northwind.match(/data-instance-key/g)).toHaveLength(1);
+    expect(view.row('pubs')).toContain('pubs-sqlite');
+    expect(view.row('pubs')?.match(/data-instance-key/g)).toHaveLength(1);
+    expect(view.html).not.toContain('could not be loaded');
+  });
+
+  it('shows an empty project, not an error, when the connections folder has no files', async () => {
+    const view = await render({ apiError: { status: 401 }, files: {} });
+    expect(view.html).not.toContain('could not be loaded');
+    expect(view.row('northwind')).toBeUndefined();
   });
 });
 
@@ -755,13 +961,7 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: ProjectContextService, useValue: projectContextServiceMock },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -861,13 +1061,7 @@ describe("ServersPage clears the delete button's disabled state once deletion co
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -1070,7 +1264,16 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
   /** Strips Angular's `<!---->` structural-directive anchor comments so an
    * element's own text can be compared exactly (`rowLabelText()` below). */
   function stripComments(value: string): string {
-    return value.replace(/<!--[\s\S]*?-->/g, '').trim();
+    const template = document.createElement('template');
+    template.innerHTML = value;
+    const walker = document.createTreeWalker(
+      template.content,
+      NodeFilter.SHOW_COMMENT,
+    );
+    const comments: Node[] = [];
+    while (walker.nextNode()) comments.push(walker.currentNode);
+    for (const comment of comments) comment.parentNode?.removeChild(comment);
+    return template.innerHTML.trim();
   }
 
   function dbTabBadgeText(): string | undefined {
@@ -1105,13 +1308,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,

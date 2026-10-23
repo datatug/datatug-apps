@@ -1,3 +1,5 @@
+import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
+import { friendlyError, redactErrorText } from '@datatug/friendly-error';
 import {
   keepVisibleOnWidthReflow,
   type WidthReflowAnchor,
@@ -7,6 +9,7 @@ import {
   prepareLocalMeaningSave,
   type LocalMeaningSaveSnapshot,
 } from '../../semantic-project-reference';
+import { localOvdbRequirement } from '../../local-ovdb-requirement';
 import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
 
 import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
@@ -73,6 +76,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { IEnvironmentFull } from '../../../models/definition/environments';
+import { ResultCellCardsComponent } from '../../../cards/result-cell-cards.component';
 import { ProjectService } from '../../../services/project/project.service';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -97,6 +101,7 @@ import {
   inject,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -132,10 +137,18 @@ import {
 import { gridStateKey } from '../../../components/results-grid/results-grid-state';
 import { addIcons } from 'ionicons';
 import {
+  checkmarkOutline,
   copyOutline,
+  createOutline,
+  ellipsisHorizontal,
+  globeOutline,
   informationCircleOutline,
+  openOutline,
+  saveOutline,
+  searchOutline,
   shieldCheckmarkOutline,
 } from 'ionicons/icons';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import {
   type ColDef,
   type CellFocusedEvent,
@@ -432,6 +445,7 @@ import {
   fromEvent,
   map,
   merge,
+  of,
   Subject,
   Subscription,
   timeout,
@@ -466,10 +480,10 @@ import {
   IonSegmentButton,
   IonSpinner,
   IonText,
-  IonTextarea,
   IonTitle,
   IonToolbar,
   ViewDidEnter,
+  AlertController,
 } from '@ionic/angular';
 import {
   AgentContextService,
@@ -520,7 +534,9 @@ import {
   IParameter,
   IParameterDef,
 } from '../../../models/definition/parameter';
+import { httpRequestSaveProblem } from '../../http-request-rules';
 import {
+  IHttpQueryRequest,
   IQueryDef,
   ISqlQueryRequest,
   ITextQueryRequest,
@@ -539,6 +555,11 @@ import { DatatugServicesNavModule } from '../../../services/nav/datatug-services
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../../../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../../../components/parameters/parameter-lookup.service';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
 import {
@@ -553,6 +574,7 @@ import {
   type FederatedQueryResult,
 } from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
+import { federationReadsOvdb } from '../../ingitdb-github-source';
 import type {
   LocalResultDescriptor,
   LocalResultRef,
@@ -623,7 +645,15 @@ import {
   QueryEditorStateService,
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
+import { HttpRowActionComponent } from '../../http-row-action/http-row-action.component';
+import { HttpRowBindingStore } from '../../http-row-action/http-row-binding.store';
+import {
+  bagEntriesFromSnapshot,
+  type HttpBagEntry,
+  type HttpRowBinding,
+} from '../../http-parameter-binding';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { UsageAnalyticsService } from '../../../analytics/usage-analytics';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
  * `confirmConflict()`'s own comment on why a confirmation is invalidated (not silently
@@ -805,12 +835,77 @@ export function extractLinkedEntityNames(
 
 let queryParameterEditorId = 0;
 
+/** Decodes a native parameter's text value into a typed value; throws when invalid. */
+function nativeTypedValue(parameter: IParameterDef, raw: string): TypedValue {
+    const kind =
+      parameter.type === 'integer'
+        ? 'integer'
+        : parameter.type === 'decimal' || parameter.type === 'money'
+          ? 'decimal'
+          : parameter.type === 'number' || parameter.type === 'float'
+            ? 'number'
+            : parameter.type === 'boolean' || parameter.type === 'bit'
+              ? 'boolean'
+              : parameter.type === 'date'
+                ? 'date'
+                : parameter.type === 'datetime'
+                  ? 'datetime'
+                  : ['string', 'text', 'UUID', 'GUID'].includes(parameter.type)
+                    ? 'string'
+                    : undefined;
+    if (!kind || parameter.isMultiValue)
+        throw new Error('This parameter type needs a supported editor.');
+      const candidate = {
+        type: kind,
+        value:
+          kind === 'number'
+            ? Number(raw)
+            : kind === 'boolean'
+              ? raw === 'true'
+                ? true
+                : raw === 'false'
+                  ? false
+                  : raw
+              : raw,
+      };
+      const value = decodeTypedValue(candidate);
+      if (
+        value.type === 'integer' &&
+        !Number.isSafeInteger(Number(value.value))
+      )
+        throw new Error(
+          'This integer cannot be represented losslessly by SQL.',
+        );
+  return value;
+}
+
+/** A parameter's declared default (the saved demo value), typed; undefined when absent or invalid. */
+function declaredParameterDefault(
+  parameter: IParameterDef,
+): TypedValue | undefined {
+  const declared = parameter.defaultValue;
+  if (
+    declared === undefined ||
+    declared === null ||
+    Array.isArray(declared) ||
+    typeof declared === 'object'
+  )
+    return undefined;
+  try {
+    return nativeTypedValue(parameter, String(declared));
+  } catch {
+    return undefined;
+  }
+}
+
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
     TagsEditorComponent,
+    EvidenceCopyLinkComponent,
+    ResultCellCardsComponent,
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
     EvidenceSharePanelComponent,
@@ -852,11 +947,13 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
+    ParameterLookupButtonComponent,
     ResultsGridComponent,
     SavedResultBannerComponent,
     HeldResultPresentationComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
+    HttpRowActionComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
@@ -889,7 +986,6 @@ let queryParameterEditorId = 0;
     IonNote,
     IonSpinner,
     IonText,
-    IonTextarea,
     SourceRightsNoticeComponent,
     LimitationHeaderComponent,
   ],
@@ -1297,16 +1393,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const ref = this.project?.ref;
     if (!ref?.spaceID || !this.retainedQueryPending() || this.running()) return;
     try {
-      const native = this.retainedScope.capture(
-        ref,
-        undefined,
-        this.queryDef()?.connectionId === 'shipping-working-copy'
-          ? {
-              sourceId: 'shipping-working-copy',
-              environment: this.hostedEnvironment(),
-            }
-          : undefined,
-      );
+      const native = this.retainedScope.capture(ref, undefined, {
+        environment: this.hostedEnvironment(),
+      });
       const state = await firstValueFrom(
         this.detectiveClient
           .state({
@@ -2014,6 +2103,292 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public editorState?: IQueryEditorState = undefined;
   /** Current selected query's header label; normalized only for presentation. */
   public readonly queryPageTitle = signal('Query');
+
+  /** The header's second line: what kind of query this is and the source it reads. */
+  public readonly querySourceSubtitle = computed(() => {
+    const def = this.queryDef();
+    if (!def) return '';
+    const type = def.request.queryType;
+    const kind =
+      type === QueryType.SQL
+        ? 'SQL'
+        : type === QueryType.HTTP
+          ? 'HTTP'
+          : type === QueryType.DTQL && this.isNativeDtqlWorkspace()
+            ? 'DTQL'
+            : type === QueryType.DTQL || type === QueryType.TugQL
+              ? 'TugQL'
+              : String(type ?? '');
+    const source = def.connectionId;
+    return source ? `${kind} · ${source}` : kind;
+  });
+
+  private readonly alertController = inject(AlertController);
+  private readonly authStatus = toSignal(
+    inject(SneatAuthStateService, { optional: true })?.authState.pipe(
+      map((state) => state.status),
+    ) ?? of(undefined),
+    { initialValue: undefined },
+  );
+
+  /** `true` when this visitor cannot save the query, so authoring actions
+   * (Save, Validators) are hidden instead of shown inert. */
+  public isQueryReadOnly(): boolean {
+    if (isDevicePersonalQuery(this.queryState.id ?? '')) return false;
+    if (this.queryState.saveSupported === false || !this.canSaveQuery())
+      return true;
+    const ref = this.project?.ref;
+    return (
+      !!ref &&
+      isGithubStoreId(ref.storeId) &&
+      !ref.projectApi &&
+      this.authStatus() !== 'authenticated'
+    );
+  }
+
+  /** The one line that tells a read-only visitor why the authoring actions are hidden. */
+  public queryReadOnlyReason(): string {
+    const reason = (this.queryState as { unsupportedSaveReason?: string })
+      .unsupportedSaveReason;
+    if (this.queryState.saveSupported === false && reason)
+      return `Read-only: ${reason}`;
+    const ref = this.project?.ref;
+    if (
+      ref &&
+      isGithubStoreId(ref.storeId) &&
+      !ref.projectApi &&
+      this.authStatus() !== 'authenticated'
+    )
+      return 'Read-only: sign in to save changes. You can still run this query here.';
+    return 'Read-only: this project does not accept saves from here. You can still run this query.';
+  }
+
+  /** The Save button carries the save state: "Saved" (done), "Save" (changes), "Saving". */
+  public saveButtonLabel(): string {
+    const state = this.querySaveState();
+    return state.startsWith('Unsaved') ? 'Save' : state;
+  }
+
+  /** The views that are not tabs of their own for a saved SQL/DTQL query. */
+  public readonly workspaceOverflowTabs = computed<
+    readonly { readonly value: WorkspaceTab; readonly label: string }[]
+  >(() => {
+    if (this.isTugqlAuthorJourney()) return [];
+    const native = this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace();
+    const tabs: { value: WorkspaceTab; label: string }[] = [
+      { value: 'compose', label: 'Compose' },
+    ];
+    if (native) tabs.push({ value: 'tugql', label: 'TugQL' });
+    tabs.push(
+      { value: 'preview', label: 'Preview SQL' },
+      { value: 'sources', label: 'Sources' },
+      { value: 'related', label: 'Related' },
+    );
+    return tabs;
+  });
+
+  /** Whether a workspace view gets a segment button: always in the author
+   * journey, otherwise only primary views and the overflow view that is open. */
+  public showWorkspaceTab(tab: WorkspaceTab): boolean {
+    if (this.isTugqlAuthorJourney()) return true;
+    if (
+      tab === 'tugql' &&
+      !this.isNativeSqlWorkspace() &&
+      !this.isNativeDtqlWorkspace()
+    )
+      return true;
+    return this.workspaceTab() === tab;
+  }
+
+  /** Required parameters of a saved SQL/DTQL query that still have no value. */
+  public readonly nativeMissingRequiredParameters = computed(() => {
+    if (this.isTugqlAuthorJourney()) return [];
+    const bindings = this.bindings();
+    return (this.queryDef()?.parameters ?? []).filter((p) => {
+      if (!p.isRequired) return false;
+      const binding = bindings.find((b) => b.parameterId === p.id);
+      return !binding || binding.value === undefined;
+    });
+  });
+
+  /** Why parameters keep Run off for a saved SQL/DTQL query, if they do. */
+  private readonly nativeParameterBlock = computed<
+    { readonly message: string; readonly action: string } | undefined
+  >(() => {
+    if (this.isTugqlAuthorJourney()) return undefined;
+    const parameters = this.queryDef()?.parameters ?? [];
+    if (!parameters.length) return undefined;
+    const errors = this.nativeParameterErrors();
+    const invalid = parameters.filter((p) => errors.has(p.id));
+    if (invalid.length)
+      return {
+        message: `Run is off: enter a valid value for ${invalid
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
+    const missing = this.nativeMissingRequiredParameters();
+    if (missing.length)
+      return {
+        message: `Run is off until you set ${missing
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
+    if (this.bindings().some((b) => b.blocked))
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
+    return undefined;
+  });
+
+  /** Why Run is off for a saved SQL/DTQL query, in the visitor's words, for
+   * every cause `nativeRunDisabled()` checks; `action` names the Parameters
+   * recovery when parameters are the cause. */
+  public nativeRunBlock():
+    | { readonly message: string; readonly action?: string }
+    | undefined {
+    if (this.isTugqlAuthorJourney() || this.running()) return undefined;
+    if (this.demoDraftLoading())
+      return { message: 'Loading the browser copy of this query…' };
+    if (this.demoDraftRecovery())
+      return {
+        message: 'Run is off: the browser copy of this query is unavailable.',
+      };
+    if (!this.queryId || !this.project)
+      return { message: 'Run is off while the query loads.' };
+    if (this.unavailableWorkingCopy())
+      return {
+        message:
+          'Run is off: the selected working copy is not open. Choose another runtime.',
+      };
+    const parameters = this.nativeParameterBlock();
+    if (parameters) return parameters;
+    if (this.hasBlockedBindings())
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
+    if (this.isHostedProject) {
+      if (!this.hostedDetectiveState()?.capabilities?.canRun)
+        return { message: 'Run is off: this project does not allow you to run queries.' };
+      if (!this.hostedEnvironment())
+        return { message: 'Run is off: choose an environment first.' };
+      if (this.queryState.isNew)
+        return { message: 'Run is off: save this query first.' };
+      if (this.queryState.isSaving) return { message: 'Saving…' };
+      if (this.isChanged)
+        return {
+          message:
+            'Run is off: save your changes first. Hosted runs use the saved query.',
+        };
+    }
+    if (
+      !this.queryDef()?.connectionId &&
+      this.availableTargets().length > 0 &&
+      !this.selectedSource()
+    )
+      return { message: 'Run is off: choose a source to run against.' };
+    return undefined;
+  }
+
+  /** The polite announcement for the Save button's progress. */
+  public saveAnnouncement(): string {
+    const state = this.querySaveState();
+    return state === 'Saving' || state.startsWith('Saved') ? state : '';
+  }
+
+  /** Whether the More views popover is open (for aria-expanded). */
+  public readonly workspaceMoreOpen = signal(false);
+
+  /** A saved SQL/DTQL query outside the author journey: views from More open
+   * as one extra tab after Parameters. */
+  public nativeOverflowLayout(): boolean {
+    return (
+      !this.isTugqlAuthorJourney() &&
+      (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+    );
+  }
+
+  /** The header offers Rename wherever the page shows no title field (that
+   * field is only for naming a new or untitled saved SQL/DTQL query). */
+  public canRenameQuery(): boolean {
+    if (!this.queryDef() && !this.queryState.def) return false;
+    return (
+      this.isTugqlAuthorJourney() ||
+      (!this.queryState.isNew && !!this.queryState.title)
+    );
+  }
+
+  /** Renames a saved query from the header (writers only). */
+  public async renameQuery(): Promise<void> {
+    const alert = await this.alertController.create({
+      header: 'Rename query',
+      inputs: [
+        {
+          name: 'title',
+          type: 'text',
+          value: this.queryState.title ?? this.queryPageTitle(),
+          attributes: { 'aria-label': 'Query title', maxlength: 200 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Rename', role: 'confirm' },
+      ],
+    });
+    await alert.present();
+    const { data, role } = await alert.onDidDismiss<{
+      values?: { title?: string };
+    }>();
+    const title = data?.values?.title?.trim();
+    if (role !== 'confirm' || !title || title === this.queryState.title)
+      return;
+    this.queryTitleChanged(new CustomEvent('ionChange', { detail: { value: title } }));
+  }
+
+  /** Whether Run is unavailable for a saved SQL/DTQL query right now. */
+  public nativeRunDisabled(): boolean {
+    return (
+      this.running() ||
+      this.demoDraftLoading() ||
+      !!this.demoDraftRecovery() ||
+      this.unavailableWorkingCopy() ||
+      !this.queryId ||
+      !this.project ||
+      this.hasBlockedBindings() ||
+      (this.isHostedProject &&
+        (!this.hostedDetectiveState()?.capabilities?.canRun ||
+          !this.hostedEnvironment() ||
+          !!this.queryState.isNew ||
+          !!this.queryState.isSaving ||
+          this.isChanged)) ||
+      (!this.queryDef()?.connectionId &&
+        this.availableTargets().length > 0 &&
+        !this.selectedSource())
+    );
+  }
+
+  /** Saved HTTP record lookups, labelled so the HTTP step is visible. */
+  public readonly httpLookupSteps = computed(() => {
+    const federation = this.queryDef()?.federation;
+    if (!federation?.lookups?.length) return [];
+    let host = '';
+    try {
+      host = new URL(federation.ovdbBaseUrl).host;
+    } catch {
+      host = '';
+    }
+    return federation.lookups.map((lookup) => {
+      const fields = lookup.fields
+        .map((field) => `${field.source} → ${field.target}`)
+        .join(', ');
+      return `Looks up ${lookup.database}.${lookup.collection} for each ${lookup.fromColumn}${
+        fields ? ` · ${fields}` : ''
+      }${host ? ` · ${host}` : ''}`;
+    });
+  });
   public queryState: IQueryState = {
     id: '',
     queryType: QueryType.SQL,
@@ -2200,6 +2575,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly nativeParameterDrafts = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
+  /** Native parameters whose current value was picked in the lookup ("from lookup"). */
+  private readonly lookupPickedParameters = signal<ReadonlySet<string>>(new Set());
+  private lookupContextCache?: { key: string; context: ParameterLookupHost };
   private readonly nativeParameterErrors = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
@@ -2247,6 +2625,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.nativeParameterErrors().size > 0,
   );
   public readonly running = signal(false);
+  private readonly usage = inject(UsageAnalyticsService);
   public readonly federatedProgress = signal<
     FederatedQueryProgress | undefined
   >(undefined);
@@ -2259,6 +2638,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? federatedVisibleMode(definition)
       : { supported: false, defaultMode: 'full' as const };
   });
+  /** A failed run of a query that reads an OVDB server on this computer: say what to start instead of "Failed to fetch". */
+  public readonly localOvdbNeeded = computed(() =>
+    localOvdbRequirement(
+      this.queryDef(),
+      this.runError(),
+      globalThis.location?.origin ?? '',
+      // Only while the shown text is still the one this classification was made for.
+      this.runConnectionFailure()?.text === this.runError(),
+    ),
+  );
+  /** The rendered run-failure text paired with whether the raw error was a lost connection (the text no longer says so). */
+  private readonly runConnectionFailure = signal<{ text: string } | undefined>(undefined);
+  public readonly localOvdbCopyStatus = signal('');
+  public async copyLocalOvdbCommand(command: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(command);
+      this.localOvdbCopyStatus.set('Copied.');
+    } catch {
+      this.localOvdbCopyStatus.set('Clipboard access is unavailable; select the command to copy it.');
+    }
+  }
+  /** Only a query that sends something to its OVDB server asks for an OVDB token. */
+  public readonly readsOvdb = computed(() => federationReadsOvdb(this.queryDef()?.federation));
   public readonly ovdbDestination = computed(() => {
     try {
       return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;
@@ -4099,6 +4501,162 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.invalidateHistoryScope();
   }
 
+  /** The request being edited when this is an HTTP query. */
+  public get httpRequest(): IHttpQueryRequest | undefined {
+    const request = this.queryState.request;
+    return request?.queryType === QueryType.HTTP
+      ? (request as IHttpQueryRequest)
+      : undefined;
+  }
+
+  /** Why the HTTP request being edited cannot be saved (e.g. an invalid header name). */
+  public get httpSaveProblem(): string | undefined {
+    const request = this.httpRequest;
+    return request
+      ? httpRequestSaveProblem(request, this.httpParameters)
+      : undefined;
+  }
+
+  /** The declared parameters of the HTTP query being edited (http-query-parameters). */
+  public get httpParameters(): readonly IParameterDef[] {
+    return this.queryState.parameters ?? this.queryState.def?.parameters ?? [];
+  }
+
+  public httpParametersChanged(parameters: IParameterDef[]): void {
+    if (!this.queryState.request) return;
+    this.reportGitHubQueryEdit(this.project?.ref);
+    this.queryState = { ...this.queryState, parameters };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
+  public readonly httpBagEntries = computed<HttpBagEntry[]>(() => {
+    const id = this.contextSessionId();
+    const fromSession = bagEntriesFromSnapshot(
+      id ? this.sessionWorkspace?.snapshotFor(id) : undefined,
+    );
+    // The Investigation Context selection and context bindings resolve through the same precedence engine as a
+    // SQL/DTQL parameter (`bindings`); an unblocked value wins over the session snapshot's entry for its field.
+    const resolved: HttpBagEntry[] = this.effectiveBindings().flatMap(
+      (binding) =>
+        binding.meta &&
+        binding.value &&
+        (binding.origin === 'selection' || binding.origin === 'context')
+          ? [
+              {
+                entity: binding.meta.entity,
+                field: binding.meta.field,
+                kind: 'scalar' as const,
+                value: displayTypedValue(binding.value),
+              },
+            ]
+          : [],
+    );
+    const taken = new Set(resolved.map((e) => `${e.entity}.${e.field}`));
+    return [
+      ...resolved,
+      ...fromSession.filter((e) => !taken.has(`${e.entity}.${e.field}`)),
+    ];
+  });
+
+  /**
+   * An HTTP query opened with an Investigation Context selection or context binding for its parameters runs through
+   * the semantic path (result provenance, the explicit recorded-snapshot fallback): one primary Run action, the
+   * Parameters card's. The HTTP editor stays for authoring, without its own Run.
+   */
+  public readonly httpSemanticRun = computed(
+    () =>
+      this.queryDef()?.request.queryType === QueryType.HTTP &&
+      this.visibleBindings().some(
+        (binding) =>
+          binding.origin === 'selection' ||
+          binding.origin === 'context' ||
+          !!binding.blocked,
+      ),
+  );
+
+  /** The result row an HTTP run was launched from (Run HTTP query action). */
+  public readonly httpRowBinding = signal<HttpRowBinding | undefined>(undefined);
+  private httpRowBindingQueryId?: string;
+  private readonly httpRowBindings = inject(HttpRowBindingStore);
+  /** The focused result row, offered to "Run HTTP query". */
+  public readonly httpActionRow = signal<HttpRowBinding | undefined>(undefined);
+  /** Rows checked in the result grid: more than one disables "Run HTTP query". */
+  public readonly httpCheckedRows = signal(0);
+
+  /** Takes the row offered for this query when it opens; another query drops it. */
+  private syncHttpRowBinding(queryId: string): void {
+    if (queryId === this.httpRowBindingQueryId) return;
+    this.httpRowBindingQueryId = queryId;
+    this.httpRowBinding.set(this.httpRowBindings.take(queryId));
+  }
+
+  private httpFocusedRow?: { values: unknown[]; position: number };
+  private httpCheckedRow?: { values: unknown[]; position: number };
+
+  /** Exactly one checked row is the selected row; with none checked the focused row is offered. */
+  private syncHttpCheckedRow(api: GridApi<QueryResultGridRow>): void {
+    const nodes = api.getSelectedNodes?.() ?? [];
+    this.httpCheckedRows.set(nodes.length);
+    const columns = this.displayedRecordset()?.columns;
+    const data = nodes.length === 1 ? nodes[0].data : undefined;
+    this.httpCheckedRow =
+      data && columns
+        ? {
+            values: columns.map((_, i) => data[`result_${i}` as keyof typeof data]),
+            position: (nodes[0].rowIndex ?? 0) + 1,
+          }
+        : undefined;
+    this.offerHttpActionRow();
+  }
+
+  private offerHttpActionRow(): void {
+    const columns = this.displayedRecordset()?.columns;
+    const row = this.httpCheckedRow ?? this.httpFocusedRow;
+    if (columns && row) this.setHttpActionRow(columns, row.values, row.position);
+    else this.httpActionRow.set(undefined);
+  }
+
+  /** A new result shows other rows, so none of the remembered ones applies to it. */
+  private readonly forgetHttpRowsOnNewResult = effect(() => {
+    this.displayedRecordset();
+    untracked(() => {
+      this.httpFocusedRow = undefined;
+      this.httpCheckedRow = undefined;
+      this.httpCheckedRows.set(0);
+      this.httpActionRow.set(undefined);
+    });
+  });
+
+  private setHttpActionRow(
+    columns: readonly { readonly name: string; readonly meta?: unknown }[],
+    values: readonly unknown[],
+    position?: number,
+  ): void {
+    const savedColumns = this.queryState.def?.recordsets?.[0]?.columns ?? [];
+    const plain = (v: unknown) =>
+      v !== null && typeof v === 'object' && 'value' in v && 'type' in v
+        ? (v as { value: unknown }).value
+        : v;
+    this.httpActionRow.set({
+      columns: columns.map((c) => {
+        const meta =
+          (c.meta as HttpRowBinding['columns'][number]['meta']) ??
+          (savedColumns.find((s) => s.name === c.name) as { meta?: HttpRowBinding['columns'][number]['meta'] } | undefined)?.meta;
+        return meta ? { name: c.name, meta } : { name: c.name };
+      }),
+      values: values.map(plain),
+      label: `${this.queryPageTitle()} row${position !== undefined ? ' ' + position : ''}`,
+    });
+  }
+
+  public httpRequestChanged(request: IHttpQueryRequest): void {
+    if (!this.queryState.request) return;
+    this.reportGitHubQueryEdit(this.project?.ref);
+    this.queryState = { ...this.queryState, request };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
   public queryTextChanged(event: Event, reportActivity = true): void {
     const isAuthorDraft = this.isTugqlAuthorJourney();
     // Local Author editing is independent of whether this rich query can be
@@ -4282,14 +4840,73 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
     // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
-    // the checked ones, so a selection change only keeps the api.
+    // the checked ones, so a selection change keeps the api. It also tells the HTTP row action which row to offer.
+    this.syncHttpCheckedRow(event.api);
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
+  }
+
+  private readonly pageHost = inject<ElementRef<HTMLElement>>(ElementRef, {
+    optional: true,
+  });
+  /** Project cards for the selected result cell (spec REQ: cell-to-card). */
+  private readonly resultCellCards = viewChild(ResultCellCardsComponent);
+  /** A project card is open beside the results. */
+  public readonly resultCardPaneOpen = signal(false);
+
+  private openCardsForFocusedCell(
+    event: CellFocusedEvent<QueryResultGridRow>,
+  ): void {
+    const cards = this.resultCellCards();
+    if (!cards) return;
+    const colId =
+      typeof event.column === 'string'
+        ? event.column
+        : event.column?.getColId();
+    const index = colId?.startsWith('result_') ? Number(colId.slice(7)) : NaN;
+    const columns = this.displayedRecordset()?.columns;
+    const node =
+      event.rowIndex === null
+        ? undefined
+        : event.api.getDisplayedRowAtIndex(event.rowIndex);
+    if (
+      !colId ||
+      !columns ||
+      !columns[index] ||
+      !node?.data ||
+      node.group ||
+      node.footer
+    ) {
+      cards.clear();
+      return;
+    }
+    const data = node.data;
+    const row = Object.fromEntries(
+      columns.map((c, i) => [c.name, data[`result_${i}`]]),
+    );
+    this.httpFocusedRow = {
+      values: columns.map((_, i) => data[`result_${i}`]),
+      position: (event.rowIndex ?? 0) + 1,
+    };
+    this.offerHttpActionRow();
+    // The focus class lands after this event; the pane anchors the tooltip on the next frame, in this grid only.
+    cards.focusCell(
+      {
+        identity: { column: columns[index].name },
+        value: data[colId],
+        row,
+      },
+      () =>
+        this.pageHost?.nativeElement.querySelector(
+          '.result-grid-viewport .ag-cell-focus',
+        ) ?? null,
+    );
   }
 
   public authorResultCellFocused(
     event: CellFocusedEvent<QueryResultGridRow>,
   ): void {
+    this.openCardsForFocusedCell(event);
     if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
@@ -6159,6 +6776,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    // public-demo REQ:demo-usage-analytics: when a run ends, only the kind of its outcome is recorded.
+    let wasRunning = false;
+    effect(() => {
+      const running = this.running();
+      untracked(() => {
+        if (wasRunning && !running) {
+          const result = this.runResult();
+          const rows =
+            result?.totalRows ?? result?.recordset?.rows?.length ?? 0;
+          this.usage.queryRunFinished(
+            this.runError()
+              ? 'error'
+              : !result
+                ? 'cancelled'
+                : rows > 0
+                  ? 'rows'
+                  : 'empty',
+            this.project?.ref,
+          );
+        }
+        wasRunning = running;
+      });
+    });
     this.retainedScope.changes$
       .pipe(takeUntil(this.destroyed))
       .subscribe(() => {
@@ -6273,7 +6913,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           });
       });
     });
-    addIcons({ copyOutline, informationCircleOutline, shieldCheckmarkOutline });
+    addIcons({
+      checkmarkOutline,
+      copyOutline,
+      createOutline,
+      ellipsisHorizontal,
+      globeOutline,
+      informationCircleOutline,
+      openOutline,
+      saveOutline,
+      searchOutline,
+      shieldCheckmarkOutline,
+    });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
@@ -6537,6 +7188,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             queryState.def !== structuralDraft.saved))
       )
         this.authorSavedDefinition.set(undefined);
+      this.syncHttpRowBinding(queryState.id ?? '');
       const currentTitle = queryState.title ?? queryState.def?.title;
       this.queryPageTitle.set(
         typeof currentTitle === 'string'
@@ -6600,6 +7252,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.loadedTextRepresentation()?.scope !== representationScope
       ) {
         this.nativeParameterDrafts.set(new Map());
+        this.lookupPickedParameters.set(new Set());
         this.nativeParameterErrors.set(new Map());
         this.userBindingValues.set(new Map());
         this.clearedParamIds.set(new Set());
@@ -6622,6 +7275,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             : legacyDtql
               ? 'dtql'
               : 'tugql',
+        );
+        // No dead end: a saved query with a required parameter opens on
+        // Parameters, where its value (pre-filled from a declared demo value
+        // when there is one) and any reason Run is off are visible.
+        afterNextRender(
+          () => {
+            if (
+              this.loadedTextRepresentation()?.scope !== representationScope ||
+              this.isTugqlAuthorJourney() ||
+              !!this.savedResultId() ||
+              !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
+            )
+              return;
+            const tab = this.workspaceTab();
+            if (tab === 'sql' || tab === 'dtql' || tab === 'tugql')
+              this.selectWorkspaceTab('parameters');
+          },
+          { injector: this.injector },
         );
       }
       const nextPlanIdentity = graphStableIdentity(
@@ -7753,11 +8424,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    */
   private updateBindings(explicitlyResolvedParameterId?: string): void {
     const parameterDefs = this.queryState.def?.parameters || [];
-    const parameters: BindingParameterRef[] = parameterDefs.map((p) => ({
-      id: p.id,
-      meta: p.meta,
-      required: p.isRequired,
-    }));
+    const parameters: BindingParameterRef[] = parameterDefs.map((p) => {
+      const defaultValue = declaredParameterDefault(p);
+      return {
+        id: p.id,
+        meta: p.meta,
+        required: p.isRequired,
+        ...(defaultValue ? { defaultValue } : {}),
+      };
+    });
     if (!parameters.length) {
       if (this.isHostedProject && this.bindings().length)
         this.retainedScope.invalidate();
@@ -8054,11 +8729,46 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         : 'text';
   }
 
+  /** Where native parameter pickers look values up (parameter-lookup REQ:runtime-execution); stable per host. */
+  public parameterLookupContext(): ParameterLookupHost {
+    const ref = this.project?.ref;
+    const environment = this.queryState.activeEnv?.id ?? this.envId;
+    const hostConnectionId = this.queryDef()?.connectionId;
+    const key = JSON.stringify([ref?.storeId, ref?.projectId, ref?.spaceID, ref?.projectApi, ref?.branch, environment, hostConnectionId]);
+    if (this.lookupContextCache?.key !== key)
+      this.lookupContextCache = {
+        key,
+        context: {
+          ...(ref ? { projectRef: ref } : {}),
+          ...(environment ? { environment } : {}),
+          ...(hostConnectionId ? { hostConnectionId } : {}),
+        },
+      };
+    return this.lookupContextCache.context;
+  }
+
+  public onNativeParameterPicked(parameter: IParameterDef, pick: ParameterLookupPick): void {
+    this.setNativeParameterInput(parameter, String(pick.value));
+    if (!this.nativeParameterErrors().has(parameter.id) && this.nativeParameterValue(parameter.id) === String(pick.value))
+      this.lookupPickedParameters.set(new Set(this.lookupPickedParameters()).add(parameter.id));
+  }
+
+  private forgetLookupPick(parameterId: string): void {
+    if (!this.lookupPickedParameters().has(parameterId)) return;
+    const next = new Set(this.lookupPickedParameters());
+    next.delete(parameterId);
+    this.lookupPickedParameters.set(next);
+  }
+
   public nativeParameterHint(parameter: IParameterDef): string {
     const parts = [
       parameter.type,
       parameter.isRequired ? 'Required' : 'Optional',
     ];
+    if (this.lookupPickedParameters().has(parameter.id)) {
+      parts.push('from lookup');
+      return parts.join(' · ');
+    }
     const binding = this.nativeParameterBinding(parameter.id);
     if (
       binding?.value !== undefined &&
@@ -8083,6 +8793,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
+    this.forgetLookupPick(parameterId);
     this.nativeParameterDrafts.set(
       new Map(this.nativeParameterDrafts()).set(parameterId, ''),
     );
@@ -8105,6 +8816,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const raw = input ?? '';
+    this.forgetLookupPick(parameter.id);
     this.nativeParameterDrafts.set(
       new Map(this.nativeParameterDrafts()).set(parameter.id, raw),
     );
@@ -8112,46 +8824,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.clearNativeParameter(parameter.id);
       return;
     }
-    const kind =
-      parameter.type === 'integer'
-        ? 'integer'
-        : parameter.type === 'decimal' || parameter.type === 'money'
-          ? 'decimal'
-          : parameter.type === 'number' || parameter.type === 'float'
-            ? 'number'
-            : parameter.type === 'boolean' || parameter.type === 'bit'
-              ? 'boolean'
-              : parameter.type === 'date'
-                ? 'date'
-                : parameter.type === 'datetime'
-                  ? 'datetime'
-                  : ['string', 'text', 'UUID', 'GUID'].includes(parameter.type)
-                    ? 'string'
-                    : undefined;
     try {
-      if (!kind || parameter.isMultiValue)
-        throw new Error('This parameter type needs a supported editor.');
-      const candidate = {
-        type: kind,
-        value:
-          kind === 'number'
-            ? Number(raw)
-            : kind === 'boolean'
-              ? raw === 'true'
-                ? true
-                : raw === 'false'
-                  ? false
-                  : raw
-              : raw,
-      };
-      const value = decodeTypedValue(candidate);
-      if (
-        value.type === 'integer' &&
-        !Number.isSafeInteger(Number(value.value))
-      )
-        throw new Error(
-          'This integer cannot be represented losslessly by SQL.',
-        );
+      const value = nativeTypedValue(parameter, raw);
       this.nativeParameterErrors.set(
         new Map(
           [...this.nativeParameterErrors()].filter(
@@ -8571,13 +9245,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     let native: { actor: string; signal: AbortSignal };
     let intent: { operationId: string; payload: unknown } | undefined;
     try {
-      native = this.retainedScope.capture(
-        ref,
-        undefined,
-        selection || definition.connectionId === 'shipping-working-copy'
-          ? { sourceId: 'shipping-working-copy', environment }
-          : undefined,
-      );
+      native = this.retainedScope.capture(ref, undefined, { environment });
       if (selection) {
         if (
           selection.environment !== environment ||
@@ -10375,8 +11043,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
-    this.runError.set(envelope?.error.message ?? this.extractErrorMessage(err));
-    this.errorLogger.logError(err, 'Failed to run query');
+    const failureText = this.runFailureText(err, envelope?.error.message);
+    this.runConnectionFailure.set(
+      !envelope && this.isConnectionFailure(err) ? { text: failureText } : undefined,
+    );
+    this.runError.set(failureText);
+    // The card above is this failure's one place on the page: no toast on top of it.
+    this.errorLogger.logError(err, 'Failed to run query', { show: false });
   }
 
   /** Renders an RFC3339 instant (`ResultProvenance.observedAt`, `AvailableSnapshot.
@@ -10412,6 +11085,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return rounded < 1000
       ? `${rounded === 0 && milliseconds > 0 ? '<1' : rounded} ms`
       : `${(rounded / 1000).toFixed(1)} s`;
+  }
+
+  /**
+   * What the run-error card says. The database's own message about the SQL (a syntax error, a missing column) is the
+   * point of the card, so it stays, with addresses, paths, secrets and the like removed. Every other failure (an
+   * outage, a lost connection, a missing sign-in) is worded by the shared mapping and never echoes the raw message,
+   * which for an HTTP failure carries the request address.
+   */
+  private runFailureText(err: unknown, databaseMessage?: string): string {
+    const friendly = friendlyError(err, 'the query');
+    const isOutage = err instanceof HttpErrorResponse && (err.status === 0 || err.status >= 500);
+    if (databaseMessage && !isOutage) {
+      return (
+        redactErrorText(databaseMessage, { database: true }) ||
+        'The query could not be run.'
+      );
+    }
+    if (friendly.kind === 'unknown') {
+      return redactErrorText(this.extractErrorMessage(err)) || 'The query could not be run.';
+    }
+    return `${friendly.title}. ${friendly.hint}`;
+  }
+
+  private isConnectionFailure(err: unknown): boolean {
+    return (
+      friendlyError(err, 'the query').kind === 'offline' ||
+      /failed to fetch|networkerror|load failed|network request failed|err_connection/i.test(
+        this.extractErrorMessage(err),
+      )
+    );
   }
 
   private extractErrorMessage(err: unknown): string {

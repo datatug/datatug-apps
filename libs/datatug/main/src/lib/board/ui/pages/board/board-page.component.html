@@ -12,6 +12,15 @@
   @if (hostedProject()) {
     <sneat-datatug-hosted-board-workspace />
   } @else {
+    @if (notFound()) {
+      <sneat-datatug-error-state
+        title="We couldn't load this board"
+        hint="The link may be mistyped, or the board was renamed or deleted. Open it from the list of boards."
+        kindHint="not-found"
+        [retryable]="false"
+        [links]="[{ label: 'Go to Boards', href: boardsHref() }]"
+      />
+    } @else {
     <ion-grid>
       <ion-row>
         <ion-col size="12" class="ion-padding-start">
@@ -81,7 +90,15 @@
     } @else if (loading()) {
       <p class="ion-padding" role="status">Loading board…</p>
     } @else if (loadError()) {
-      <p class="ion-padding" role="alert">{{ loadError() }}</p>
+      <sneat-datatug-error-state
+        what="this board"
+        [error]="loadFailure()"
+        [title]="loadFailure() === undefined ? 'This board could not be opened' : undefined"
+        [hint]="loadFailure() === undefined ? loadError() : loadGuidance()"
+        [retryable]="loadFailure() !== undefined ? undefined : false"
+        [links]="[{ label: 'Boards', href: boardsHref() }]"
+        (retry)="retryLoad()"
+      />
     }
 
     @if (boardDef(); as definition) {
@@ -491,49 +508,11 @@
                         /></label>
                       }
                     }
-                    <h4>Independent source bindings</h4>
-                    @for (source of chart.sources; track source.id) {
-                      <p>
-                        <strong>{{ source.id }}</strong> · {{ source.queryId }}
-                      </p>
-                      @for (
-                        binding of source.parameters ?? [];
-                        track binding.id
-                      ) {
-                        <p>
-                          {{ binding.id }} ←
-                          {{
-                            binding.boardParameterId || 'saved constant/default'
-                          }}
-                        </p>
-                      }
-                      <button
-                        type="button"
-                        [disabled]="chart.sources.length === 1"
-                        (click)="removeTutorialSource(editor, source.id)"
-                      >
-                        Remove source {{ source.id }}
-                      </button>
-                    }
-                    <button
-                      type="button"
-                      aria-disabled="true"
-                      (click)="explainSourceLimit(editorIndex)"
-                      [attr.aria-describedby]="
-                        'source-composition-limit-' + editorIndex
-                      "
-                    >
-                      Add another source (unavailable)
-                    </button>
-                    <p
-                      [id]="'source-composition-limit-' + editorIndex"
-                      tabindex="-1"
-                    >
-                      A second source is unavailable until separate execution
-                      and composition are supported. Use a separate saved-query
-                      tab for independent inspection; missing provider rights
-                      keep a source chart-ineligible.
-                    </p>
+                    <sneat-datatug-chart-source-editor
+                      [definition]="chart"
+                      [queries]="tutorialSourceQueries(editor)"
+                      (edit)="editTutorialSource(editor, $event)"
+                    />
                   }
                 </fieldset>
               }
@@ -544,54 +523,56 @@
     }
 
     @if (boardDef() && parameters()?.length) {
-      <ion-card>
-        @if (lookupUnavailable()) {
-          <p class="ion-padding" role="status">
+      <section class="board-parameters" aria-label="Board parameters">
+        @if (explicitLookupUnavailable()) {
+          <p class="parameter-help" role="status">
             Lookup is unavailable for this project connection or branch. Enter
             parameter values manually.
           </p>
         }
-        <p class="ion-padding">
-          Parameter changes clear previous results. Run or refresh a card to use
-          the new values.
+        <p class="parameter-help">
+          Change a value, then run or refresh a card. Previous results are cleared.
         </p>
         @for (p of parameters(); track p.def.id) {
-          <ion-item [title]="'@' + p.def.id">
-            <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
-            <ion-input
-              [placeholder]="p.def.type"
-              [value]="parameterText(p)"
-              [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
-              [attr.aria-describedby]="
-                parameterErrors()[p.def.id]
-                  ? 'board-parameter-error-' + p.def.id
-                  : null
-              "
-              (ionInput)="setParameterValue(p, $event.detail.value)"
-            />
-            <ion-buttons slot="end">
-              @if (p.def.lookup && !lookupUnavailable()) {
-                <ion-button
-                  color="medium"
-                  [title]="p.def.lookup.sql"
-                  (click)="lookup(p)"
-                >
-                  <ion-icon name="list-outline" />
-                </ion-button>
-              }
-            </ion-buttons>
-          </ion-item>
-          @if (parameterErrors()[p.def.id]; as error) {
-            <p
-              role="alert"
-              class="ion-padding-horizontal"
-              [id]="'board-parameter-error-' + p.def.id"
-            >
-              {{ error }}
-            </p>
-          }
+          <div class="board-parameter">
+            <ion-item [title]="'@' + p.def.id">
+              <ion-input
+                [label]="p.def.title || p.def.id"
+                [labelPlacement]="'fixed'"
+                [placeholder]="p.def.type"
+                [value]="parameterText(p)"
+                [helperText]="lookupOrigins()[p.def.id] ? 'from lookup' : undefined"
+                [attr.aria-invalid]="
+                  parameterErrors()[p.def.id] ? 'true' : null
+                "
+                [attr.aria-describedby]="
+                  parameterErrors()[p.def.id]
+                    ? 'board-parameter-error-' + p.def.id
+                    : null
+                "
+                (ionInput)="onParameterInput(p, $event.detail.value)"
+              />
+              <ion-buttons slot="end">
+                <sneat-datatug-parameter-lookup-button
+                  [parameter]="p.def"
+                  [context]="lookupContext()"
+                  [currentValue]="parameterText(p)"
+                  (picked)="onLookupPicked(p, $event)"
+                />
+              </ion-buttons>
+            </ion-item>
+            @if (parameterErrors()[p.def.id]; as error) {
+              <p
+                role="alert"
+                class="ion-padding-horizontal"
+                [id]="'board-parameter-error-' + p.def.id"
+              >
+                {{ error }}
+              </p>
+            }
+          </div>
         }
-      </ion-card>
+      </section>
     }
 
     @if (
@@ -607,4 +588,5 @@
       />
     }
   }
+    }
 </ion-content>

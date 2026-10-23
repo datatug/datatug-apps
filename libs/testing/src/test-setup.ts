@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import {
+  resetSharedGlobals,
   setupAngularTestingEnvironment,
   setupGlobalMocks,
 } from './base-test-setup';
@@ -50,6 +51,7 @@ export function configureGlobalTestBed() {
 }
 
 export function setupTestEnvironment() {
+  resetSharedGlobals();
   setupAngularTestingEnvironment();
   setupGlobalMocks();
   configureGlobalTestBed();

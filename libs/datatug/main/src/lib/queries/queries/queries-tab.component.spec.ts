@@ -1,7 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA, Component, input } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
-import { ErrorLogger } from '@sneat/core';
 import { of, throwError } from 'rxjs';
 
 import { QueriesTabComponent } from './queries-tab.component';
@@ -15,6 +14,7 @@ import {
   QueriesService,
 } from '../queries.service';
 import { QueryType } from '../../models/definition/query-def';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('QueriesTabComponent', () => {
   let component: QueriesTabComponent;
@@ -25,13 +25,7 @@ describe('QueriesTabComponent', () => {
       imports: [QueriesTabComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -133,13 +127,7 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
     await TestBed.configureTestingModule({
       imports: [QueriesTabComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -288,13 +276,7 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
     return TestBed.configureTestingModule({
       imports: [QueriesTabComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

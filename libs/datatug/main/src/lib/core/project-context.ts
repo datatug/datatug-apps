@@ -8,6 +8,12 @@ export interface IProjectRef {
   readonly branch?: string;
 }
 
+/** Local transport identity only; source admission and revision support remain server/runtime guards. */
+export function isLocalProjectRef(ref: IProjectRef | undefined): ref is IProjectRef {
+  return !!ref && ref.projectApi !== 'cloud' && ref.spaceID === undefined &&
+    !['github', 'github.com', 'firestore'].includes(ref.storeId);
+}
+
 export interface IProjectItemRef extends IProjectRef {
   readonly id: string;
 }

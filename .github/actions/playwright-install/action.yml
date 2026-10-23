@@ -1,0 +1,80 @@
+name: Install Playwright browsers
+description: >-
+  Restores the Playwright browser cache (keyed on the locked Playwright version and the browser list), then installs the
+  browsers and their system libraries. Each attempt is time-boxed and retried, so a slow Ubuntu mirror fails fast and
+  clearly instead of eating the job's timeout-minutes (2026-10-23: e2e-query-mobile died twice on a 13.6 MB apt download).
+inputs:
+  browsers:
+    description: Space-separated Playwright browsers, for example "chromium" or "chromium webkit".
+    required: true
+  attempt-timeout-minutes:
+    description: Wall-clock limit for one install attempt.
+    default: '6'
+  attempts:
+    description: How many attempts before the step fails.
+    default: '3'
+runs:
+  using: composite
+  steps:
+    - name: Resolve Playwright version
+      id: version
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+      run: |
+        v=$(grep -m1 -E '^  playwright@[0-9]' pnpm-lock.yaml | sed -E 's/^  playwright@([^:]+):.*/\1/')
+        echo "playwright=${v:-unknown}" >> "$GITHUB_OUTPUT"
+        echo "os-key=${RUNNER_OS}-${RUNNER_ARCH}-${ImageOS:-unknown}-$(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-na}")" >> "$GITHUB_OUTPUT"
+        echo "browsers-key=$(echo "$BROWSERS" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Playwright browsers
+      id: cache
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}
+
+    - name: Make apt fail fast and retry
+      shell: bash
+      run: |
+        sudo tee /etc/apt/apt.conf.d/99-ci-fast-fail >/dev/null <<'CONF'
+        Acquire::Retries "3";
+        Acquire::http::Timeout "20";
+        Acquire::https::Timeout "20";
+        DPkg::Lock::Timeout "120";
+        CONF
+
+    # Cache hit: browsers are on disk, so only the system libraries are fetched (install-deps, no browser download).
+    # Cache miss: full download. Either way a hung attempt is killed and retried.
+    - name: Install Playwright browsers and system dependencies
+      shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
+        CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        ATTEMPTS: ${{ inputs.attempts }}
+        LIMIT_MIN: ${{ inputs.attempt-timeout-minutes }}
+      run: |
+        if [ "$CACHE_HIT" = "true" ]; then cmd=(install-deps); else cmd=(install --with-deps); fi
+        read -ra browser_list <<< "$BROWSERS"
+        start=$(date +%s)
+        for i in $(seq 1 "$ATTEMPTS"); do
+          echo "Attempt $i/$ATTEMPTS: playwright ${cmd[*]} ${browser_list[*]}"
+          if timeout "${LIMIT_MIN}m" pnpm exec playwright "${cmd[@]}" "${browser_list[@]}"; then
+            echo "Playwright install ok in $(( $(date +%s) - start ))s (cache-hit=$CACHE_HIT)"
+            exit 0
+          fi
+          echo "::warning::Playwright install attempt $i timed out or failed"
+          # timeout runs as the runner user, so it cannot kill the root apt-get Playwright starts through sudo; that
+          # apt-get keeps the dpkg lock and the next attempt dies at once (2026-10-23, #529: "dpkg frontend lock was
+          # locked by another process"). Stop it, wait for the lock, then finish any half-configured dpkg state.
+          sudo pkill -TERM -x apt-get || true
+          sudo pkill -TERM -x dpkg || true
+          for _ in $(seq 1 30); do
+            sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock >/dev/null 2>&1 || break
+            sleep 2
+          done
+          sudo pkill -KILL -x apt-get || true
+          sudo dpkg --configure -a || true
+        done
+        echo "::error::Playwright install failed after $ATTEMPTS attempts ($(( $(date +%s) - start ))s)"
+        exit 1

@@ -6,8 +6,8 @@ import base from './playwright.config';
 // workers and the maintained demo fixtures, and does not claim physical iOS QA.
 export default defineConfig({
   ...base,
-  fullyParallel: false,
-  workers: 1,
+  // The same specs run fully parallel in the Chromium lane: each test owns its context and seeded state.
+  fullyParallel: true,
   outputDir: '../../coverage/apps/datatug-query-mobile/results',
   reporter: [
     ['list'],

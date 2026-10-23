@@ -369,6 +369,12 @@ const expectEditorSource = async (
   expect(await copyEditorSource(page, editor)).toBe(expectedLines.join('\n'));
 };
 
+/** The Save button's state label; read-only visitors have no Save, so ''. */
+const saveStateText = async (page: Page): Promise<string> => {
+  const state = page.locator('.query-save-state');
+  return (await state.count()) ? state.innerText() : '';
+};
+
 const tokenColor = (token: Locator): Promise<string> =>
   token.evaluate((element) => getComputedStyle(element).color);
 
@@ -1242,11 +1248,16 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   const saved = savedSqlSource('chinook-playlist-composition');
   await expect(editor).toBeVisible({ timeout: 20_000 });
   await expectEditorSource(page, editor, saved);
-  await expect(tabs.locator('ion-segment-button')).toHaveCount(7);
+  // A saved SQL query shows Source and Parameters; the other views sit under More.
+  await expect(tabs.locator('ion-segment-button')).toHaveCount(2);
+  const openView = async (view: string) => {
+    await workspace.getByTestId('workspace-more-tab').click();
+    await page.getByTestId(`workspace-more-${view}`).click();
+    await expect(page.locator('ion-popover[data-testid="workspace-more-menu"]')).toBeHidden();
+  };
   await expect(tabs).toHaveClass(/\bmd\b/u);
   await expect(sourceTab).toHaveClass(/\bmd\b/u);
   await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('0');
-  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('…');
   await expect.poll(() => tabs.evaluate((segment) => {
     const selected = segment.querySelector('ion-segment-button[value="sql"]');
     if (!selected) return false;
@@ -1258,8 +1269,10 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('unified-sql-390.png') });
   testInfo.annotations.push({ type: 'screenshot', description: 'unified-sql-390.png: expected the initially selected SQL source tab fully visible within one 48px scrollable Ionic row; observed it in view with the editable saved SQL below and no page overflow.' });
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await expect.poll(() => tabs.evaluate((segment) => segment.getBoundingClientRect().width)).toBeGreaterThan(800);
+  // A short desktop viewport so the page scrolls; resizing must keep the reader's place.
+  await page.setViewportSize({ width: 1280, height: 400 });
+  // The tab row shares its line with More and Run.
+  await expect.poll(() => tabs.evaluate((segment) => segment.getBoundingClientRect().width)).toBeGreaterThan(600);
   const content = page.locator('sneat-datatug-sql-editor ion-content');
   const verticalBefore = await content.evaluate(async (host) => {
     const scroll = await (host as HTMLIonContentElement).getScrollElement();
@@ -1282,37 +1295,15 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
     return scroll.scrollTop;
   });
   expect(verticalAfterResize).toBeGreaterThan(20);
-  // Responsive reflow can preserve the visible anchor with a different scrollTop.
-  // Isolate the tab reveal at a fixed viewport to catch vertical scrolling by it.
-  const verticalBeforeReveal = await content.evaluate(async (host) => {
-    const scroll = await (host as HTMLIonContentElement).getScrollElement();
-    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
-    return scroll.scrollTop;
-  });
-  expect(verticalBeforeReveal).toBeGreaterThan(20);
-  const selectedWasOffscreen = await tabs.evaluate((segment) => {
-    segment.scrollLeft = 0;
-    const selected = segment.querySelector('ion-segment-button[value="sql"]');
-    if (!selected) return false;
-    return selected.getBoundingClientRect().right > segment.getBoundingClientRect().right + 1;
-  });
-  expect(selectedWasOffscreen).toBe(true);
-  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
-  await expect.poll(() => tabs.evaluate((segment) => {
-    const selected = segment.querySelector('ion-segment-button[value="sql"]');
-    if (!selected) return false;
-    const viewport = segment.getBoundingClientRect();
-    const button = selected.getBoundingClientRect();
-    return button.left >= viewport.left - 1 && button.right <= viewport.right + 1;
-  })).toBe(true);
-  const verticalAfterReveal = await content.evaluate(async (host) => {
-    const scroll = await (host as HTMLIonContentElement).getScrollElement();
-    return scroll.scrollTop;
-  });
-  expect(Math.abs(verticalAfterReveal - verticalBeforeReveal)).toBeLessThanOrEqual(2);
+  // Two tabs fit at 390px: the selected Source tab needs no horizontal reveal,
+  // and a view opened from More is added after Parameters.
+  expect(await tabs.evaluate((segment) => segment.scrollWidth <= segment.clientWidth + 1)).toBe(true);
   await expectEditorSource(page, editor, saved);
 
-  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  await openView('tugql');
+  await expect(tabs.locator('ion-segment-button')).toHaveCount(3);
+  expect(await tabs.locator('ion-segment-button').evaluateAll((buttons) =>
+    buttons.map((b) => b.getAttribute('value')))).toEqual(['sql', 'parameters', 'tugql']);
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText('unavailable');
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/function|subquery|expression/iu);
   await sourceTab.click();
@@ -1323,8 +1314,9 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   });
   await pasteCode(page, editor, simple);
   await expectEditorSource(page, editor, simple);
+  await openView('sources');
   await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('1');
-  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  await openView('tugql');
   const derived = workspace.getByTestId('workspace-derived-tugql');
   await expect(derived).toContainText('Read-only TugQL representation');
   await expect(derived.locator('pre')).toContainText('FROM Album');
@@ -1337,7 +1329,6 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   await editor.focus();
   await editor.press(`${mod}+Z`);
   await expectEditorSource(page, editor, saved);
-  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('…');
   expect(workersStarted).toBe(0);
   expect(writes).toEqual([]);
   await expect(page.getByRole('grid')).toHaveCount(0);
@@ -1357,23 +1348,26 @@ test('legacy DTQL YAML opens in its native source pane through a cold link and r
   const workspace = page.getByTestId('unified-text-workspace');
   const tabs = workspace.getByTestId('author-view-tabs');
   const sourceTab = tabs.locator('ion-segment-button[value="dtql"]');
-  const editor = workspace.getByTestId('query-body-text');
-  const textarea = editor.locator('textarea:not(.cloned-input)');
-  await expect(editor).toBeVisible({ timeout: 20_000 });
-  await expect(sourceTab).toHaveClass(/segment-button-checked/u);
-  await expect(textarea).toHaveValue(source);
-  await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('1');
-  await page.reload();
-  await expect(editor).toBeVisible({ timeout: 20_000 });
-  await expect(sourceTab).toHaveClass(/segment-button-checked/u);
-  await expect(textarea).toHaveValue(source);
-  await tabs.locator('ion-segment-button[value="parameters"]').click();
+  const parametersTab = tabs.locator('ion-segment-button[value="parameters"]');
+  // DTQL shares the SQL source's code component.
+  const editor = workspace.getByTestId('query-body-text').locator('.cm-content');
+  // A required CustomerId opens the workspace on Parameters, so Run is never a dead end.
+  await expect(parametersTab).toHaveClass(/segment-button-checked/u, { timeout: 20_000 });
   await expect(workspace.getByRole('textbox', { name: 'CustomerId value' })).toBeVisible();
-  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('1');
+  await sourceTab.click();
+  await expect(editor).toBeVisible();
+  await expectEditorSource(page, editor, source);
+  await page.reload();
+  await expect(parametersTab).toHaveClass(/segment-button-checked/u, { timeout: 20_000 });
+  await sourceTab.click();
+  await expectEditorSource(page, editor, source);
+  await workspace.getByTestId('workspace-more-tab').click();
+  await page.getByTestId('workspace-more-tugql').click();
+  await expect(page.locator('ion-popover[data-testid="workspace-more-menu"]')).toBeHidden();
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/DTQL source uses the legacy representation.*TugQL import is unavailable/iu);
   await sourceTab.click();
-  await textarea.fill(`${source}limit: 2\n`);
-  await expect(textarea).toHaveValue(`${source}limit: 2\n`);
+  await pasteCode(page, editor, `${source}limit: 2\n`);
   await expect(sourceTab).toHaveClass(/segment-button-checked/u);
   expect(workersStarted).toBe(0);
   expect(writes).toEqual([]);
@@ -2721,7 +2715,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   if (testInfo.project.use.isMobile === true) {
     const compactTitle = invoiceAuthorPage.locator('.query-mobile-title');
     await expect(compactTitle).toBeVisible();
-    expect(await compactTitle.ariaSnapshot()).toContain('Query');
+    // The compact title is the query's own name, and the page's h1 (#513).
+    expect(await compactTitle.ariaSnapshot()).toContain(`heading "${LONG_HEADER_QUERY_TITLE}" [level=1]`);
   } else {
     const initialHeaderAccessibility = await initialHeader.ariaSnapshot();
     expect(initialHeaderAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
@@ -3416,28 +3411,38 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       const titleRange = document.createRange();
       if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
       const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
-      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
-        titleRight: title?.right,
-        stateLeft: state?.left,
+        // A title longer than its room must be clipped with an ellipsis, never run over the buttons or the page.
+        titleEllipsis: (() => {
+          const inner = mobileTitle?.shadowRoot?.querySelector('.toolbar-title');
+          if (!inner) return false;
+          const style = getComputedStyle(inner);
+          return style.textOverflow === 'ellipsis' && style.overflow === 'hidden';
+        })(),
+        // The title text is clipped to its element (ellipsis); measure the part that is drawn.
+        titleRight:
+          title && mobileTitle
+            ? Math.min(title.right, mobileTitle.getBoundingClientRect().right)
+            : undefined,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
-    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
+    // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
+    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleEllipsis).toBe(true);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
   // Ionic chooses its mode during the first page bootstrap, so use a fresh
   // navigation to exercise the iOS header layout explicitly.
   await page.goto(`${AUTHOR_URL}&ionic:mode=ios`);
-  const queryToolbar = page.locator('ion-toolbar.toolbar-label');
+  const queryToolbar = activePage(page).locator('ion-toolbar:has(.query-mobile-title)');
   const authorPageTitle = activePage(page).locator('sneat-datatug-page-title');
   await expect(queryToolbar).toHaveClass(/\bios\b/u);
   for (const width of [390, 320]) {
@@ -3446,7 +3451,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(authorPageTitle).toContainText(LONG_HEADER_PROJECT_TITLE);
     await expect(activePage(page).locator('.query-mobile-title')).toBeVisible();
     const titleAccessibility = await activePage(page).locator('.query-mobile-title').ariaSnapshot();
-    expect(titleAccessibility).toContain('Query');
+    // Narrow screens keep the query's own name as the page's h1 (truncated if needed).
+    expect(titleAccessibility).toContain(`heading "${LONG_HEADER_QUERY_TITLE}" [level=1]`);
     const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
         active.querySelector(selector)?.getBoundingClientRect();
@@ -3455,21 +3461,31 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       const titleRange = document.createRange();
       if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
       const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
-      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
-        titleRight: title?.right,
-        stateLeft: state?.left,
+        // A title longer than its room must be clipped with an ellipsis, never run over the buttons or the page.
+        titleEllipsis: (() => {
+          const inner = mobileTitle?.shadowRoot?.querySelector('.toolbar-title');
+          if (!inner) return false;
+          const style = getComputedStyle(inner);
+          return style.textOverflow === 'ellipsis' && style.overflow === 'hidden';
+        })(),
+        // The title text is clipped to its element (ellipsis); measure the part that is drawn.
+        titleRight:
+          title && mobileTitle
+            ? Math.min(title.right, mobileTitle.getBoundingClientRect().right)
+            : undefined,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
-    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
+    // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
+    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleEllipsis).toBe(true);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
@@ -4410,7 +4426,7 @@ test('expanding source metadata grows the author card without scrolling the cont
     await expect(source).toHaveAttribute('aria-expanded', 'false');
     const editor = author.locator('.cm-content');
     const originalSource = await copyEditorSource(page, editor);
-    const saveState = await page.locator('.query-save-state').innerText();
+    const saveState = await saveStateText(page);
     const collapsedHeight = await author.evaluate(element => element.getBoundingClientRect().height);
     await expect(author.getByTestId('query-body-text').locator('.cm-editor')).toBeHidden();
 
@@ -4446,7 +4462,7 @@ test('expanding source metadata grows the author card without scrolling the cont
     expect(geometry.paneScrollHeight).toBeLessThanOrEqual(geometry.paneClientHeight + 1);
     expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
     expect(await copyEditorSource(page, editor)).toBe(originalSource);
-    expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
+    expect(await saveStateText(page)).toBe(saveState);
     await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
     expect(await executionCount()).toBe(0);
     await page.screenshot({ path: testInfo.outputPath(`expanded-source-${viewport.label}.png`), fullPage: true });
@@ -4464,7 +4480,7 @@ test('expanding source metadata grows the author card without scrolling the cont
     expect(restoredHeight).toBeLessThan(geometry.cardHeight - 24);
     expect(Math.abs(restoredHeight - collapsedHeight)).toBeLessThanOrEqual(2);
     expect(await copyEditorSource(page, editor)).toBe(originalSource);
-    expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
+    expect(await saveStateText(page)).toBe(saveState);
     expect(await executionCount()).toBe(0);
     await author.getByTestId('author-code-tab').click();
     await expect(author.getByTestId('query-body-text')).toBeVisible();
@@ -4505,7 +4521,7 @@ test('Run validates a missing Customer ID only after an explicit attempt, withou
   await expect(composeControls).toHaveCount(0);
   await expect(codeSurface).toBeHidden();
   await expect(input).toBeVisible();
-  const saveState = await page.locator('.query-save-state').innerText();
+  const saveState = await saveStateText(page);
   await expect(warning).toHaveCount(0);
   await expectIonicButtonDisabled(run, false);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
@@ -4519,7 +4535,7 @@ test('Run validates a missing Customer ID only after an explicit attempt, withou
   expect(await executionCount()).toBe(0);
   expect(githubWrites).toEqual([]);
   expect(await copyEditorSource(page, author.getByTestId('query-body-text').locator('.cm-content'))).toBe(source);
-  expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
+  expect(await saveStateText(page)).toBe(saveState);
   await page.screenshot({ path: testInfo.outputPath('run-missing-binding-warning.png') });
   testInfo.annotations.push({ type: 'screenshot', description: 'run-missing-binding-warning.png: expected no cold warning until Run, then native Ionic warning color and Set parameter action; observed warning only after the click, with no SQL preview, execution message, GitHub write or draft change.' });
 
@@ -4708,11 +4724,10 @@ test('Undo clears the Current row filter confirmation when it restores the draft
   const current = page.getByTestId('author-current-row').filter({ visible: true });
   await current.getByRole('button', { name: 'Use InvoiceId as filter' }).click();
   await expect(current).toContainText('added to TugQL Query. Undo available.');
-  await expect(page.locator('.query-save-state')).toContainText('Unsaved');
   await author.getByTestId('author-code-tab').click();
+  await expect(author.getByTestId('query-body-text').locator('.cm-content')).toContainText('i.InvoiceId =');
   await clickEditorAction(page, author, 'Undo');
   await expect(current).not.toContainText('Undo available.');
-  await expect(page.locator('.query-save-state')).toContainText('Saved');
   await expect(author.getByTestId('query-body-text').locator('.cm-content')).not.toContainText('i.InvoiceId =');
   expect(await executionCount()).toBe(1);
 });

@@ -1,4 +1,7 @@
 import { heart, heartOutline } from 'ionicons/icons';
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { widgetAtTabPath } from '../../components/board-widget/nested-tab-path';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
   Component,
@@ -18,7 +21,6 @@ import {
   IonBackButton,
   IonButton,
   IonButtons,
-  IonCard,
   IonCol,
   IonContent,
   IonGrid,
@@ -26,7 +28,6 @@ import {
   IonIcon,
   IonInput,
   IonItem,
-  IonLabel,
   IonMenuButton,
   IonRow,
   IonToolbar,
@@ -38,7 +39,7 @@ import {
   switchMap,
   takeUntil,
 } from 'rxjs/operators';
-import { EMPTY, Subject, combineLatest } from 'rxjs';
+import { BehaviorSubject, EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   Board,
@@ -52,12 +53,18 @@ import {
   ChartSpec,
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
-import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../../../../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../../../../components/parameters/parameter-lookup.service';
+import { UsageAnalyticsService } from '../../../../analytics/usage-analytics';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
   IProjectRef,
   equalProjectRef,
+  isLocalProjectRef,
   projectRefToString,
 } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
@@ -86,6 +93,9 @@ import { tabKey } from '../../components/board-widget/nested-tab-path';
 import { ProjectItemTagsComponent } from '../../../../tags/project-item-tags.component';
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { isSharedProjectRef } from '../../../../core/project-context';
+import { isProjectItemNotFound } from '../../../../core/project-item-not-found.error';
+import { projectPageHref } from '../../../../nav/project-page-href';
+import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
 
 interface TutorialEditor {
@@ -115,6 +125,8 @@ interface TutorialStatus {
   styleUrl: './board-page.component.scss',
   imports: [
     ProjectItemTagsComponent,
+    ChartSourceEditorComponent,
+    ErrorStateComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -146,13 +158,12 @@ interface TutorialStatus {
     IonCol,
     IonButton,
     IonIcon,
-    IonLabel,
-    IonCard,
     IonItem,
     IonInput,
     BoardComponent,
+    ParameterLookupButtonComponent,
   ],
-  providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
+  providers: [QueryParamsService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
   readonly favoriteIcons = { heart, heartOutline };
@@ -167,7 +178,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router, { optional: true });
-  private readonly lookupService = inject(ParameterLookupService);
+  private readonly usage = inject(UsageAnalyticsService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
   private readonly agentContext = inject(AgentContextService);
@@ -306,6 +317,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly choicesForBoard = computed(() =>
     this.choices.read(this.projectRef(), this.boardId() || undefined),
   );
+  private readonly reloadBoard = new BehaviorSubject(0);
+  retryLoad(): void {
+    this.reloadBoard.next(this.reloadBoard.value + 1);
+  }
   readonly readBoardForRun: BoardReadForRun = (ref, id) =>
     this.assets.board(ref, id);
 
@@ -335,9 +350,40 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     const ref = this.projectRef();
     return !!(ref?.projectApi || ref?.branch);
   });
+  /** The unavailable-lookup note concerns explicit (author SQL) lookups only. */
+  readonly explicitLookupUnavailable = computed(
+    () =>
+      this.lookupUnavailable() &&
+      !!this.parameters()?.some((p) => !!p.def.lookup),
+  );
+  /** Where this board's parameter pickers look up values (parameter-lookup REQ:runtime-execution). */
+  readonly lookupContext = computed<ParameterLookupHost>(() => {
+    const ref = this.projectRef();
+    const storeId = this.storeId();
+    const projectId = this.projectId();
+    const envId = this.envId();
+    return {
+      projectRef: ref,
+      environment: envId ?? undefined,
+      ...(ref && isLocalProjectRef(ref) && !this.lookupUnavailable() && storeId && projectId && envId
+        ? { explicitAgent: { storeId, projectId, envId } }
+        : {}),
+    };
+  });
+  /** Parameters whose current value was picked in the lookup ("from lookup"). */
+  readonly lookupOrigins = signal<Readonly<Record<string, true>>>({});
   readonly presentationReset = signal(0);
   readonly loading = signal(true);
   readonly loadError = signal<string | undefined>(undefined);
+  /** The saved board does not exist (a mistyped or deleted id): shown as not found, never as an empty board. */
+  readonly notFound = signal(false);
+  /** The failure behind `loadError`, kept so the error state can choose words for its kind. */
+  readonly loadFailure = signal<unknown>(undefined);
+  /** Specific guidance (update the local agent) that replaces the generic words for the failure. */
+  readonly loadGuidance = signal<string | undefined>(undefined);
+  /** The Boards list of this project, for the not-found and error states. */
+  readonly boardsHref = computed(() => projectPageHref(this.projectRef(), 'boards'));
+  readonly queriesHref = computed(() => projectPageHref(this.projectRef(), 'queries'));
 
   readonly parameters = signal<IParamWithDefAndValue[] | undefined>(undefined);
   readonly parameterErrors = signal<Readonly<Record<string, string>>>({});
@@ -356,9 +402,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const ref = this.projectRef();
-      const local =
-        ref?.projectApi === 'local' &&
-        !['github', 'github.com', 'firestore'].includes(ref.storeId);
+      const local = isLocalProjectRef(ref);
       const hosted = ref?.storeId === 'firestore' && !!ref.spaceID;
       const securityContextId = local
         ? this.agentContext
@@ -410,14 +454,22 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         error: (err) =>
           this.errorLogger.logError(err, 'Failed to get current environment'),
       });
-    combineLatest([this.dataTugNavContext.currentProject, this.route.paramMap])
+    combineLatest([
+      this.dataTugNavContext.currentProject,
+      this.route.paramMap,
+      this.reloadBoard,
+    ])
       .pipe(
-        map(([project, params]) => ({
+        map(([project, params, attempt]) => ({
           ref: project?.ref,
           id: params.get(routingParamBoard),
+          attempt,
         })),
         distinctUntilChanged(
-          (a, b) => a.id === b.id && equalProjectRef(a.ref, b.ref),
+          (a, b) =>
+            a.id === b.id &&
+            a.attempt === b.attempt &&
+            equalProjectRef(a.ref, b.ref),
         ),
         switchMap(({ ref, id }) => {
           this.projectRef.set(ref);
@@ -428,12 +480,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.boardDef.set(undefined);
           this.projBoard.set(undefined);
           this.parameters.set(undefined);
+          this.lookupOrigins.set({});
           this.parameterErrors.set({});
           this.boardContext.update((context) => ({
             ...context,
             parameters: {},
           }));
           this.loadError.set(undefined);
+          this.notFound.set(false);
+          this.loadFailure.set(undefined);
+          this.loadGuidance.set(undefined);
           this.favoriteError.set(undefined);
           this.loading.set(true);
           if (!ref || isSharedProjectRef(ref)) {
@@ -445,9 +501,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
             this.loadError.set('Board ID is missing.');
             return EMPTY;
           }
-          return this.assets.board(ref, id).pipe(
+          return this.assets.board(ref, id, undefined, { requireExisting: true }).pipe(
             catchError((err: unknown) => {
-              this.errorLogger.logError(err, 'Failed to get board');
+              if (isProjectItemNotFound(err)) {
+                this.notFound.set(true);
+                this.loading.set(false);
+                return EMPTY;
+              }
+              this.errorLogger.logError(err, 'Failed to get board', { show: false });
+              this.loadFailure.set(err);
+              this.loadGuidance.set(qualifiedLocalReadVersionGuidance(err) ?? undefined);
               this.loadError.set(
                 qualifiedLocalReadVersionGuidance(err) ??
                   'This board could not be loaded. Try opening it again from Boards.',
@@ -463,6 +526,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         this.projBoard.set(board as IProjBoard);
         this.boardDef.set(board);
         this.parameters.set(this.resolveParameters());
+        this.lookupOrigins.set({});
         for (const def of board?.parameters ?? []) {
           const parameter = this.parameters()?.find(
             (parameter) => parameter.def.id === def.id,
@@ -721,16 +785,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     );
   }
 
-  explainSourceLimit(index: number): void {
-    const target = this.element.nativeElement.querySelector<HTMLElement>(
-      `#source-composition-limit-${index}`,
-    );
-    this.tutorialAnnouncement.set(
-      target?.textContent?.trim() ?? 'Source composition is unavailable.',
-    );
-    target?.focus();
-  }
-
   editTutorial(action: BoardSessionAction): void {
     const session = this.tutorialSession;
     if (!session || !this.tutorialActive()) return;
@@ -828,6 +882,26 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       cardId: editor.cardId,
       widgetPath: editor.path,
       spec,
+    });
+  }
+
+  tutorialSourceQueries(editor: TutorialEditor) {
+    const card = this.boardDef()
+      ?.rows?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === editor.cardId);
+    const widget = widgetAtTabPath(card?.widget, editor.path);
+    const sources =
+      widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
+    return this.tutorialQueries().map((id) => ({
+      id,
+      sourceId: sources.find((source) => source.queryId === id)?.id,
+    }));
+  }
+  editTutorialSource(editor: TutorialEditor, edit: ChartSourceEdit): void {
+    this.editTutorial({
+      ...edit,
+      cardId: editor.cardId,
+      widgetPath: editor.path,
     });
   }
 
@@ -948,35 +1022,28 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  lookup(p: IParamWithDefAndValue): void {
-    const ref = this.projectRef();
-    const boardId = this.boardId();
-    if (ref?.projectApi || ref?.branch) return;
-    const storeId = this.storeId();
-    const projectId = this.projectId();
-    const envId = this.envId();
-    if (!storeId) {
-      return;
-    }
-    if (!projectId) {
-      return;
-    }
-    if (!envId) {
-      return;
-    }
-    this.lookupService
-      .lookupParameterValue(p.def, storeId, projectId, envId)
-      .subscribe({
-        next: (v) => {
-          if (
-            equalProjectRef(ref, this.projectRef()) &&
-            this.boardId() === boardId
-          )
-            this.setParameterValue(p, v.value);
-        },
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to lookup parameter value'),
-      });
+  /** A hand edit replaces the "from lookup" label. */
+  onParameterInput(parameter: IParamWithDefAndValue, raw: unknown): void {
+    this.forgetLookupOrigin(parameter.def.id);
+    this.setParameterValue(parameter, raw);
+  }
+
+  onLookupPicked(parameter: IParamWithDefAndValue, pick: ParameterLookupPick): void {
+    // setParameterValue ignores a parameter of a board that is no longer shown.
+    this.setParameterValue(parameter, pick.value);
+    // public-demo REQ:demo-usage-analytics: only that a lookup was used, never the value.
+    this.usage.lookupUsed(this.projectRef());
+    if (!this.parameterErrors()[parameter.def.id])
+      this.lookupOrigins.update((origins) => ({ ...origins, [parameter.def.id]: true }));
+  }
+
+  private forgetLookupOrigin(id: string): void {
+    if (!this.lookupOrigins()[id]) return;
+    this.lookupOrigins.update((origins) => {
+      const next = { ...origins };
+      delete next[id];
+      return next;
+    });
   }
 
   ngOnDestroy(): void {

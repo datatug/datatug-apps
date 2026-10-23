@@ -1,6 +1,7 @@
 import { legacyTagDiscovery } from '../tags/legacy-tag-discovery';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
+import { savedQueryIsMissing } from './project-query-exists.guard';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
@@ -13,7 +14,9 @@ import {
   routingParamDriver,
   routingParamEntityId,
   routingParamEnvironmentId,
+  routingParamIncidentId,
   routingParamServerType,
+  routingParamStoreId,
 } from '../core/datatug-routing-params';
 
 // The empty-shell pages (Widgets, Tags, Resources, DB models, Diff) — see
@@ -39,6 +42,7 @@ const emptyShellProjectRoutes: Routes = [
   },
   {
     path: 'dbmodel',
+    pathMatch: 'full',
     redirectTo: 'dbmodels',
   },
   {
@@ -193,11 +197,16 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'shipping',
+    path: 'sources/:sourceId',
     loadComponent: () =>
-      import('../shipping/shipping-workspace.component').then(
-        (m) => m.ShippingWorkspaceComponent,
+      import('../source-workspace/source-workspace-page.component').then(
+        (m) => m.SourceWorkspacePageComponent,
       ),
+  },
+  {
+    path: 'shipping',
+    pathMatch: 'full',
+    redirectTo: 'sources/shipping-working-copy',
   },
   {
     path: 'boards/new',
@@ -216,6 +225,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'board',
+    pathMatch: 'full',
     redirectTo: 'boards',
   },
   {
@@ -224,6 +234,27 @@ export const datatugProjectRoutes: Routes = [
       import('../board/ui/pages/boards/boards-page.component').then(
         (m) => m.BoardsPageComponent,
       ),
+  },
+  {
+    path: 'cards/new',
+    data: { newCard: true },
+    loadComponent: () =>
+      import('../cards/card-page.component').then((m) => m.CardPageComponent),
+  },
+  {
+    path: 'card/:cardId',
+    loadComponent: () =>
+      import('../cards/card-page.component').then((m) => m.CardPageComponent),
+  },
+  {
+    path: 'card',
+    pathMatch: 'full',
+    redirectTo: 'cards',
+  },
+  {
+    path: 'cards',
+    loadComponent: () =>
+      import('../cards/cards-page.component').then((m) => m.CardsPageComponent),
   },
   {
     path: 'entities',
@@ -248,6 +279,10 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'env',
+    // Exact match only: `env/:environmentId/...` (the agent-link table, records and record pages) is a route of its
+    // own below. A prefix redirect would turn it into `environments/<id>/...`, which the project-wide `**` 404 now
+    // answers, so the real route would never be tried.
+    pathMatch: 'full',
     redirectTo: 'environments',
   },
   {
@@ -266,6 +301,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'entity',
+    pathMatch: 'full',
     redirectTo: 'entities',
   },
   {
@@ -274,6 +310,23 @@ export const datatugProjectRoutes: Routes = [
       import('./datatug-routing-proj-env').then(
         (m) => m.DatatugProjEnvRoutingModule,
       ),
+  },
+  {
+    // A saved query the project does not have (a cold load of a mistyped or deleted query address): a friendly
+    // "query not found" instead of an empty editor. The guard is false whenever there is any doubt.
+    path: 'query',
+    canMatch: [savedQueryIsMissing],
+    data: { what: 'query' },
+    children: [
+      {
+        path: '**',
+        data: { what: 'query' },
+        loadComponent: () =>
+          import('./project-not-found-page.component').then(
+            (m) => m.ProjectNotFoundPageComponent,
+          ),
+      },
+    ],
   },
   {
     // S158 (NG04002 on the founder's own reported URL, production build
@@ -386,6 +439,15 @@ export const datatugProjectRoutes: Routes = [
   },
 
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
+  {
+    // Any other address inside a project: a friendly 404 with a way back to its Boards and Queries, instead of
+    // NG04002 and the crash-report dialog. Last on purpose; every page above is tried first.
+    path: '**',
+    loadComponent: () =>
+      import('./project-not-found-page.component').then(
+        (m) => m.ProjectNotFoundPageComponent,
+      ),
+  },
 ];
 
 // The session ID is a real Ionic stack ID. Legacy project/query addresses remain
@@ -481,10 +543,38 @@ datatugProjectRoutes.unshift(
   {
     path: 'incidents',
     data: { section: 'incidents' },
-    loadComponent: () =>
-      import('../detective/public-demo-investigation-preview.component').then(
-        (m) => m.PublicDemoInvestigationPreviewComponent,
-      ),
+    children: [
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('../pages/incidents/create/incident-create-page.component').then(
+            (m) => m.IncidentCreatePageComponent,
+          ),
+      },
+      {
+        path:
+          ':' + routingParamStoreId + '/:' + routingParamIncidentId + '/record',
+        loadComponent: () =>
+          import('../pages/incidents/record/incident-resolution-record-page.component').then(
+            (m) => m.IncidentResolutionRecordPageComponent,
+          ),
+      },
+      {
+        path: ':' + routingParamStoreId + '/:' + routingParamIncidentId,
+        loadComponent: () =>
+          import('../pages/incidents/detail/incident-detail-page.component').then(
+            (m) => m.IncidentDetailPageComponent,
+          ),
+      },
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () =>
+          import('../pages/incidents/project-incidents-page.component').then(
+            (m) => m.ProjectIncidentsPageComponent,
+          ),
+      },
+    ],
   },
 );
 

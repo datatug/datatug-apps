@@ -19,12 +19,22 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
   const steps: TutorialStep[] = [];
   const cards = (board.rows ?? []).flatMap((row) => row.cards ?? []);
   for (const card of cards) {
+    const chart = card.widget?.name === 'chart' ? card.widget.data as ChartWidgetDef : undefined;
+    const independent = chart?.chart.type === 'bar' && !chart.chart.series && !!chart.chart.unit?.trim() && chart.sources.length === 2;
     steps.push({
       title: `Add ${card.title || card.id}`,
       detail:
         'Reveal this saved card. Its admitted saved query starts when visible.',
-      action: { type: 'add-card', cardId: card.id },
+      action: { type: 'add-card', cardId: card.id, ...(independent && chart ? { initialSourceIds: [chart.sources[0].id] } : {}) },
     });
+    if (independent && chart) {
+      steps.push({
+        title: `Add ${chart.sources[1].id} as an independent source`,
+        detail: `Use the ordinary Sources control to add the compatible saved query. The declared unit is ${chart.chart.unit}; source rows, exact labels and receipts remain separate.`,
+        action: { type: 'add-chart-source', cardId: card.id, sourceId: chart.sources[1].id, queryId: chart.sources[1].queryId },
+        limitation: 'Exact-label union; missing is not zero. Units and category meanings are author-declared. This comparison is separate from the existing root federation.',
+      });
+    }
     if (card.widget?.name === 'chart') {
       const chart = card.widget.data as ChartWidgetDef;
       if (chart.chart.type === 'bar-race') {
@@ -94,7 +104,7 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
           title: 'Explore another source',
           detail: 'Each source needs its own admitted execution and rights.',
           limitation:
-            'Adding a second source is unavailable until independent execution and composition are supported. Chinook billing is available in its own inspectable tab; it is not combined with the Northwind chart.',
+            'This dashboard has no independent-source comparison configured. Sources on a plain bar require a declared common unit and compatible saved queries. Inspect separate saved-query tabs without claiming a combined result.',
         },
   );
   return steps;
@@ -110,7 +120,7 @@ function tutorialActionsMatch(
     const widgetPath = normalized['widgetPath'];
     if (Array.isArray(widgetPath) && widgetPath.length === 0)
       delete normalized['widgetPath'];
-    return normalized;
+    return Object.fromEntries(Object.entries(normalized).sort(([a], [b]) => a.localeCompare(b)));
   };
   return (
     JSON.stringify(normalize(action)) === JSON.stringify(normalize(expected))

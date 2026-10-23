@@ -1,9 +1,9 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { PopoverController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 
 import { EntityFieldDialogComponent } from './entity-field-dialog.component';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('EntityFieldDialogComponent', () => {
   let component: EntityFieldDialogComponent;
@@ -21,13 +21,7 @@ describe('EntityFieldDialogComponent', () => {
             dismiss: vi.fn(() => Promise.resolve()),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     })
       .overrideComponent(EntityFieldDialogComponent, {

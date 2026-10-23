@@ -140,7 +140,11 @@ export interface GithubProjectCreateStatus {
 export interface PendingGithubProjectSetup {
   readonly operationID: string;
   readonly status:
-    | 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
+    | 'initializing'
+    | 'pending_merge'
+    | 'needs_review'
+    | 'closed_unmerged'
+    | 'failed';
   readonly spaceID: string;
   readonly projectID: string;
   readonly title: string;
@@ -180,8 +184,10 @@ export interface GithubReauthorizationRequest {
 export class ProjectQueryApiService {
   private readonly deniedReads = new Subject<IProjectRef>();
   readonly authorityDenied = this.deniedReads.asObservable();
-  private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
-  readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
+  private readonly githubReauthorization =
+    new Subject<GithubReauthorizationRequest>();
+  readonly githubReauthorizationRequired =
+    this.githubReauthorization.asObservable();
   private readonly api = inject(DatatugApiService);
   private readonly http = inject(HttpClient);
   private readonly storeApi = inject(StoreApiService);
@@ -380,6 +386,21 @@ export class ProjectQueryApiService {
     });
   }
 
+  cards<T>(ref: IProjectRef): Observable<T> {
+    return this.qualifiedRead(
+      ref,
+      'cards/all_cards',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  card<T>(ref: IProjectRef, id: string): Observable<T> {
+    return this.qualifiedRead(ref, 'cards/card', {
+      id,
+      ...(ref.branch ? { branch: ref.branch } : {}),
+    });
+  }
+
   entities<T>(ref: IProjectRef): Observable<T> {
     return this.qualifiedRead(
       ref,
@@ -401,6 +422,41 @@ export class ProjectQueryApiService {
       'environments/all_environments',
       ref.branch ? { branch: ref.branch } : undefined,
     );
+  }
+
+  /** The local agent's own identity endpoint: answers whenever the agent is reachable. */
+  agentInfo(ref: IProjectRef): Observable<unknown> {
+    return defer(() => this.storeApi.get<unknown>(ref.storeId, '/agent-info'));
+  }
+
+  environmentReference(ref: IProjectRef): IProjectRef {
+    const wire = this.reference(ref);
+    return {
+      storeId: wire.storage,
+      projectId: wire.project,
+      ...(ref.spaceID !== undefined ? { spaceID: ref.spaceID } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+    };
+  }
+
+  environmentState<T>(ref: IProjectRef): Observable<T> {
+    return this.get<T>(ref, 'environments/state', {
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+    });
+  }
+
+  environmentOperation<T>(
+    ref: IProjectRef,
+    path: string,
+    body: unknown,
+  ): Observable<T> {
+    return ['github.com', 'github', 'firestore'].includes(ref.storeId)
+      ? this.api.post<T>(`datatug/${path}`, body, {
+          retryUnauthorizedOnce: false,
+        })
+      : this.http.post<T>(buildAgentUrl(ref.storeId, `/${path}`), body);
   }
 
   folder<T>(ref: IProjectRef): Observable<T> {

@@ -1,11 +1,11 @@
 ---
 format: https://specscore.md/plan-specification
-status: Executing
+status: Implemented
 ---
 
 # Plan: Polish the complete held-result exploration journey
 
-**Status:** Executing
+**Status:** Implemented
 **Source Feature:** held-result-exploration
 **Date:** 2026-10-19
 **Owner:** clone_offer_polish
@@ -94,15 +94,20 @@ Resolve owning Nx targets and test context before execution. Extend existing des
 
 **Id:** release-acceptance
 **Verifies:** held-result-exploration#ac:preview-entry, held-result-exploration#ac:acceptance-evidence
-**Status:** in_progress
-**Note:** Published/deployed source; strict real-network measurement and actual GitHub buyer authentication/copy remain open.
+**Status:** complete
+**Note:** Delivered public source/deploy acceptance at903add; later receipts supersede old readiness failure. Strict attempt3 remains failed; authenticated copy/private diagnosis remains separate, and new source-add/live-provider acceptance is explicitly open in independent-chart-sources.
+**Evidence:** 903add369730ac778e94b8afa3f96fbbc36f9cd0, spec/features/independent-chart-sources/acceptance-reconciliation.md
 
-PR397 source/fixture delivery landed at ea9419b844590d8b5b747cd93098a2e318886554. Tasks2–6 are complete to independently reviewed source and captured-fixture scope; this does not close the live/auth gates. The first live attempt failed comparison readiness without a retained inline ledger; the second rendered all three results but retained an Orders net::ERR_ABORTED. Query completion teardown and diagnostic persistence are being repaired in showcase-query-completion; a successful strict live measurement and actual GitHub buyer authentication/copy remain pending. Run focused units/type/lint and actual production build with existing CSS budgets and official frozen artifact preparation. Fix own findings through normal hooks; no approvals/budget bypass. Freeze exact source head/tree, retain logs/screenshots/limits, obtain independent review, then publish one Apps PR through WB and attach it. Root alone lands and switches its same-origin buyer preview to the frozen candidate. Task1 source review passed at bd442ca2 with108 focused tests and owning lint/typecheck; this does not close actual buyer authentication or copy acceptance. Record deployment, actual instrumented live-read mechanism and authenticated copy independently; missing real-network/auth evidence remains open.
+PR397 source/fixture delivery landed at ea9419b844590d8b5b747cd93098a2e318886554. Later query-completion/grid fixes reached production903add369730ac778e94b8afa3f96fbbc36f9cd0 with successful main/deploy and public830Orders/21countries/17federatedrows acceptance. The strict measurement attempt3 remains failed and is not represented as successful. Original public showcase acceptance uses later production browser plus focused mechanism evidence; repeated strict tracing was a narrower self-imposed gate. Authenticated buyer/project copying remains separate follow-through, and the private18782 cause remains unproven. Neither is silently claimed complete here. See `spec/features/independent-chart-sources/acceptance-reconciliation.md` for original-epic scope and the newly open genuine source-add feature.
 
 ### Task 8: Enable the licensed Query Editor result exploration
 
+**Id:** licensed-query-exploration
+
 **Verifies:** held-result-exploration#ac:query-grid-enterprise
-**Status:** in_progress
+**Status:** complete
+**Note:** Native selected-range chart observed in production4ecda191; native grouping observed locally903add, independent3136aae2 browser evidence retains loaded-page/raw-row boundaries. No whole database grouping claim.
+**Evidence:** 4ecda191, 903add369730ac778e94b8afa3f96fbbc36f9cd0, spec/features/independent-chart-sources/acceptance-reconciliation.md
 
 Reuse the shared ResultsGrid and existing lazy Enterprise/Charts module loader. Enable group drop zone, range clipboard and explicit selected-range charting without automatic grouping/chart creation. Decorate numeric columns with safe whole-column projections while retaining raw text for display/export/inspection and exact text filters for excluded columns. Name approximate analytics and current loaded-page scope. Preserve native grouping/filtering/chart updates, raw leaf-row counts/copy and Current-row identity; clean charts only on actual snapshot/page/schema replacement. Add focused adapter/component/query-page regressions and a captured-read licensed browser journey; root owns the actual browser, vendor/license validation, publication and landing. No key/config is committed and no live provider query is required for fixtures.
 

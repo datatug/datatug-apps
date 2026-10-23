@@ -192,6 +192,106 @@ function resultColumns(definition: QueryDispatchRequest['definition'], result: N
   return declared[0].columns.map(({ name, type }) => ({ name, type: resultType(type) }));
 }
 
+/** Waits for promise, or rejects with an AbortError as soon as signal aborts (promise keeps running). */
+function untilAborted<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
+}
+
+function createSqliteWorker(): Worker {
+  if (typeof Worker === 'undefined') throw new QueryDispatchError('This browser does not support SQLite query workers.');
+  return new Worker(new URL('./browser-sqlite-query.worker.ts', import.meta.url), { type: 'module' });
+}
+
+/**
+ * One browser SQLite session (for example one open lookup dialog): each pinned
+ * fixture is downloaded and verified once, and one worker runs every statement.
+ * A cancelled statement's reply is discarded; a timeout or worker failure
+ * replaces the worker. {@link close} terminates it.
+ */
+export class BrowserSqliteSession {
+  private readonly fixtures = new Map<string, Promise<Uint8Array>>();
+  private readonly pending = new Map<number, { resolve: (reply: WorkerReply) => void; reject: (error: Error) => void }>();
+  private worker?: Worker;
+  private nextId = 0;
+  private closed = false;
+
+  /** The verified bytes of a fixture, downloaded once; a failed download is retried next time. */
+  fixture(key: string, read: () => Promise<Uint8Array>): Promise<Uint8Array> {
+    if (this.closed) return Promise.reject(new QueryDispatchError('The browser SQLite session is closed.'));
+    let bytes = this.fixtures.get(key);
+    if (!bytes) {
+      bytes = read();
+      bytes.catch(() => this.fixtures.delete(key));
+      this.fixtures.set(key, bytes);
+    }
+    return bytes;
+  }
+
+  /** Runs one statement on the session's worker. The fixture is copied, never transferred. */
+  run(message: { sql: string; bindings: readonly SqliteScalar[]; fixture: Uint8Array }, signal?: AbortSignal, onDispatched?: () => void): Promise<WorkerReply> {
+    if (this.closed) return Promise.reject(new QueryDispatchError('The browser SQLite session is closed.'));
+    if (signal?.aborted) return Promise.reject(abortError());
+    const worker = this.ensureWorker();
+    const id = ++this.nextId;
+    return new Promise<WorkerReply>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new QueryDispatchError('The browser SQLite query exceeded 10 seconds.'));
+        // A runaway statement would block every later one on this worker.
+        this.reset(new QueryDispatchError('The browser SQLite query was interrupted.'));
+      }, WORKER_TIMEOUT_MS);
+      const onAbort = () => { cleanup(); reject(abortError()); };
+      const cleanup = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        this.pending.delete(id);
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+      this.pending.set(id, {
+        resolve: (reply) => { cleanup(); resolve(reply); },
+        reject: (error) => { cleanup(); reject(error); },
+      });
+      worker.postMessage({ ...message, id });
+      onDispatched?.();
+    });
+  }
+
+  /** Terminates the worker and releases the fixtures; later statements are refused. */
+  close(): void {
+    this.closed = true;
+    this.fixtures.clear();
+    this.reset(new QueryDispatchError('The browser SQLite session is closed.'));
+  }
+
+  private ensureWorker(): Worker {
+    if (this.worker) return this.worker;
+    const worker = createSqliteWorker();
+    worker.onmessage = (event: MessageEvent<WorkerReply & { id?: number }>) => {
+      const id = event.data?.id;
+      if (id !== undefined) this.pending.get(id)?.resolve(event.data);
+    };
+    worker.onerror = () => this.reset(new QueryDispatchError('The browser SQLite worker failed.'));
+    this.worker = worker;
+    return worker;
+  }
+
+  private reset(reason: Error): void {
+    this.worker?.terminate();
+    this.worker = undefined;
+    for (const entry of [...this.pending.values()]) entry.reject(reason);
+    this.pending.clear();
+  }
+}
+
 @Injectable({ providedIn: 'root' })
 export class BrowserSqliteQueryService {
   async execute(plan: QueryDispatchPlan, request: QueryDispatchRequest): Promise<FederatedQueryResult & BrowserSqliteChartRecordset> {
@@ -237,7 +337,10 @@ export class BrowserSqliteQueryService {
         if (publication.bytes > 262144) throw new QueryDispatchError('The SQLite source-rights publication exceeds 256 KiB.');
         const rightsTarget = normalizeFixture({ fixtureSha256: publication.sha256,
           browserFixture: { url: publication.url, bytes: publication.bytes } }, 'json');
-        const rightsBytes = await readFixture(rightsTarget, request.signal);
+        const session = request.browserSqliteSession;
+        const rightsBytes = session
+          ? await untilAborted(session.fixture(`${rightsTarget.url}\u0000${rightsTarget.sha256}`, () => readFixture(rightsTarget)), request.signal)
+          : await readFixture(rightsTarget, request.signal);
         const payload = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(rightsBytes));
         if (payload.format !== 'datatug-browser-sqlite-source-rights/v1')
           throw new QueryDispatchError('The SQLite source-rights publication has an unsupported format.');
@@ -251,12 +354,18 @@ export class BrowserSqliteQueryService {
           throw new QueryDispatchError('The SQLite source-rights publication does not bind this exact database snapshot.');
       }
     }
-    const fixture = await readFixture(target, request.signal);
+    const session = request.browserSqliteSession;
+    // A session downloads the fixture once, on its own lifetime: one cancelled search must not cancel the shared download.
+    const fixture = session
+      ? (await untilAborted(session.fixture(`${target.url}\u0000${target.sha256}`, () => readFixture(target)), request.signal)).slice()
+      : await readFixture(target, request.signal);
     if (request.signal?.aborted) throw abortError();
-    if (typeof Worker === 'undefined') throw new QueryDispatchError('This browser does not support SQLite query workers.');
-    const worker = new Worker(new URL('./browser-sqlite-query.worker.ts', import.meta.url), { type: 'module' });
+    const worker = session ? undefined : createSqliteWorker();
     try {
-      const reply = await new Promise<WorkerReply>((resolve, reject) => {
+      const reply = session
+        ? await session.run({ sql: prepared.sql, bindings: prepared.bindings, fixture }, request.signal, request.onDispatched)
+        : await new Promise<WorkerReply>((resolve, reject) => {
+        if (!worker) return;
         let settled = false;
         const clear = () => {
           clearTimeout(timer);
@@ -318,7 +427,7 @@ export class BrowserSqliteQueryService {
         },
         browserExecution: { runtime: 'sqlite-fixture', fixtureSha256: target.sha256 },
       };
-    } finally { worker.terminate(); }
+    } finally { worker?.terminate(); }
   }
 
 }

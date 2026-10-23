@@ -1,0 +1,230 @@
+{
+  "request": {
+    "spaceID": "space",
+    "projectId": "detective-demo-60096efa830907a862843995",
+    "environment": "demo",
+    "sourceId": "shipping-working-copy",
+    "evidence": {
+      "retention": "project-pinned",
+      "incidentRef": "detective-incidents-22047177749a3a34/INC-1",
+      "context": {
+        "sessionId": "shipping-session",
+        "expectedSessionVersion": 3,
+        "expectedContextSetId": "cs_c2d1cd2d90aeff3f8be507c8d32c8d99038acebdf7f0d192db1ed8c18a5a70b8",
+        "scope": {
+          "environmentId": "demo",
+          "identityDomain": "shipping-50f77bce80a90eb952581df6e6b7d38d"
+        },
+        "bindings": [
+          {
+            "inputName": "order_id",
+            "entryId": "shipping-order",
+            "revisionId": "shipping-order-r1"
+          }
+        ]
+      }
+    },
+    "selection": {
+      "schemaToken": "14372c1c03f45879ccccc4b4856cb2c6d2e24a5ecf12f04190e15c062bd45579",
+      "collection": "requests",
+      "rowToken": "b017d19826a8fb0dc51b1361a013ae08cb1841088dca49896b21546f0d9882fc",
+      "column": "request_id"
+    }
+  },
+  "response": {
+    "queries": [
+      {
+        "id": "shipping/assignment-outcome",
+        "revision": "q1-95ca90ee521285a9e60b7b359e52c2c3dff7252053b31566edbe227662eba1f8",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/current-route",
+        "revision": "q1-487588fdc190952a675bcd1cf37c37afd4e10750ac5ce5d99a85741cf4f0035b",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/events",
+        "revision": "q1-70a6eb2f0602807c96939b31522a71dba2cdd2ac371c73af34babccf421101ab",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/historical-route",
+        "revision": "q1-ee8b91c225d973fc85f097444aa6124b8eb92efde3f07b0589b088fe3e65384f",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/partner-enabled",
+        "revision": "q1-f23d03c0a7f64845d11a1c600957fcb6cc2bce30c16fa52e849fdac81dbb402d",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/readiness",
+        "revision": "q1-9c57f69ef5f0405400f0ec0a5cb5950227859e91868b8955b5fcd9d65ed719b4",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/receipt",
+        "revision": "q1-0312f90f62a09ec9cf04fdd940f9b77fd686748cf01e02a967d7e9dd27074e02",
+        "ready": false,
+        "bindings": {},
+        "missingInputs": [
+          "order_id"
+        ]
+      },
+      {
+        "id": "shipping/request-receipt",
+        "revision": "q1-7eec0df61ae6e5e3c214d5e5f55db5a16a696464c86c013410f8e9c7d337233d",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      },
+      {
+        "id": "shipping/timings",
+        "revision": "q1-c37a9ce35edf6b68e9aab786694e2736c53f8120021caa95f0836d6ed705edde",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "missingInputs": []
+      }
+    ],
+    "checks": [
+      {
+        "title": "Requires explicit range context",
+        "id": "preflight-need-range",
+        "revision": "1",
+        "definitionDigest": "ce3f21ad38c3ea1cb733af377694fca2f4c6a69cce0b8a7983e74a348a82e895",
+        "ready": false,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "preflight": {
+          "state": "missing/incompatible-input",
+          "checkId": "preflight-need-range"
+        }
+      },
+      {
+        "title": "Requires explicit set context",
+        "id": "preflight-need-set",
+        "revision": "1",
+        "definitionDigest": "1af20cf0a2450058e1fc919ed627f56bbf41eac26b1e375455997b99976fb41f",
+        "ready": false,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "preflight": {
+          "state": "missing/incompatible-input",
+          "checkId": "preflight-need-set"
+        }
+      },
+      {
+        "title": "Verify received order",
+        "id": "preflight-row-child",
+        "revision": "1",
+        "definitionDigest": "4dc6e73f5639aa7c26f1b671351997dd7df27089733bd5963b4a1f42b3bc7b5f",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "preflight": {
+          "state": "input-bindable",
+          "checkId": "preflight-row-child"
+        }
+      },
+      {
+        "title": "Verify each observed milestone",
+        "id": "preflight-row-deferred",
+        "revision": "1",
+        "definitionDigest": "c1cd0c8880eb6da120711b061b9b7c7f05a76555721bda44368a5512da1d9368",
+        "ready": false,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "preflight": {
+          "state": "deferred-row-binding",
+          "checkId": "preflight-row-deferred"
+        }
+      },
+      {
+        "title": "Request received",
+        "id": "shipping-request-received",
+        "revision": "1",
+        "definitionDigest": "c417c3949c1b9bbedb0479e43fd0715bd5dbbe8548b497c3e4af9b5e55434ea4",
+        "ready": true,
+        "bindings": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "preflight": {
+          "state": "input-bindable",
+          "checkId": "shipping-request-received"
+        }
+      }
+    ]
+  }
+}

@@ -16,6 +16,10 @@ import {
 import { routingParamStoreId } from '../../../core/datatug-routing-params';
 import { useIncidentPageReads } from '../../../incidents/incident-page-reads';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import {
+  incidentPageCommands,
+  incidentPageQueryParams,
+} from '../../../incidents/incident-navigation';
 import { IncidentReadPanelsComponent } from '../detail/incident-read-panels.component';
 
 /**
@@ -64,13 +68,16 @@ export class IncidentResolutionRecordPageComponent {
     const storeId = this.routeParams().get(routingParamStoreId);
     const incidentId = this.incidentId();
     if (!storeId || !incidentId) {
-      return ['/incidents'] as const;
+      return incidentPageCommands(this.router.url);
     }
-    return ['/incidents', storeId, incidentId] as const;
+    return incidentPageCommands(this.router.url, [storeId, incidentId]);
   });
   protected readonly detailQueryParams = computed(() => {
     const context = this.requestContext();
-    return context ? incidentContextQueryParams(context) : undefined;
+    return incidentPageQueryParams(
+      this.router.url,
+      context ? incidentContextQueryParams(context) : undefined,
+    );
   });
   protected readonly detailUrl = computed(() =>
     this.router.serializeUrl(

@@ -14,6 +14,7 @@ import {
   IDbCatalogSummary,
   IDbServerSummary,
 } from '../../../models/definition/apis/database';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('DbserverPage', () => {
   let component: DbserverPageComponent;
@@ -24,13 +25,7 @@ describe('DbserverPage', () => {
       imports: [DbserverPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -111,13 +106,7 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
       imports: [DbserverPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

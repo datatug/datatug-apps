@@ -131,10 +131,13 @@ export class TutorialBoardRuntime {
       return false;
     const queries = new Set(canonicalBoardQueryIds(canonical));
     if (widget.name === 'SQL')
-      return queries.has((widget.data as SQLWidgetDef).sql.queryId ?? '');
+      return queries.has((widget.data as SQLWidgetDef).sql?.queryId ?? '');
     if (widget.name !== 'chart') return false;
     const sources = (widget.data as ChartWidgetDef).sources;
-    // Composition is not admitted by the single-source execution path.
-    return sources?.length === 1 && queries.has(sources[0].queryId);
+    // Each child re-admits the complete current widget before dispatching its own binding.
+    const chart = (widget.data as ChartWidgetDef).chart;
+    return !!sources?.length && sources.length <= 2 &&
+      (sources.length === 1 || (chart.type === 'bar' && !chart.series && !!chart.unit?.trim())) &&
+      sources.every((source) => queries.has(source.queryId));
   }
 }

@@ -103,3 +103,21 @@ export function applyPosthogRoutePrivacy(pathname: string): void {
   // With recording off, PostHog captures no request to a loopback agent on any page.
   posthog.set_config({ autocapture: initialAutocapture as boolean });
 }
+
+/** Whether {@link registerPosthog} started PostHog in this document. */
+export function posthogStarted(): boolean {
+  return initialized;
+}
+
+/** The visitor withdrew analytics consent: PostHog stops capturing and recording for this document. */
+export function pausePosthogForConsent(): void {
+  if (!initialized) return;
+  posthog.opt_out_capturing();
+  posthog.stopSessionRecording();
+}
+
+/** The visitor (again) granted analytics consent: undo an earlier withdrawal, including one PostHog persisted. */
+export function resumePosthogForConsent(): void {
+  if (initialized && posthog.has_opted_out_capturing())
+    posthog.opt_in_capturing();
+}

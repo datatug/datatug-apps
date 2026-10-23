@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
+import { APIRequestContext, Locator } from '@playwright/test';
 import {
   DEMODB_HOST,
   DEMODB_LIVE,
@@ -7,6 +7,7 @@ import {
   test,
   type DemodbGuard,
 } from './helpers/demodb-guard';
+import { hasOpfs, trackDemodbRequests } from './helpers/demo-sqlite';
 // The catalog is plain TypeScript with no Angular imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
@@ -85,6 +86,13 @@ function loadCorpus(
 
 const sqliteExport = (db: CorpusDatabase): CorpusExport | undefined =>
   db.exports.find((file) => file.format === 'sqlite' && !file.table);
+
+// The dataset matrix runs in Chromium only. What differs between browsers is the storage path (OPFS or memory),
+// and demo-sqlite.spec.ts drives both in all three; a dataset's tables and rows do not depend on the browser.
+test.skip(
+  ({ browserName }) => browserName !== 'chromium',
+  'per-dataset coverage is browser-independent; demo-sqlite.spec.ts covers each browser',
+);
 
 test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
@@ -280,7 +288,7 @@ for (const id of demoSqliteDatasetIds) {
       await expect(page.getByTestId('ovdb-database-header')).toContainText(
         'editable',
       );
-      await expect(page.getByTestId('reset-database')).toBeVisible();
+      await expect(page.getByTestId('source-menu')).toBeVisible(); // Reset Database sits in its menu
 
       // 4. Open the first table that has rows, a primary key and a text column: read a row.
       const target = db.recordsets.find(
@@ -342,6 +350,7 @@ for (const id of demoSqliteDatasetIds) {
       if (persistent) {
         await expect(cellOfFirstRow()).toHaveText(edited);
         // 8. Reset restores the original data, and that survives a reload.
+        await page.getByTestId('source-menu').click();
         await page.getByTestId('reset-database').click();
         const alert = page.locator('ion-alert');
         await expect(alert).toHaveCount(1);
@@ -370,28 +379,5 @@ for (const id of demoSqliteDatasetIds) {
           description: String(Date.now() - started),
         });
     });
-  });
-}
-
-/** Every request any page or worker of the context makes to demodb.dev. */
-function trackDemodbRequests(context: BrowserContext): string[] {
-  const urls: string[] = [];
-  context.on('request', (request) => {
-    if (DEMODB.test(new URL(request.url()).hostname)) urls.push(request.url());
-  });
-  return urls;
-}
-
-/** Whether this browser context gives pages OPFS (asked of the browser itself, on the app's origin). */
-async function hasOpfs(page: Page): Promise<boolean> {
-  await page.goto('/demo/sqlite');
-  await expect(page.getByTestId('demo-sqlite-datasets')).toBeVisible();
-  return page.evaluate(async () => {
-    try {
-      await navigator.storage.getDirectory();
-      return true;
-    } catch {
-      return false;
-    }
   });
 }

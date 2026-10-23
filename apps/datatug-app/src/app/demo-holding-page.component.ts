@@ -144,7 +144,7 @@ function readView(): HoldingView {
       overflow-wrap: anywhere;
     }
     .note {
-      color: var(--ion-color-medium);
+      color: var(--dt-text-muted);
     }
     .links {
       display: flex;

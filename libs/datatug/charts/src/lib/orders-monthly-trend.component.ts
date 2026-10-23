@@ -135,10 +135,17 @@ echarts.use([
     td {
       padding: 0.5rem;
       text-align: left;
-      border-bottom: 1px solid #dce5ef;
+      border-bottom: 1px solid var(--ion-background-color-step-150, #dce5ef);
     }
     caption {
       text-align: left;
+    }
+    /* The ECharts SVG is built outside Angular's view: CSS stroke/fill beat its presentation attributes. */
+    :host-context(.ion-palette-dark) .plot ::ng-deep svg path[stroke='#dbdee4' i] {
+      stroke: #3d4048;
+    }
+    :host-context(.ion-palette-dark) .plot ::ng-deep svg text {
+      fill: #b8bac2;
     }
   `,
 })

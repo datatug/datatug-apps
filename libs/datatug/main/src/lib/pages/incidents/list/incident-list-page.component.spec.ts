@@ -1,9 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  Router,
+  RouterLink,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -58,16 +61,21 @@ describe('IncidentListPageComponent', () => {
   let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: Mock<(
-    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
-    agentUrl?: string,
-  ) => void>;
+  let setInvestigationScopeSpy: Mock<
+    (
+      scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+      agentUrl?: string,
+    ) => void
+  >;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
   let listSpy: ReturnType<typeof vi.fn>;
 
-  const render = async (query: Record<string, string> = {}) => {
+  const render = async (
+    query: Record<string, string> = {},
+    currentUrl = '/incidents',
+  ) => {
     storeId$ = new BehaviorSubject<string | undefined>(undefined);
     project$ = new BehaviorSubject<
       { ref: { storeId: string; projectId: string } } | undefined
@@ -120,11 +128,15 @@ describe('IncidentListPageComponent', () => {
           },
         },
         { provide: IncidentClientService, useValue: { list: listSpy } },
-        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: of({ status: 'notAuthenticated' }) },
+        },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
+    vi.spyOn(TestBed.inject(Router), 'url', 'get').mockReturnValue(currentUrl);
     fixture = TestBed.createComponent(IncidentListPageComponent);
     fixture.detectChanges();
   };
@@ -144,16 +156,98 @@ describe('IncidentListPageComponent', () => {
     await render();
   });
 
-  it('shows the "Houston, we\'ve got a problem" entry point', () => {
-    expect(fixture.nativeElement.innerHTML).toContain(
-      "Houston, we've got a problem",
+  it('shows the investigation welcome with setup guidance', () => {
+    expect(fixture.nativeElement.innerHTML).toContain('Follow the evidence.');
+  });
+
+  it('only offers test creation after a successful empty response', () => {
+    selectScope();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+    listResult$.next({
+      kind: 'error',
+      code: 'NOT_AVAILABLE',
+      message: 'Agent unavailable',
+    });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+  });
+
+  it('shows the hero for an empty response and keeps a populated list compact', async () => {
+    selectScope();
+    listResult$.next({ kind: 'ok', data: [] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Try a test incident');
+    listResult$.next({
+      kind: 'ok',
+      data: [incident('billing', 'INC-1', 'An existing report')],
+    });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain('Report an incident');
+  });
+
+  it('keeps both empty-list actions and the populated action in the explicit API branch and Incident scope', async () => {
+    TestBed.resetTestingModule();
+    const scope = {
+      agent: 'agent-b:8989',
+      storeId: 'team-incident-store',
+      project: 'fulfilment',
+      environment: 'staging',
+    };
+    const qualifiers = {
+      projectApi: 'local',
+      branch: 'feature/incident-scope',
+    };
+    const path = '/store/agent-b:8989/project/fulfilment/incidents';
+    await render(
+      { ...scope, ...qualifiers },
+      path + '?' + new URLSearchParams(qualifiers),
     );
+    listResult$.next({ kind: 'ok', data: [] });
+    await fixture.whenStable();
+    expect(listSpy).toHaveBeenCalledWith({
+      agentStoreId: scope.agent,
+      scope: {
+        storeId: scope.storeId,
+        project: scope.project,
+        environment: scope.environment,
+        securityContextId: 'ctx-1',
+      },
+    });
+    const emptyLinks = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .map((element) => element.injector.get(RouterLink).urlTree)
+      .filter((tree) => tree?.toString().startsWith(path + '/new'));
+    expect(emptyLinks).toHaveLength(2);
+    expect(emptyLinks.map((tree) => tree?.queryParams)).toEqual([
+      { ...qualifiers, ...scope, draft: 'test' },
+      { ...qualifiers, ...scope },
+    ]);
+    listResult$.next({
+      kind: 'ok',
+      data: [incident(scope.storeId, 'INC-returned', 'Existing')],
+    });
+    await fixture.whenStable();
+    const create = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .map((element) => element.injector.get(RouterLink).urlTree)
+      .find((tree) => tree?.toString().startsWith(path + '/new'));
+    expect(create?.queryParams).toEqual({ ...qualifiers, ...scope });
   });
 
   it('shows an "open a project" guidance state without a complete scope', () => {
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('Create a private project');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Create a private project',
+    );
     expect(listSpy).not.toHaveBeenCalled();
   });
 
@@ -387,7 +481,7 @@ describe('IncidentListPageComponent', () => {
     listResult$.next({ kind: 'ok', data: [] });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('No incidents yet');
+    expect(fixture.nativeElement.innerHTML).toContain('Try a test incident');
   });
 
   it('builds a route-store-authoritative detail link', () => {
@@ -409,5 +503,23 @@ describe('IncidentListPageComponent', () => {
       project: 'billing',
       environment: 'prod',
     });
+  });
+
+  it('keeps create and detail links inside the actual agent project route', async () => {
+    TestBed.resetTestingModule();
+    await render({}, '/store/localhost:8989/project/billing/incidents');
+    selectScope();
+
+    interface Internals {
+      newIncidentLink(): readonly string[];
+      incidentLink(incident: IncidentSummary): readonly string[];
+    }
+    const peek = fixture.componentInstance as unknown as Internals;
+    expect(peek.newIncidentLink()).toEqual([
+      '/store/localhost:8989/project/billing/incidents/new',
+    ]);
+    expect(peek.incidentLink(incident('ops', 'INC-1', 't'))).toEqual([
+      '/store/localhost:8989/project/billing/incidents/ops/INC-1',
+    ]);
   });
 });

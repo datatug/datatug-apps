@@ -38,43 +38,58 @@
 }
 
 .overview-environments {
-  margin: 16px;
-
-  h2 {
-    font-size: 1rem;
-    margin: 0 0 10px;
-  }
-}
-
-.environment-strip {
   display: flex;
+  align-items: baseline;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 0 12px;
+  margin: 8px 16px;
 }
-
+.environment-strip {
+  // Keep the neutral wrapper out of layout so shortcuts wrap with their label.
+  display: contents;
+}
+.environment-label,
 .environment-shortcut {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 7px 11px;
-  border: 1px solid var(--ion-color-medium-tint);
-  border-radius: 8px;
-  background: var(--ion-card-background, var(--ion-background-color));
+  gap: 5px;
+  min-height: 44px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
   color: var(--ion-text-color);
   cursor: pointer;
-
-  small {
-    color: var(--ion-color-medium-shade);
-  }
+  font-size: inherit;
   &:focus-visible {
     outline: 2px solid var(--ion-color-primary);
+    outline-offset: 3px;
   }
+}
+.environment-label {
+  font-weight: 600;
+}
+// Mixed with the theme text colour to keep WCAG AA (4.5:1) on light and dark.
+.environment-danger {
+  color: color-mix(
+    in srgb,
+    var(--ion-color-danger) 75%,
+    var(--ion-text-color) 25%
+  );
+}
+.environment-warning {
+  color: color-mix(
+    in srgb,
+    var(--ion-color-warning) 50%,
+    var(--ion-text-color) 50%
+  );
+}
+.environment-shortcut small {
+  font-size: 0.75rem;
 }
 
 .overview-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.3fr 1fr 1.2fr;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0;
   margin: 0 8px 12px;
   border-bottom: 1px solid var(--ion-color-light-shade);
@@ -86,7 +101,7 @@
     border: 0;
     border-bottom: 2px solid transparent;
     background: transparent;
-    color: var(--ion-color-medium-shade);
+    color: var(--dt-text-muted);
     cursor: pointer;
     font-size: 0.8125rem;
     line-height: 1.15;
@@ -123,7 +138,7 @@
   flex-wrap: wrap;
   gap: 4px 14px;
   margin: 8px 16px 12px;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.85rem;
 }
 
@@ -134,4 +149,14 @@
 
 .project-metadata-error {
   color: var(--ion-color-danger);
+}
+
+.overview-tab-count {
+  margin: 0 0 0 6px;
+  min-height: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  pointer-events: none;
 }

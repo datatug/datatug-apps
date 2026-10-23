@@ -6,7 +6,9 @@ import {
   inject,
   input,
   model,
+  signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   IonBadge,
   IonButton,
@@ -61,14 +63,14 @@ export class JoinsComponent {
   public readonly sqlParser = input<SqlParser>();
   @Output() public astChanged = new EventEmitter<ISqlChanged>();
 
-  public suggestedJoins?: ICanJoin[];
+  public readonly suggestedJoins = signal<ICanJoin[] | undefined>(undefined);
 
   constructor() {
     const queryContextSqlService = this.queryContextSqlService;
 
-    queryContextSqlService.suggestedJoins.subscribe({
+    queryContextSqlService.suggestedJoins.pipe(takeUntilDestroyed()).subscribe({
       next: (suggestedJoins) => {
-        this.suggestedJoins = suggestedJoins;
+        this.suggestedJoins.set(suggestedJoins);
       },
       error: this.errorLogger.logErrorHandler('failed to get suggested join'),
     });
@@ -79,14 +81,14 @@ export class JoinsComponent {
     const ce = event as CustomEvent;
     const checked = !!ce.detail.checked;
     const sqlParser = this.sqlParser();
-    const sql = this.sql();
-    if (sql) {
-      if (checked) {
-        this.sql.set(sqlParser?.uncommentJoin(sql, join));
-      } else {
-        this.sql.set(sqlParser?.commentOutJoin(sql, join));
-      }
+    let sql = this.sql();
+    if (sql && sqlParser) {
+      sql = checked
+        ? sqlParser.uncommentJoin(sql, join)
+        : sqlParser.commentOutJoin(sql, join);
+      this.sql.set(sql);
     }
+    // Parse and emit the toggled SQL, not the text from before the change.
     this.queryAst.set(sql ? sqlParser?.parseQuery(sql) : undefined);
     this.astChanged.emit({ sql: sql || '', ast: this.queryAst() || {} });
   }

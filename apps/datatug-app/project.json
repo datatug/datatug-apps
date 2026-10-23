@@ -126,7 +126,7 @@
             {
               "type": "anyComponentStyle",
               "maximumWarning": "4kb",
-              "maximumError": "6kb"
+              "maximumError": "6.5kb"
             }
           ],
           "fileReplacements": [
@@ -369,6 +369,21 @@
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-hosted-incidents"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.hosted-incidents.config.ts --forbid-only"
+      }
+    },
+    "e2e-showcase-independent": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [
+        "stamp-build-info",
+        "stamp-ag-grid-license",
+        "prepare-recordsetcompare"
+      ],
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-showcase-exploration"
+      ],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.showcase-exploration.config.ts showcase-independent-sources.spec.ts --forbid-only"
       }
     }
   }

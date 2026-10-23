@@ -1,13 +1,15 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { IProjectRef } from '../core/project-context';
 import { ErrorLogger } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { EnvironmentService } from '../services/unsorted/environment.service';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('MenuEnvSelectorComponent', () => {
   beforeEach(() => {
@@ -17,8 +19,8 @@ describe('MenuEnvSelectorComponent', () => {
     const nextProjectEnvironments = new Subject<
       { id: string; title: string }[]
     >();
-    const listEnvironments = vi.fn((projectId: string) =>
-      projectId === 'old'
+    const listEnvironments = vi.fn((project: IProjectRef) =>
+      project.projectId === 'old'
         ? of([{ id: 'old-env', title: 'Old' }])
         : nextProjectEnvironments.asObservable(),
     );
@@ -87,13 +89,7 @@ describe('MenuEnvSelectorComponent', () => {
       imports: [MenuEnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: { setCurrentEnvironment, clearCurrentEnvironment: vi.fn() },
@@ -107,7 +103,12 @@ describe('MenuEnvSelectorComponent', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(MenuEnvSelectorComponent);
     fixture.componentRef.setInput('project', {
-      ref: { projectId: 'demo', storeId: 'github.com' },
+      ref: {
+        projectId: 'demo',
+        storeId: 'github.com',
+        branch: 'review',
+        projectApi: 'cloud',
+      },
       summary: {
         id: 'demo',
         title: 'Demo',
@@ -118,10 +119,34 @@ describe('MenuEnvSelectorComponent', () => {
     fixture.componentRef.setInput('currentEnvId', 'local');
     fixture.detectChanges();
 
-    expect(listEnvironments).toHaveBeenCalledWith('demo');
+    expect(listEnvironments).toHaveBeenCalledWith({
+      projectId: 'demo',
+      storeId: 'github.com',
+      branch: 'review',
+      projectApi: 'cloud',
+    });
     expect(
       fixture.componentInstance.environments().map(({ id }) => id),
     ).toEqual(['local', 'prod']);
+    expect(
+      fixture.nativeElement.querySelector('.menu-env-heading a')?.textContent,
+    ).toContain('Environments');
+    expect(
+      fixture.nativeElement.querySelector('ion-badge')?.textContent,
+    ).toContain('2');
+    expect(fixture.nativeElement.querySelector('ion-select')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Clear environment"]'),
+    ).not.toBeNull();
+    fixture.componentRef.setInput('currentEnvId', undefined);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('ion-select')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelectorAll('.menu-env-choices ion-button'),
+    ).toHaveLength(2);
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Clear environment"]'),
+    ).toBeNull();
     fixture.componentInstance.switchEnv({
       detail: { value: 'prod' },
     } as CustomEvent);
@@ -140,13 +165,7 @@ describe('MenuEnvSelectorComponent', () => {
       imports: [MenuEnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: { setCurrentEnvironment: vi.fn(), clearCurrentEnvironment },
@@ -174,5 +193,44 @@ describe('MenuEnvSelectorComponent', () => {
 
     expect(clearCurrentEnvironment).toHaveBeenCalledOnce();
     expect(goProject).toHaveBeenCalledWith(project);
+  });
+
+  it('logs a failed sidebar environment read without a toast and offers no environments', async () => {
+    const failure = { status: 0 };
+    const logError = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [MenuEnvSelectorComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn() },
+        },
+        { provide: DatatugNavContextService, useValue: {} },
+        { provide: DatatugNavService, useValue: {} },
+        {
+          provide: EnvironmentService,
+          useValue: {
+            listEnvironments: vi.fn(() => throwError(() => failure)),
+          },
+        },
+      ],
+    })
+      .overrideComponent(MenuEnvSelectorComponent, {
+        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(MenuEnvSelectorComponent);
+    fixture.componentRef.setInput('project', {
+      ref: { projectId: 'demo', storeId: 'localhost:8989' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.environments()).toEqual([]);
+    expect(logError).toHaveBeenCalledWith(
+      failure,
+      'Failed to list project environments',
+      { show: false },
+    );
   });
 });

@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
-import { BrowserContext, expect as baseExpect, Locator, Page } from '@playwright/test';
-import { DEMODB_HOST, DEMODB_LIVE, expect, fixtureDir, test } from './helpers/demodb-guard';
+import { expect as baseExpect, Locator, Page } from '@playwright/test';
+import { DEMODB_LIVE, expect, fixtureDir, test } from './helpers/demodb-guard';
+import { hasOpfs, trackDemodbRequests } from './helpers/demo-sqlite';
 // The catalog is plain TypeScript with no Angular imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import { demoSqliteCatalog } from '../../../libs/datatug/main/src/lib/queries/demo-sqlite-catalog';
@@ -50,29 +51,6 @@ function corpusRecordsets(): CorpusRecordset[] {
   const db = corpus.databases.find((candidate) => candidate.localId === 'adventureworks');
   if (!db) throw new Error('adventureworks is missing from the committed corpus.json');
   return db.recordsets;
-}
-
-/** Whether this browser context gives pages OPFS (asked of the browser itself, on the app's origin). */
-async function hasOpfs(page: Page): Promise<boolean> {
-  await page.goto('/demo/sqlite');
-  await expect(page.getByTestId('demo-sqlite-datasets')).toBeVisible();
-  return page.evaluate(async () => {
-    try {
-      await navigator.storage.getDirectory();
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
-
-/** Every request any page or worker of the context makes to a DemoDB host, in order. */
-function trackDemodbRequests(context: BrowserContext): string[] {
-  const urls: string[] = [];
-  context.on('request', (request) => {
-    if (DEMODB_HOST.test(new URL(request.url()).hostname)) urls.push(request.url());
-  });
-  return urls;
 }
 
 /**
@@ -235,7 +213,7 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
 
   // 4. Read a table.
   await expect(page.getByTestId('ovdb-database-header')).toContainText('editable');
-  await expect(page.getByTestId('reset-database')).toBeVisible();
+  await expect(page.getByTestId('source-menu')).toBeVisible(); // Reset Database sits in its menu
   const target = tables.find(
     (recordset) =>
       (recordset.rowCount ?? 0) > 0 &&
@@ -280,6 +258,7 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
 
   // 6. Reset Database, with its confirmation: downloads again (single-copy), restores the original.
   expect(entry.storagePolicy).toBe('single-copy');
+  await page.getByTestId('source-menu').click();
   await page.getByTestId('reset-database').click();
   const alert = page.locator('ion-alert');
   await expect(alert).toHaveCount(1);

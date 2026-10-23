@@ -1,4 +1,5 @@
 import { projectTagLink } from '../../../../tags/tag-navigation';
+import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import {
   Component,
   OnDestroy,
@@ -64,6 +65,7 @@ import { projectPageHref } from '../../../../nav/project-page-href';
   templateUrl: './boards-page.component.html',
   providers: [TagFilterState],
   imports: [
+    ErrorStateComponent,
     // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
     // provided by `DatatugServicesNavModule` (it and its whole dependency
     // chain are `providedIn: 'root'` since nav-context-root-singletons),
@@ -148,6 +150,10 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   // established pattern.
   readonly boards = signal<IProjBoard[] | undefined>(undefined);
   readonly loadError = signal<string | undefined>(undefined);
+  /** The failure behind `loadError`, worded by the error state (a rate limit, an outage, a missing project). */
+  readonly loadFailure = signal<unknown>(undefined);
+  /** Specific guidance for a failure we can explain better than the generic words (a local read version mismatch). */
+  readonly loadGuidance = signal<string | undefined>(undefined);
   defaultHref?: string;
   readonly project = signal<IProjectContext | undefined>(undefined);
   readonly hostedProject = computed(() => {
@@ -191,13 +197,18 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         switchMap(({ ref }) => {
           this.boards.set(undefined);
           this.loadError.set(undefined);
+          this.loadFailure.set(undefined);
+          this.loadGuidance.set(undefined);
           return ref && !isSharedProjectRef(ref)
             ? this.assets.boards(ref).pipe(
                 map((boards) => ({ status: 'success' as const, boards })),
                 catchError((err: unknown) => {
-                  this.errorLogger.logError(err, 'Failed to load boards');
+                  this.errorLogger.logError(err, 'Failed to load boards', {
+                    show: false,
+                  });
                   return of({
                     status: 'error' as const,
+                    failure: err,
                     message: qualifiedLocalReadVersionGuidance(err),
                   });
                 }),
@@ -210,6 +221,8 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         next: (result) => {
           if (result.status === 'error') {
             this.boards.set(undefined);
+            this.loadFailure.set(result.failure);
+            this.loadGuidance.set(result.message ?? undefined);
             this.loadError.set(
               result.message ?? 'Boards could not be loaded. Please try again.',
             );

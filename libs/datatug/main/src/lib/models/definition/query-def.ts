@@ -28,7 +28,12 @@ export interface IQueryFolderContext extends IQueryFolder {
 
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
-  semanticModel?: import("../../queries/semantic-mapping").SemanticModel;
+  readonly comparison?: import('../../queries/query-comparison').QueryComparison;
+  /** Store-assigned creation instant (RFC3339); drafts omit it until first save. */
+  readonly createdAt?: string;
+  /** Descriptive Core metadata; server validation remains authoritative. */
+  readonly purpose?: string;
+  semanticModel?: import('../../queries/semantic-mapping').SemanticModel;
   request: IQueryRequest;
   /** Reviewed schema relationship pins retained by Git-backed query files. */
   relationshipBindings?: readonly IQueryRelationshipBinding[];
@@ -53,6 +58,8 @@ export interface IQueryDef extends IQueryItem {
     readonly nativeGraph?: import('../../queries/public-data/native-graph-executor').NativeGraphPlan;
     /** Descriptive historical pages/pins; reopening never executes them. */
     readonly readReceipt?: import('../../queries/public-data/immutable-federation').RuntimeReadReport;
+    /** inGitDB databases the browser reads straight from GitHub, each described by an OVDB descriptor URL. */
+    readonly ingitdbSources?: readonly import('../../queries/ingitdb-github-source').IngitdbSourceRef[];
     readonly tables: readonly {
       readonly name: string;
       readonly database?: string;
@@ -100,10 +107,16 @@ export interface ISqlQueryRequest extends ITextQueryRequest {
   queryType: QueryType.SQL;
 }
 
+export interface IHttpHeader {
+  readonly name: string;
+  readonly value: string;
+}
+
 export interface IHttpQueryRequest extends IQueryRequest {
   queryType: QueryType.HTTP;
   url: string;
   method: HttpMethod;
+  headers?: readonly IHttpHeader[];
   body?: string;
 }
 
@@ -118,4 +131,9 @@ export interface IQueryTarget {
 
 export interface ICredentials {
   username: string;
+}
+
+/** Persisted query records always include store-assigned creation metadata. */
+export interface ISavedQueryDef extends IQueryDef {
+  readonly createdAt: string;
 }

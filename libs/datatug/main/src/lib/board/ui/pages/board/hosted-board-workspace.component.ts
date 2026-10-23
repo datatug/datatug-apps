@@ -1,5 +1,6 @@
-import { EvidenceSharePanelComponent, EvidenceShareSelection,
-} from '../../../../evidence/evidence-share-panel.component';
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
+import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../../evidence/evidence-share-panel.component';
 import { TagsEditorComponent } from '../../../../tags/tags-editor.component';
 import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
@@ -15,6 +16,7 @@ import {
   computed,
   effect,
   inject,
+  Injector,
   signal,
   untracked,
 } from '@angular/core';
@@ -36,7 +38,9 @@ import {
   BoardCard,
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
-import { filter, firstValueFrom, map, merge, takeUntil, tap } from 'rxjs';
+import { filter, firstValueFrom, map, merge, switchMap, takeUntil, tap } from 'rxjs';
+import { cardFromBoardCard } from '../../../../cards/card-model';
+import { ProjectCardsService } from '../../../../cards/project-cards.service';
 import {
   ProjectAssetsApiService,
   BoardAssetSnapshot,
@@ -77,6 +81,7 @@ interface QueryFolder {
   providers: [HostedBoardScope],
   imports: [
     TagsEditorComponent,
+    ChartSourceEditorComponent,
     EvidenceSharePanelComponent,
     BoardChartEditorComponent,
     RouterLink,
@@ -145,37 +150,39 @@ interface QueryFolder {
       />
     }
     @if (scope.admitted() && parameters().length) {
-      <section aria-label="Board runtime parameters">
-        <p>
-          Parameter changes clear previous results. Run or refresh a card to use
-          the new values. These values are not saved with the board.
+      <section class="runtime-parameters" aria-label="Board runtime parameters">
+        <p class="parameter-help">
+          Change a value, then run or refresh a card. Previous results are cleared.
+          Values are not saved.
         </p>
         @for (parameter of parameters(); track parameter.def.id) {
-          <ion-item>
-            <ion-label>{{ parameter.def.title || parameter.def.id }}</ion-label>
-            <ion-input
-              [attr.aria-label]="'Board parameter ' + parameter.def.id"
-              [placeholder]="parameter.def.type"
-              [value]="parameterText(parameter)"
-              [attr.aria-invalid]="
-                parameterErrors()[parameter.def.id] ? 'true' : null
-              "
-              [attr.aria-describedby]="
-                parameterErrors()[parameter.def.id]
-                  ? 'hosted-board-parameter-error-' + parameter.def.id
-                  : null
-              "
-              (ionInput)="setParameterValue(parameter, $event.detail.value)"
-            />
-          </ion-item>
-          @if (parameterErrors()[parameter.def.id]; as error) {
-            <p
-              role="alert"
-              [id]="'hosted-board-parameter-error-' + parameter.def.id"
-            >
-              {{ error }}
-            </p>
-          }
+          <div class="runtime-parameter">
+            <ion-item>
+              <ion-input
+                [label]="parameter.def.title || parameter.def.id"
+                [labelPlacement]="'fixed'"
+                [placeholder]="parameter.def.type"
+                [value]="parameterText(parameter)"
+                [attr.aria-invalid]="
+                  parameterErrors()[parameter.def.id] ? 'true' : null
+                "
+                [attr.aria-describedby]="
+                  parameterErrors()[parameter.def.id]
+                    ? 'hosted-board-parameter-error-' + parameter.def.id
+                    : null
+                "
+                (ionInput)="setParameterValue(parameter, $event.detail.value)"
+              />
+            </ion-item>
+            @if (parameterErrors()[parameter.def.id]; as error) {
+              <p
+                role="alert"
+                [id]="'hosted-board-parameter-error-' + parameter.def.id"
+              >
+                {{ error }}
+              </p>
+            }
+          </div>
         }
       </section>
     }
@@ -263,6 +270,10 @@ interface QueryFolder {
                     "
                   />
                 }
+                @if (card.widget?.name === 'chart') {
+                  <sneat-datatug-chart-source-editor [definition]="$any(card.widget.data)" [queries]="queries()" [disabled]="saving() || !!pending()" (edit)="editSource(card.id, $event)" />
+                  <p>Save the board to run the updated source configuration.</p>
+                }
                 @if (card.widget?.name === 'SQL') {
                   <label
                     >Saved query
@@ -316,6 +327,14 @@ interface QueryFolder {
                     Existing {{ card.widget?.name || 'empty' }} widget is
                     preserved.
                   </p>
+                }
+                @if (card.widget) {
+                  <ion-button
+                    fill="outline"
+                    (click)="saveAsProjectCard(card)"
+                    [disabled]="saving() || !!pending() || savingCardId() === card.id"
+                    >Save {{ card.title || card.id }} as project card</ion-button
+                  >
                 }
                 <ion-button
                   (click)="edit({ type: 'remove-card', cardId: card.id })"
@@ -437,6 +456,28 @@ interface QueryFolder {
         display: block;
         padding: 16px;
       }
+      .runtime-parameters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem 1rem;
+        align-items: start;
+        margin-block: .75rem;
+      }
+      .parameter-help {
+        flex-basis: 100%;
+        margin: 0;
+        font-size: .85rem;
+        color: var(--dt-text-muted);
+      }
+      .runtime-parameter { flex: 0 1 22rem; min-width: 0; max-width: 100%; }
+      .runtime-parameter ion-item { --padding-start: 0; --inner-padding-end: 0; }
+      .runtime-parameter ion-input { --padding-top: .5rem; --padding-bottom: .5rem; }
+      .runtime-parameter ion-input::part(label) {
+        white-space: nowrap;
+        flex: 0 0 auto;
+        width: auto;
+        margin-inline-end: .75rem;
+      }
       .board-heading {
         display: flex;
         align-items: center;
@@ -532,6 +573,57 @@ export class HostedBoardWorkspaceComponent {
     });
   }
   readonly selectedQuery = signal('');
+  /** The inline card being copied into a project card right now. */
+  readonly savingCardId = signal<string | undefined>(undefined);
+  private readonly injector = inject(Injector);
+  /**
+   * "Save as project card" (spec REQ: dashboard-reference): creates a
+   * project card from this inline card and its bound board parameters, then
+   * turns the cell into a reference to it. The board itself is saved with
+   * its own Save, like every other edit.
+   */
+  saveAsProjectCard(card: BoardCard) {
+    const ref = this.scope.page.ref();
+    const board = this.draft();
+    if (!ref || !board || !this.editing() || !card.widget || this.savingCardId())
+      return;
+    const cards = this.injector.get(ProjectCardsService);
+    const environment = this.scope.environment();
+    this.error.set('');
+    this.notice.set('');
+    this.savingCardId.set(card.id);
+    cards
+      .listCards(ref, environment, true)
+      .pipe(
+        switchMap((briefs) => {
+          const made = cardFromBoardCard(
+            card,
+            board,
+            briefs.map((b) => b.id),
+          );
+          return cards
+            .createCard(ref, made.card, environment)
+            .pipe(map(() => made));
+        }),
+      )
+      .subscribe({
+        next: ({ card: created, ref: cardRef }) => {
+          this.savingCardId.set(undefined);
+          this.edit({ type: 'set-card-ref', cardId: card.id, ref: cardRef });
+          this.notice.set(
+            `Saved project card "${created.title}" (${created.id}). Save the board to use it in this dashboard.`,
+          );
+        },
+        error: (error: unknown) => {
+          this.savingCardId.set(undefined);
+          this.error.set(
+            error instanceof Error && error.message
+              ? error.message
+              : 'The project card could not be saved.',
+          );
+        },
+      });
+  }
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');
@@ -776,6 +868,7 @@ export class HostedBoardWorkspaceComponent {
   reload() {
     this.refresh.update((n) => n + 1);
   }
+  editSource(cardId: string, edit: ChartSourceEdit): void { this.edit({ ...edit, cardId }); }
   cardQuery(card: BoardCard) {
     return (
       (card.widget?.data as { sql?: { queryId?: string } })?.sql?.queryId || ''
