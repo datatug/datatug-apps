@@ -32,7 +32,8 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: {
-    // Dependencies are prepared/verified explicitly before this bounded run.
+    // The dependencies (build info, licence stamp, recordsetcompare) are prepared by the nx target's own dependsOn
+    // before this bounded run, so the dev server does not prepare them a second time.
     command: `pnpm nx run datatug-app:serve:development --host localhost --port ${port} --excludeTaskDependencies`,
     url: `http://localhost:${port}`,
     reuseExistingServer: false,

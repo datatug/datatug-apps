@@ -374,6 +374,11 @@
     "e2e-showcase-independent": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": [
+        "stamp-build-info",
+        "stamp-ag-grid-license",
+        "prepare-recordsetcompare"
+      ],
       "outputs": [
         "{workspaceRoot}/coverage/apps/datatug-showcase-exploration"
       ],
