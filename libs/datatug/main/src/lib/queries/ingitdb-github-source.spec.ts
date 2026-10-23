@@ -245,7 +245,7 @@ describe('inGitDB databases read straight from GitHub', () => {
     expect(federationReadsOvdb({ ...worldMeta.federation, lookups: [{}] })).toBe(true);
     // A bounded run always preflights and reads through OVDB, even over GitHub-only tables.
     expect(federationReadsOvdb({ ...worldMeta.federation, bounds: { timeoutMs: 10000 } })).toBe(true);
-    expect(federationReadsOvdb({ tables: [{ name: 'x' }], ingitdbSources: worldMeta.federation.ingitdbSources })).toBe(true);
+    expect(federationReadsOvdb({ tables: [{}], ingitdbSources: worldMeta.federation.ingitdbSources })).toBe(true);
     expect(federationReadsOvdb(undefined)).toBe(false);
   });
 
