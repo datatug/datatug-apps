@@ -6,8 +6,10 @@ import {
   inject,
   signal,
   DestroyRef,
+  effect,
+  untracked,
+  Injector,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import {
@@ -25,6 +27,15 @@ import {
   IonSelectOption,
   IonIcon,
   IonSpinner,
+  IonCard,
+  IonCardContent,
+  IonItemDivider,
+  IonItemGroup,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonBadge,
+  IonRouterLink,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
@@ -38,8 +49,50 @@ import {
   cubeOutline,
   serverOutline,
   layersOutline,
+  optionsOutline,
+  closeOutline,
+  searchOutline,
 } from 'ionicons/icons';
-import { Subscription, combineLatest, firstValueFrom, timeout } from 'rxjs';
+import {
+  Subscription,
+  combineLatest,
+  firstValueFrom,
+  of,
+  switchMap,
+  timeout,
+} from 'rxjs';
+import {
+  takeUntilDestroyed,
+  toObservable,
+  toSignal,
+} from '@angular/core/rxjs-interop';
+import { readGithubProjectId } from '@datatug/project-address';
+import { ErrorStateComponent } from '../components/error-state/error-state.component';
+import {
+  ProjectQuickSearchBoxComponent,
+  QUICK_SEARCH_DEBOUNCE_MS,
+  registerQuickSearchIcons,
+} from './project-quick-search-box.component';
+import {
+  MetadataItem,
+  MetadataKind,
+  MetadataMatch,
+  fold,
+  fromSearchDocument,
+  groupMatches,
+  highlightParts,
+  matchMetadata,
+  secondaryLines,
+  metadataGroupTitles,
+  metadataKinds,
+  quickSearchErrorMessage,
+  isSignedInViewer,
+} from './project-metadata-search';
+import { debouncedSignal } from './debounced-signal';
+import {
+  ProjectMetadataSearchService,
+  ProjectMetadataState,
+} from './project-metadata-search.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import {
@@ -53,7 +106,6 @@ import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
   checkMetadataTarget,
   SearchDocument,
-  SearchKind,
   SearchSnapshot,
   SearchStatus,
   groupSearchItems,
@@ -61,7 +113,6 @@ import {
   kindNames,
   searchChipLabel,
   searchItemHref,
-  searchKinds,
 } from './quick-search-model';
 
 @Component({
@@ -89,322 +140,482 @@ import {
     IonSelectOption,
     IonIcon,
     IonSpinner,
+    IonCard,
+    IonCardContent,
+    IonItemDivider,
+    IonItemGroup,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonBadge,
+    IonRouterLink,
+    ErrorStateComponent,
+    ProjectQuickSearchBoxComponent,
   ],
   template: ` <ion-header
       ><ion-toolbar
         ><ion-buttons slot="start"
           ><ion-menu-button /><ion-back-button
             [defaultHref]="overviewHref()" /></ion-buttons
-        ><ion-title>{{
-          checkDetail()
-            ? 'Check metadata'
-            : discovery
-              ? 'Tag discovery'
-              : schemaDetail
-                ? 'Schema metadata'
-                : 'Quick Search'
-        }}<sneat-datatug-business-clock /></ion-title
+        ><ion-title
+          >{{
+            checkDetail()
+              ? 'Check metadata'
+              : discovery
+                ? 'Tag discovery'
+                : schemaDetail
+                  ? 'Schema metadata'
+                  : 'Quick Search'
+          }}<sneat-datatug-business-clock /></ion-title
         ><ion-buttons slot="end">
           @if (!discovery && !schemaDetail && !checkDetail()) {
-            <ion-button (click)="settings.set(!settings())"
-              >Index settings</ion-button
-            >
-          }
-        </ion-buttons></ion-toolbar
-      ></ion-header
-    >
-    <ion-content
+            <ion-button
+              class="index-settings-button"
+              color="medium"
+              aria-label="Index settings"
+              title="Index settings"
+              [attr.aria-expanded]="settings()"
+              aria-controls="quick-search-index-settings"
+              (click)="settings.set(!settings())"
+              ><ion-icon
+                slot="icon-only"
+                name="options-outline"
+                aria-hidden="true"
+            /></ion-button>
+          }</ion-buttons></ion-toolbar
+    ></ion-header>
+    <ion-content color="light"
       ><main>
-        <p class="scope">Current project · {{ project()?.projectId }}</p>
-        @if (discovery) {
-          <h1>{{ query() }}</h1>
-          <p>
-            Items explicitly tagged with this name appear below. Matching names
-            alone do not establish tag membership.
-          </p>
-        }
-        @if (schemaDetail) {
-          <h1>{{ schemaTable() }}</h1>
-          <p>Selected schema snapshot · {{ schemaName() }}</p>
-        }
         @if (!schemaDetail && !checkDetail()) {
-          <form (ngSubmit)="search()">
-            <ion-input
-              label="Search project names and tags"
-              fill="outline"
-              labelPlacement="stacked"
-              [ngModel]="query()"
-              (ngModelChange)="query.set($event); invalidateSearch()"
-              name="search"
-            />
-            <div class="filters">
-              <ion-select
-                label="Kind"
-                [ngModel]="kind()"
-                (ngModelChange)="kind.set($event); search()"
-                name="kind"
-                ><ion-select-option value="">All kinds</ion-select-option>
-                @for (value of kinds; track value) {
-                  <ion-select-option [value]="value">{{
-                    names[value]
-                  }}</ion-select-option>
-                }</ion-select
-              ><ion-input
-                label="Tag filter"
-                fill="outline"
-                [ngModel]="tag()"
-                (ngModelChange)="tag.set($event); invalidateSearch()"
-                name="tag"
-              /><ion-button
-                type="submit"
-                [disabled]="busy() || status()?.state !== 'ready'"
-                >Search</ion-button
+          <ion-card class="search-card">
+            <ion-item-divider color="light">
+              <ion-label
+                ><h2>
+                  {{ discovery ? 'Tag · ' + query() : 'Search this project' }}
+                </h2></ion-label
               >
-            </div>
-          </form>
+            </ion-item-divider>
+            <ion-card-content>
+              <p class="scope">{{ projectLabel() }}</p>
+              @if (discovery) {
+                <p class="hint">
+                  Items explicitly tagged with this name. Matching names alone
+                  do not establish tag membership.
+                </p>
+              } @else {
+                <sneat-datatug-project-quick-search-box
+                  label="Search names, titles, tags and descriptions"
+                  [projectRef]="project()"
+                  [suggestions]="false"
+                  [navigateOnSubmit]="false"
+                  [query]="query()"
+                  (termChange)="onTerm($event)"
+                  (submitted)="onTerm($event)"
+                />
+                <div class="filters">
+                  <ion-select
+                    label="Type"
+                    labelPlacement="stacked"
+                    fill="outline"
+                    interface="popover"
+                    [ngModel]="localKind()"
+                    (ngModelChange)="localKind.set($event)"
+                    name="kind"
+                    ><ion-select-option value="">All types</ion-select-option>
+                    @for (value of localKinds; track value) {
+                      <ion-select-option [value]="value">{{
+                        groupTitles[value]
+                      }}</ion-select-option>
+                    }</ion-select
+                  ><ion-input
+                    label="Tag filter"
+                    labelPlacement="stacked"
+                    fill="outline"
+                    placeholder="Any tag"
+                    [ngModel]="tag()"
+                    (ngModelChange)="tag.set($event)"
+                    name="tag"
+                  />
+                </div>
+              }
+            </ion-card-content>
+          </ion-card>
         }
         @if (settings() && !checkDetail()) {
-          <section aria-label="Index settings">
-            <h2>Index settings</h2>
-            @if (project()?.spaceID) {
-              <p>
-                Selected environment:
-                {{
-                  environmentId() ||
-                    'None. Select an environment in project navigation to index its saved objects.'
-                }}
+          <ion-card id="quick-search-index-settings">
+            <ion-item-divider color="light">
+              <ion-label><h2>Index settings</h2></ion-label>
+              <ion-buttons slot="end">
+                <ion-button
+                  color="medium"
+                  aria-label="Close Index settings"
+                  title="Close"
+                  (click)="settings.set(false)"
+                  ><ion-icon
+                    slot="icon-only"
+                    name="close-outline"
+                    aria-hidden="true"
+                /></ion-button>
+              </ion-buttons>
+            </ion-item-divider>
+            <ion-card-content>
+              <p class="hint">
+                Quick Search works without an index: it searches the project
+                metadata this page already reads, in your browser. A hosted
+                index is optional and only uploads names and tags after a
+                project manager consents.
               </p>
-            }
-            @if (status(); as s) {
-              <p role="status">
-                {{ s.state }} · {{ s.documentCount }} indexed items
-                @if (s.revision !== undefined) {
-                  · Revision {{ s.revision }}
-                }
-              </p>
-              <p>
-                Audience: {{ s.audience }} · Provider:
-                {{ s.provider || 'Not configured' }}
-              </p>
-              @if (s.lastIndexedAt) {
-                <p>Last indexed: {{ s.lastIndexedAt }}</p>
-              }
-              @if (!s.eligible) {
+              @if (project()?.spaceID) {
                 <p>
-                  Quick Search requires a public project or a current Pro or
-                  Business account with project access.
+                  Selected environment:
+                  {{
+                    environmentId() ||
+                      'None. Select an environment in project navigation to index its saved objects.'
+                  }}
                 </p>
               }
-              @if (s.canManage) {
-                <ion-button
-                  fill="outline"
-                  (click)="preview()"
-                  [disabled]="busy()"
-                  >Preview selected metadata</ion-button
-                >
-                @if (capacityExceeded()) {
-                  <p role="alert">
-                    This selected snapshot exceeds the Quick Search limit of
-                    1,000 items including tags or 1 MiB. Reduce the source
-                    metadata before indexing.
-                  </p>
+              @if (status(); as s) {
+                <p role="status">
+                  {{
+                    s.state === 'disabled'
+                      ? 'Hosted index: not enabled'
+                      : 'Hosted index: ' + s.state
+                  }}
+                  · {{ s.documentCount }} indexed items
+                  @if (s.revision) {
+                    · Revision {{ s.revision }}
+                  }
+                </p>
+                @if (s.lastIndexedAt) {
+                  <p>Last indexed: {{ s.lastIndexedAt }}</p>
                 }
-                @if (snapshot(); as snapshot) {
-                  <p>
-                    {{ snapshot.documents.length }} selected items. Fields:
-                    kind, name, identifier, source, parent, tags and typed
-                    reference.
-                  </p>
-                  <ul>
-                    @for (
-                      coverage of snapshot.sourceCoverage;
-                      track coverage.kind
-                    ) {
-                      <li>
-                        {{ names[coverage.kind] }}: {{ coverage.status }} ({{
-                          coverage.count
-                        }})
-                      </li>
-                    }
-                  </ul>
-                  <details>
-                    <summary>Actual metadata preview</summary>
+                @if (s.canManage) {
+                  <ion-button
+                    fill="outline"
+                    (click)="preview()"
+                    [disabled]="busy()"
+                    >Preview selected metadata</ion-button
+                  >
+                  @if (capacityExceeded()) {
+                    <p role="alert">
+                      This selected snapshot exceeds the Quick Search limit of
+                      1,000 items including tags or 1 MiB. Reduce the source
+                      metadata before indexing.
+                    </p>
+                  }
+                  @if (snapshot(); as snapshot) {
+                    <p>
+                      {{ snapshot.documents.length }} selected items. Fields:
+                      kind, name, identifier, source, parent, tags and typed
+                      reference.
+                    </p>
                     <ul>
-                      @for (item of snapshot.documents; track $index) {
+                      @for (
+                        coverage of snapshot.sourceCoverage;
+                        track coverage.kind
+                      ) {
                         <li>
-                          {{ names[item.kind] }} · {{ item.name }} ·
-                          {{ item.id }}
-                          @if (item.parentName) {
-                            · Parent: {{ item.parentName }}
-                          }
-                          @if (item.tags.length) {
-                            · Tags: {{ item.tags.join(', ') }}
-                          }
+                          {{ names[coverage.kind] }}: {{ coverage.status }} ({{
+                            coverage.count
+                          }})
                         </li>
                       }
                     </ul>
-                  </details>
-                }
-                @if (s.state === 'disabled' || !s.consentVersion) {
-                  <ion-checkbox
-                    labelPlacement="end"
-                    alignment="start"
-                    [checked]="consent()"
-                    (ionChange)="consent.set($event.detail.checked)"
-                    >Upload selected project metadata to DataTug Quick Search,
-                    powered by Typesense. This includes object names,
-                    identifiers, database structure, and tags. Database rows,
-                    credentials, query results, SQL text, descriptions, and
-                    dashboard configuration are excluded.
-                    {{
-                      s.audience === 'public'
-                        ? 'Anyone can search this public project.'
-                        : 'Only people with current project access can find these indexed items.'
-                    }}
-                    You can disable search and delete the index at any
-                    time.</ion-checkbox
-                  ><ion-button
-                    (click)="enable()"
-                    [disabled]="
-                      !consent() ||
-                      !snapshot() ||
-                      busy() ||
-                      !s.eligible ||
-                      capacityExceeded()
-                    "
-                    >Enable and index</ion-button
-                  >
-                } @else {
-                  <ion-button
-                    (click)="refresh()"
-                    [disabled]="
-                      !snapshot() || busy() || !s.eligible || capacityExceeded()
-                    "
-                    >Refresh selected snapshot</ion-button
-                  >
-                }
-                <ion-button
-                  color="danger"
-                  fill="outline"
-                  (click)="confirmDelete.set(true)"
-                  [disabled]="busy() || s.state === 'disabled'"
-                  >Disable and delete index</ion-button
-                >
-                @if (confirmDelete()) {
-                  <p>
-                    Disable search immediately and permanently delete uploaded
-                    metadata?
-                  </p>
+                    <details>
+                      <summary>Actual metadata preview</summary>
+                      <ul>
+                        @for (item of snapshot.documents; track $index) {
+                          <li>
+                            {{ names[item.kind] }} · {{ item.name }} ·
+                            {{ item.id }}
+                            @if (item.parentName) {
+                              · Parent: {{ item.parentName }}
+                            }
+                            @if (item.tags.length) {
+                              · Tags: {{ item.tags.join(', ') }}
+                            }
+                          </li>
+                        }
+                      </ul>
+                    </details>
+                  }
+                  @if (s.state === 'disabled' || !s.consentVersion) {
+                    <ion-checkbox
+                      labelPlacement="end"
+                      alignment="start"
+                      [checked]="consent()"
+                      (ionChange)="consent.set($event.detail.checked)"
+                      >Upload selected project metadata to DataTug Quick Search,
+                      powered by Typesense. This includes object names,
+                      identifiers, database structure, and tags. Database rows,
+                      credentials, query results, SQL text, descriptions, and
+                      dashboard configuration are excluded.
+                      {{
+                        s.audience === 'public'
+                          ? 'Anyone can search this public project.'
+                          : 'Only people with current project access can find these indexed items.'
+                      }}
+                      You can disable search and delete the index at any
+                      time.</ion-checkbox
+                    ><ion-button
+                      (click)="enable()"
+                      [disabled]="
+                        !consent() ||
+                        !snapshot() ||
+                        busy() ||
+                        !s.eligible ||
+                        capacityExceeded()
+                      "
+                      >Enable and index</ion-button
+                    >
+                  } @else {
+                    <ion-button
+                      (click)="refresh()"
+                      [disabled]="
+                        !snapshot() ||
+                        busy() ||
+                        !s.eligible ||
+                        capacityExceeded()
+                      "
+                      >Refresh selected snapshot</ion-button
+                    >
+                  }
                   <ion-button
                     color="danger"
-                    (click)="disable()"
-                    [disabled]="busy()"
-                    >Confirm disable and delete</ion-button
-                  ><ion-button fill="clear" (click)="confirmDelete.set(false)"
-                    >Cancel</ion-button
+                    fill="outline"
+                    (click)="confirmDelete.set(true)"
+                    [disabled]="busy() || s.state === 'disabled'"
+                    >Disable and delete index</ion-button
                   >
+                  @if (confirmDelete()) {
+                    <p>
+                      Disable search immediately and permanently delete uploaded
+                      metadata?
+                    </p>
+                    <ion-button
+                      color="danger"
+                      (click)="disable()"
+                      [disabled]="busy()"
+                      >Confirm disable and delete</ion-button
+                    ><ion-button fill="clear" (click)="confirmDelete.set(false)"
+                      >Cancel</ion-button
+                    >
+                  }
+                  @if (s.state === 'deleting' || s.error) {
+                    <ion-button (click)="disable()" [disabled]="busy()"
+                      >Retry deletion</ion-button
+                    >
+                  }
+                } @else {
+                  <p class="hint">
+                    Only a project manager can enable a hosted index or delete
+                    it.
+                  </p>
                 }
-                @if (s.state === 'deleting' || s.error) {
-                  <ion-button (click)="disable()" [disabled]="busy()"
-                    >Retry deletion</ion-button
-                  >
-                }
-              } @else {
-                <p>
-                  Only a project manager can enable indexing or delete this
-                  index.
+              } @else if (busy()) {
+                <p role="status" class="loading">
+                  <ion-spinner name="dots" aria-hidden="true" /> Loading…
                 </p>
               }
+              @if (error()) {
+                <p role="alert" class="warning">{{ error() }}</p>
+                <ion-button (click)="loadStatus()" fill="clear"
+                  >Retry status</ion-button
+                >
+              }
+              @if (status()?.error) {
+                <p role="alert" class="warning">{{ statusErrorText() }}</p>
+              }
+            </ion-card-content>
+          </ion-card>
+        }
+        @if (!schemaDetail && !checkDetail()) {
+          <ion-card class="results-card">
+            <ion-item-divider color="light">
+              <ion-label><h2>Results</h2></ion-label>
+              @if (resultCount()) {
+                <ion-badge slot="end" color="medium" aria-live="polite">{{
+                  resultCount()
+                }}</ion-badge>
+              }
+            </ion-item-divider>
+            @if (!discovery && !query().trim()) {
+              <div class="state" role="status">
+                <ion-icon name="search-outline" aria-hidden="true" />
+                <p>
+                  Type to search queries, boards, entities, databases, tables,
+                  columns and tags.
+                </p>
+              </div>
+            } @else if (resultGroups().length) {
+              <ion-list lines="full">
+                @for (group of resultGroups(); track group.kind) {
+                  <ion-item-group>
+                    <ion-item-divider color="light">
+                      <ion-icon
+                        slot="start"
+                        [name]="group.icon"
+                        aria-hidden="true"
+                      />
+                      <ion-label
+                        ><h3>{{ group.title }}</h3></ion-label
+                      >
+                      <ion-badge slot="end" color="medium">{{
+                        group.total
+                      }}</ion-badge>
+                    </ion-item-divider>
+                    @for (row of group.rows; track row.key) {
+                      <ion-item [routerLink]="row.link" [detail]="!!row.link">
+                        <ion-icon
+                          slot="start"
+                          [name]="row.icon"
+                          color="primary"
+                          aria-hidden="true"
+                        />
+                        <ion-label class="ion-text-wrap">
+                          <h3>
+                            @for (part of row.title; track $index) {
+                              @if (part.hit) {
+                                <mark>{{ part.text }}</mark>
+                              } @else {
+                                <span>{{ part.text }}</span>
+                              }
+                            }
+                          </h3>
+                          <p>{{ row.secondary }}</p>
+                        </ion-label>
+                      </ion-item>
+                    }
+                  </ion-item-group>
+                }
+              </ion-list>
+              @if (localState().loading) {
+                <p class="note" role="status">
+                  <ion-spinner name="dots" aria-hidden="true" /> Still reading
+                  project metadata…
+                </p>
+              }
+              @if (localErrorText(); as text) {
+                <p class="note warning" role="status">{{ text }}</p>
+              }
+            } @else if (localState().loading || hostedBusy()) {
+              <div class="state" role="status">
+                <ion-spinner name="dots" aria-hidden="true" />
+                <p>Searching project metadata…</p>
+              </div>
+            } @else if (localErrorText(); as text) {
+              <sneat-datatug-error-state
+                compact
+                title="Search could not read this project"
+                [hint]="text"
+                [retryable]="true"
+                (retry)="retryMetadata()"
+              />
+            } @else {
+              <div class="state" role="status">
+                <ion-icon name="search-outline" aria-hidden="true" />
+                <p>
+                  {{
+                    discovery
+                      ? 'No items with this tag yet.'
+                      : 'No matches for “' + query().trim() + '”.'
+                  }}
+                </p>
+                @if (!discovery && (localKind() || tag())) {
+                  <ion-button fill="clear" (click)="clearFilters()"
+                    >Clear filters</ion-button
+                  >
+                }
+              </div>
             }
-          </section>
+          </ion-card>
         }
-        @if (busy()) {
-          <p role="status"><ion-spinner /> Loading…</p>
-        }
-        @if (error()) {
-          <p role="alert">{{ error() }}</p>
-          <ion-button (click)="loadStatus()" fill="clear"
-            >Retry status</ion-button
-          >
-        }
-        @if (status()?.error) {
-          <p role="alert">{{ status()?.error }}</p>
-        }
-        @if (!checkDetail() && !busy() && status()?.state === 'disabled') {
-          <p role="status">
-            This project has no search index yet. Indexing reads names and
-            tags only, and starts once you consent in Index settings. Until
-            then, search from the project overview.
-          </p>
-          @if (!schemaDetail) {
-            <ion-button (click)="settings.set(true)"
-              >Open Index settings</ion-button
-            >
-          }
-          <ion-button fill="outline" [routerLink]="overviewHref()"
-            >Search from the overview</ion-button
-          >
-        }
-        @if (!checkDetail() && (status()?.state === 'ready' || schemaDetail)) {
-          <p aria-live="polite">
-            {{ groups().length }}
-            {{ groups().length === 1 ? 'name' : 'names' }} ·
-            {{ items().length }} items
-          </p>
-        }
-        @if (!checkDetail() && !busy() && searched() && !groups().length) {
-          <p role="status">
-            {{
-              discovery
-                ? 'No items with this tag were found in this index.'
-                : 'No matching items.'
-            }}
-          </p>
+        @if (schemaDetail) {
+          <ion-card>
+            <ion-item-divider color="light">
+              <ion-label
+                ><h2>{{ schemaTable() }}</h2>
+                <p>Selected schema snapshot · {{ schemaName() }}</p></ion-label
+              >
+            </ion-item-divider>
+            <ion-card-content>
+              @if (busy()) {
+                <p role="status" class="loading">
+                  <ion-spinner name="dots" aria-hidden="true" /> Loading…
+                </p>
+              }
+              @if (error()) {
+                <p role="alert" class="warning">{{ error() }}</p>
+                <ion-button (click)="loadStatus()" fill="clear"
+                  >Retry status</ion-button
+                >
+              }
+              @if (!busy() && searched() && !groups().length) {
+                <p role="status">No matching items.</p>
+              }
+              <ul class="results">
+                @for (group of groups(); track group.key) {
+                  <li>
+                    <a class="name" [routerLink]="groupHref(group.name)">{{
+                      group.name
+                    }}</a>
+                    <div class="chips">
+                      @for (item of group.items; track $index) {
+                        @if (itemHref(item); as href) {
+                          <a
+                            class="chip"
+                            [routerLink]="href"
+                            [attr.aria-label]="label(item, group)"
+                            ><ion-icon
+                              [name]="icons[item.kind]"
+                              aria-hidden="true"
+                            />{{ label(item, group) }}</a
+                          >
+                        } @else {
+                          <span class="chip"
+                            >{{ label(item, group) }} · unavailable</span
+                          >
+                        }
+                      }
+                    </div>
+                  </li>
+                }
+              </ul>
+            </ion-card-content>
+          </ion-card>
         }
         @if (checkDetail()) {
-          <section aria-label="Check metadata">
-            @if (items()[0]; as item) {
-              <h1>{{ item.name }}</h1>
-              <p>Check metadata · Read-only names and tags</p>
-              <p>Identifier: {{ item.reference.objectId }}</p>
-              @if (item.tags.length) {
-                <p>Tags: {{ item.tags.join(', ') }}</p>
+          <ion-card aria-label="Check metadata">
+            <ion-item-divider color="light">
+              <ion-label
+                ><h2>{{ items()[0]?.name || 'Check metadata' }}</h2></ion-label
+              >
+            </ion-item-divider>
+            <ion-card-content>
+              @if (busy()) {
+                <p role="status" class="loading">
+                  <ion-spinner name="dots" aria-hidden="true" /> Loading…
+                </p>
               }
-            } @else if (!busy() && !error()) {
-              <p role="status">
-                This Check metadata is unavailable for the selected project.
-              </p>
-            }
-          </section>
-        } @else {
-          <ul class="results">
-            @for (group of groups(); track group.key) {
-              <li>
-                <a class="name" [routerLink]="groupHref(group.name)">{{
-                  group.name
-                }}</a>
-                <div class="chips">
-                  @for (item of group.items; track $index) {
-                    @if (itemHref(item); as href) {
-                      <a
-                        class="chip"
-                        [routerLink]="href"
-                        [attr.aria-label]="label(item, group)"
-                        ><ion-icon
-                          [name]="icons[item.kind]"
-                          aria-hidden="true"
-                        />{{ label(item, group) }}</a
-                      >
-                    } @else {
-                      <span class="chip"
-                        >{{ label(item, group) }} · unavailable</span
-                      >
-                    }
-                  }
-                </div>
-              </li>
-            }
-          </ul>
+              @if (error()) {
+                <p role="alert" class="warning">{{ error() }}</p>
+                <ion-button (click)="loadStatus()" fill="clear"
+                  >Retry status</ion-button
+                >
+              }
+              @if (items()[0]; as item) {
+                <p>Check metadata · Read-only names and tags</p>
+                <p>Identifier: {{ item.reference.objectId }}</p>
+                @if (item.tags.length) {
+                  <p>Tags: {{ item.tags.join(', ') }}</p>
+                }
+              } @else if (!busy() && !error()) {
+                <p role="status">
+                  This Check metadata is unavailable for the selected project.
+                </p>
+              }
+            </ion-card-content>
+          </ion-card>
         }
       </main></ion-content
     >`,
@@ -413,33 +624,82 @@ import {
       main {
         max-width: 960px;
         margin: auto;
-        padding: 20px;
+        padding: 8px 0 24px;
       }
-      .scope {
-        color: var(--dt-text-muted);
+      ion-card {
+        margin: 12px 16px;
+      }
+      ion-card > ion-item-divider h2 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 600;
+      }
+      ion-card-content {
+        padding: 16px;
+      }
+      .scope,
+      .hint {
+        margin: 0 0 12px;
+        color: var(--ion-color-medium-shade);
         overflow-wrap: anywhere;
       }
       .filters {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
         gap: 12px;
-        align-items: end;
-        flex-wrap: wrap;
+        margin-top: 12px;
       }
-      form > ion-input {
-        margin-bottom: 16px;
+      .state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 32px 16px;
+        text-align: center;
+        color: var(--ion-color-medium-shade);
       }
-      .filters ion-select,
-      .filters ion-input {
-        flex: 1;
-        min-width: 180px;
+      .state > ion-icon {
+        font-size: 32px;
       }
-      .filters ion-button {
-        flex: none;
+      .state p {
+        margin: 0;
       }
-      section {
-        margin: 20px 0;
-        padding: 20px 0;
-        border-block: 1px solid var(--ion-color-light-shade);
+      .note,
+      .loading {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0;
+        padding: 10px 16px;
+        font-size: 0.85rem;
+        color: var(--ion-color-medium-shade);
+      }
+      .warning {
+        color: var(--ion-color-warning-shade);
+      }
+      ion-item-group ion-item-divider ion-icon {
+        margin-inline-end: 8px;
+        color: var(--ion-color-medium-shade);
+      }
+      ion-item-group ion-item-divider h3 {
+        margin: 0;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      ion-item ion-label h3 {
+        font-weight: 500;
+        overflow-wrap: anywhere;
+      }
+      ion-item ion-label p {
+        overflow-wrap: anywhere;
+      }
+      mark {
+        background: rgba(var(--ion-color-warning-rgb), 0.35);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 1px;
       }
       ion-checkbox {
         display: block;
@@ -454,16 +714,17 @@ import {
       .results {
         list-style: none;
         padding: 0;
+        margin: 0;
       }
       .results > li {
-        padding: 18px 0;
+        padding: 14px 0;
       }
       .results > li:not(:last-child) {
         border-bottom: 1px solid var(--ion-color-light-shade);
       }
       .name {
         font-weight: 600;
-        font-size: 1.1rem;
+        font-size: 1.05rem;
       }
       .chips {
         display: flex;
@@ -486,16 +747,19 @@ import {
         outline: 3px solid var(--ion-color-primary);
         outline-offset: 3px;
       }
+      ion-button {
+        max-width: 100%;
+        white-space: normal;
+      }
       @media (max-width: 480px) {
-        main {
-          padding: 14px;
+        ion-card {
+          margin: 8px;
+        }
+        ion-card-content {
+          padding: 12px;
         }
         .filters {
-          display: block;
-        }
-        ion-button {
-          max-width: 100%;
-          white-space: normal;
+          grid-template-columns: minmax(0, 1fr);
         }
       }
     `,
@@ -539,7 +803,7 @@ export class QuickSearchPageComponent {
   readonly schemaName = signal(
     this.route.snapshot.queryParamMap.get('schema') || '',
   );
-  readonly kind = signal<SearchKind | ''>('');
+  readonly localKind = signal<MetadataKind | ''>('');
   readonly tag = signal('');
   readonly status = signal<SearchStatus | undefined>(undefined);
   readonly snapshot = signal<SearchSnapshot | undefined>(undefined);
@@ -561,16 +825,139 @@ export class QuickSearchPageComponent {
   readonly error = signal('');
   readonly busy = signal(false);
   readonly searched = signal(false);
-  readonly kinds = searchKinds;
+  readonly localKinds = metadataKinds;
+  readonly groupTitles = metadataGroupTitles;
   readonly names = kindNames;
   readonly icons = kindIcons;
   readonly label = searchChipLabel;
   readonly overviewHref = computed(() =>
     projectPageHref(this.project(), ['overview']),
   );
+  readonly projectLabel = computed(() => {
+    const ref = this.project();
+    if (!ref) return 'Current project';
+    if (['github', 'github.com'].includes(ref.storeId)) {
+      const address = readGithubProjectId(ref.projectId);
+      if (address.ok)
+        return (
+          'Current project · ' +
+          [address.id.org, address.id.repo, address.id.folder]
+            .filter(Boolean)
+            .join('/')
+        );
+    }
+    return 'Current project · ' + ref.projectId;
+  });
+  private readonly injector = inject(Injector);
+  /** Resolved on first use, so the check and schema views never construct the metadata readers. */
+  private get metadataService() {
+    return this.injector.get(ProjectMetadataSearchService);
+  }
+  private readonly metadataRetry = signal(0);
+  /** The project metadata the app already reads, searched in the browser: no index, no consent, no upload. */
+  readonly localState = toSignal(
+    combineLatest([
+      toObservable(this.project),
+      toObservable(this.metadataRetry),
+    ]).pipe(
+      switchMap(([ref]) =>
+        ref && !this.schemaDetail && !this.checkDetail()
+          ? this.metadataService.metadata(ref)
+          : of<ProjectMetadataState>({ items: [], loading: false }),
+      ),
+    ),
+    { initialValue: { items: [], loading: true } as ProjectMetadataState },
+  );
+  /** Hosted-index results, only fetched when an in-memory source failed and a hosted index is ready. */
+  readonly hostedItems = signal<MetadataItem[] | undefined>(undefined);
+  readonly hostedBusy = signal(false);
+  readonly hostedError = signal<unknown>(undefined);
+  readonly resultMatches = computed<MetadataMatch[]>(() => {
+    const q = this.query().trim();
+    if (!q) return [];
+    // One row per object: a hosted copy of an in-memory item only adds the tags its full file carries.
+    const merged = new Map<string, MetadataItem>();
+    for (const item of [
+      ...this.localState().items,
+      ...(this.hostedItems() || []),
+    ]) {
+      const key = [item.kind, item.href || item.id, item.title].join('|');
+      const known = merged.get(key);
+      merged.set(
+        key,
+        known
+          ? { ...known, tags: [...new Set([...known.tags, ...item.tags])] }
+          : item,
+      );
+    }
+    const items = [...merged.values()];
+    if (this.discovery) {
+      const name = fold(q);
+      return items
+        .filter(
+          (item) =>
+            item.kind !== 'tag' && item.tags.some((t) => fold(t) === name),
+        )
+        .map((item) => ({ item, field: 'tag', matched: q, rank: 0 }));
+    }
+    const kind = this.localKind(),
+      tag = fold(this.tag().trim());
+    return matchMetadata(items, q).filter(
+      (m) =>
+        (!kind || m.item.kind === kind) &&
+        (!tag || m.item.tags.some((t) => fold(t).includes(tag))),
+    );
+  });
+  readonly resultCount = computed(() => this.resultMatches().length);
+  readonly resultGroups = computed(() => {
+    const q = this.discovery ? '' : this.query();
+    return groupMatches(this.resultMatches()).map((group) => {
+      const lines = secondaryLines(group.matches);
+      return {
+        kind: group.kind,
+        title: group.title,
+        icon: group.icon,
+        total: group.total,
+        rows: group.matches.map((match, i) => ({
+          key: [match.item.kind, match.item.id, match.item.href].join('|'),
+          title: highlightParts(match.item.title, q),
+          secondary: lines[i],
+          icon: match.item.icon || group.icon,
+          link: match.item.href
+            ? this.router.parseUrl(match.item.href)
+            : undefined,
+        })),
+      };
+    });
+  });
+  readonly localErrorText = computed(() => {
+    const error = this.localState().error;
+    // A failed optional index lookup is not news while the in-memory read succeeded.
+    if (this.hostedItems() || error === undefined) return '';
+    return quickSearchErrorMessage(this.hostedError() ?? error, undefined, {
+      signedIn: this.signedIn(),
+    });
+  });
+  readonly statusErrorText = computed(() => {
+    const code = this.status()?.error;
+    if (!code) return '';
+    return quickSearchErrorMessage(
+      { error: { error: { code } } },
+      'The hosted index reported a problem. Refresh it, or disable and delete it.',
+    );
+  });
+  /** Status, preview and index mutations share this fence; hosted search has its own, so typing never aborts them. */
   private generation = 0;
   private readonly authKey = signal<string | undefined>(undefined);
+  readonly signedIn = signal(false);
   private request?: Subscription;
+  private searchGeneration = 0;
+  private searchRequest?: Subscription;
+  /** The tag filter reaches the hosted index only after typing pauses (local filtering is instant). */
+  private readonly debouncedTag = debouncedSignal(
+    this.tag,
+    QUICK_SEARCH_DEBOUNCE_MS,
+  );
   constructor() {
     addIcons({
       'pricetag-outline': pricetagOutline,
@@ -583,11 +970,28 @@ export class QuickSearchPageComponent {
       'cube-outline': cubeOutline,
       'server-outline': serverOutline,
       'layers-outline': layersOutline,
+      'options-outline': optionsOutline,
+      'close-outline': closeOutline,
+      'search-outline': searchOutline,
+    });
+    registerQuickSearchIcons();
+    // Ask a ready hosted index too (see search()).
+    effect(() => {
+      const q = this.query();
+      this.debouncedTag.value();
+      this.status();
+      untracked(() => {
+        const ref = this.project();
+        if (ref && q.trim() && !this.schemaDetail && !this.checkDetail())
+          this.metadataService.includeColumns(ref);
+        this.search();
+      });
     });
     this.auth.authState.pipe(takeUntilDestroyed()).subscribe((auth) => {
       const key = JSON.stringify([auth.status, auth.user?.uid]);
       if (key === this.authKey()) return;
       this.authKey.set(key);
+      this.signedIn.set(isSignedInViewer(auth));
       this.invalidateSearch();
       this.status.set(undefined);
       this.snapshot.set(undefined);
@@ -660,14 +1064,15 @@ export class QuickSearchPageComponent {
       }
       const query = params.get(this.discovery ? 'name' : 'q') || '';
       if (!this.schemaDetail && !this.checkDetail() && this.query() !== query) {
+        // The effect asks the hosted index; never fence status, preview or index changes for a new query.
         this.query.set(query);
-        this.invalidateSearch();
-        this.search();
+        this.cancelHostedSearch();
       }
     });
     this.destroy.onDestroy(() => {
       this.generation++;
       this.request?.unsubscribe();
+      this.cancelHostedSearch();
     });
   }
   ionViewWillEnter(): void {
@@ -698,6 +1103,12 @@ export class QuickSearchPageComponent {
     this.items.set([]);
     this.busy.set(false);
     this.searched.set(false);
+    this.cancelHostedSearch();
+  }
+  cancelHostedSearch() {
+    this.searchGeneration++;
+    this.searchRequest?.unsubscribe();
+    this.hostedBusy.set(false);
   }
   loadStatus() {
     const ref = this.project();
@@ -717,54 +1128,88 @@ export class QuickSearchPageComponent {
           void this.checkMetadata();
           return;
         }
-        if (!this.schemaDetail && status.state === 'ready') this.search();
+        // A ready status reaches search() through the effect, which watches status().
         if (this.schemaDetail) void this.schemaPreview();
       },
-      error: () => {
+      error: (error: unknown) => {
         if (generation === this.generation) {
+          // A GitHub limit, an outage or an expired sign-in is never worded as missing access.
           this.error.set(
-            'Could not load index status. Check your project access and retry.',
+            quickSearchErrorMessage(
+              error,
+              'Could not load the hosted index status. Try again.',
+              { signedIn: this.signedIn() },
+            ),
           );
           this.busy.set(false);
         }
       },
     });
   }
+  /**
+   * The hosted index is optional: when a consented index is ready its results are merged with the in-memory ones;
+   * otherwise search never calls it.
+   */
   search() {
     const ref = this.project();
-    if (!ref || this.checkDetail() || this.status()?.state !== 'ready') return;
-    if (!this.query().trim()) {
-      this.invalidateSearch();
+    if (!ref || this.checkDetail() || this.schemaDetail) return;
+    const q = this.query().trim();
+    // A ready index adds what in-memory inventories lack (Checks, tags kept only in full item files),
+    // and answers when an in-memory source could not be read. Without one, nothing is asked.
+    if (!q || this.status()?.state !== 'ready') {
+      this.cancelHostedSearch();
+      this.hostedItems.set(undefined);
+      this.hostedError.set(undefined);
       return;
     }
-    const generation = ++this.generation;
-    this.request?.unsubscribe();
-    this.busy.set(true);
-    this.error.set('');
-    this.items.set([]);
-    this.request = this.api
-      .search(
-        ref,
-        this.query(),
-        this.kind() ? [this.kind() as SearchKind] : [],
-        this.discovery ? [this.query()] : this.tag() ? [this.tag()] : [],
-      )
+    this.cancelHostedSearch();
+    const generation = this.searchGeneration;
+    const tag = this.debouncedTag.value().trim();
+    this.hostedBusy.set(true);
+    this.hostedError.set(undefined);
+    this.searchRequest = this.api
+      .search(ref, q, [], this.discovery ? [q] : tag ? [tag] : [])
       .subscribe({
         next: (result) => {
-          if (generation !== this.generation) return;
-          this.items.set(result.items);
-          this.searched.set(true);
-          this.busy.set(false);
+          if (generation !== this.searchGeneration) return;
+          this.hostedItems.set(
+            result.items
+              .map((doc) => fromSearchDocument(ref, doc))
+              .filter((item): item is MetadataItem => !!item),
+          );
+          this.hostedBusy.set(false);
         },
-        error: () => {
-          if (generation === this.generation) {
-            this.error.set(
-              'Search failed. Check your project access and try again.',
-            );
-            this.busy.set(false);
-          }
+        error: (error: unknown) => {
+          if (generation !== this.searchGeneration) return;
+          this.hostedItems.set(undefined);
+          this.hostedError.set(error);
+          this.hostedBusy.set(false);
         },
       });
+  }
+  onTerm(q: string): void {
+    if (q === this.query()) return;
+    this.query.set(q);
+    this.hostedItems.set(undefined);
+    const ref = this.project();
+    if (!ref) return;
+    const params = q.trim() ? '?' + new URLSearchParams({ q: q.trim() }) : '';
+    // Keep the address shareable without stacking a history entry per pause in typing.
+    void this.router
+      .navigateByUrl(projectPageHref(ref, ['quick-search']) + params, {
+        replaceUrl: true,
+      })
+      .catch(() => undefined);
+  }
+  clearFilters(): void {
+    this.localKind.set('');
+    this.tag.set('');
+  }
+  retryMetadata(): void {
+    const ref = this.project();
+    if (ref) this.metadataService.forget(ref);
+    this.hostedError.set(undefined);
+    this.metadataRetry.update((n) => n + 1);
   }
   async checkMetadata() {
     const ref = this.project(),
