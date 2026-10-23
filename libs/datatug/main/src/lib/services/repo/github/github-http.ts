@@ -43,6 +43,13 @@ export interface IGithubGetOptions {
    */
   readonly detectMoved?: boolean;
   readonly timeoutMs?: number;
+  /**
+   * The signed-in user's GitHub token. Sent as `Authorization: Bearer` to `api.github.com` only (never to the file host
+   * or the mirror), so the call counts against the user's 5,000 an hour instead of the anonymous 60 an hour of the
+   * address. A token GitHub refuses (`401`: expired or revoked) is dropped and the call is made again anonymously, once:
+   * a stale sign-in never stops a public read.
+   */
+  readonly token?: string;
 }
 
 /** `url` as the URL parser reads it, when it is an `https` address with no user name or password on one of the three hosts. */
@@ -106,7 +113,10 @@ export async function readBodyLimited(
   return { text: decoder.decode(all), bytes };
 }
 
-/** One GET, as {@link GithubOutcome}. Never throws; never sends credentials; never follows a redirect. */
+/**
+ * One GET, as {@link GithubOutcome}. Never throws; never sends cookies; never follows a redirect. The user's token,
+ * when given, goes to `api.github.com` only (see {@link IGithubGetOptions.token}).
+ */
 export async function githubGet(
   fetchFn: GithubFetch,
   url: string,
@@ -116,6 +126,30 @@ export async function githubGet(
   if (!parsed) {
     return { kind: 'down' };
   }
+  const token =
+    options.token && parsed.hostname === GITHUB_API_HOST
+      ? options.token
+      : undefined;
+  if (token) {
+    const authorised = await githubGetOnce(fetchFn, parsed, options, token);
+    if (authorised !== 'unauthorised') {
+      return authorised;
+    }
+  }
+  const anonymous = await githubGetOnce(fetchFn, parsed, options);
+  return anonymous === 'unauthorised' ? { kind: 'down', status: 401 } : anonymous;
+}
+
+async function githubGetOnce(
+  fetchFn: GithubFetch,
+  parsed: URL,
+  options: IGithubGetOptions,
+  token?: string,
+): Promise<GithubOutcome | 'unauthorised'> {
+  const headers: Record<string, string> = {
+    ...(options.accept ? { Accept: options.accept } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(),
@@ -129,9 +163,13 @@ export async function githubGet(
       redirect: options.detectMoved ? 'manual' : 'error',
       referrerPolicy: 'no-referrer',
       signal: controller.signal,
-      ...(options.accept ? { headers: { Accept: options.accept } } : {}),
+      ...(Object.keys(headers).length ? { headers } : {}),
     });
     const { status } = response;
+    if (status === 401 && token) {
+      await response.body?.cancel().catch(() => undefined);
+      return 'unauthorised';
+    }
     if (response.type === 'opaqueredirect' || (status >= 300 && status < 400)) {
       return options.detectMoved ? { kind: 'moved' } : { kind: 'down', status };
     }

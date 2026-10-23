@@ -17,8 +17,10 @@ import {
   GITHUB_MIRROR_HOST,
   GITHUB_RAW_HOST,
   GithubFetch,
+  GithubOutcome,
   githubGet,
 } from './github-http';
+import { GITHUB_USER_TOKEN } from './github-user-token';
 import {
   GITHUB_RESOLVE_TTL_MS,
   GithubSetTimer,
@@ -334,6 +336,13 @@ const COMMIT_SHA = /^[0-9a-f]{40}$/i;
 
 /** The listing of a commit is kept in the file cache under this name; no file path can be it (`#` is encoded). */
 const TREE_CACHE_PATH = '#tree';
+/** The cache entry of a listing GitHub answered in full (not truncated): what an inventory that must be complete reads. */
+const COMPLETE_TREE_CACHE_PATH = '#complete-tree-v1';
+/**
+ * How many listings at a commit this page keeps in memory: a listing at a commit never changes, so a second reader of
+ * it (the quick search's complete inventory, the meanings of the project at its own commit) asks GitHub nothing.
+ */
+const MAX_PINNED_TREES_IN_MEMORY = 4;
 
 /** The file that makes a folder a project. A project that is not there yet is not remembered as absent. */
 const PROJECT_FILE_NAME = 'datatug-project.json';
@@ -464,6 +473,13 @@ interface IGithubSession {
 export class GithubProjectReaderService {
   private readonly fetchFn = inject(GITHUB_FETCH);
   private readonly now = inject(GITHUB_CLOCK);
+  /** The signed-in user's GitHub token, when there is one: sent with the two `api.github.com` calls of a read. */
+  private readonly userToken = inject(GITHUB_USER_TOKEN);
+  /**
+   * Listing calls by address: one call however many ask at once, and an answer at a commit (immutable) kept for the
+   * page, bounded by {@link MAX_PINNED_TREES_IN_MEMORY}. Anything else is dropped once answered.
+   */
+  private readonly treeCalls = new Map<string, Promise<GithubOutcome>>();
   // A cache that does not answer is no cache (see `guardGithubFileStore`): no read waits for it for long.
   private readonly store = guardGithubFileStore(
     inject(GITHUB_FILE_STORE),
@@ -577,6 +593,7 @@ export class GithubProjectReaderService {
         accept: 'application/vnd.github.sha',
         detectMoved: true,
         timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
+        token: this.userToken(),
       },
     );
     if (out.kind === 'ok') {
@@ -795,7 +812,7 @@ export class GithubProjectReaderService {
     )
       throw new Error('Complete project inventory unavailable');
     const treeCachePath = requireComplete
-      ? '#complete-tree-v1'
+      ? COMPLETE_TREE_CACHE_PATH
       : TREE_CACHE_PATH;
     if (commit.state === 'missing' || commit.state === 'moved') {
       return [];
@@ -811,30 +828,31 @@ export class GithubProjectReaderService {
       }
     }
     const revision = commit.sha ?? session.ref ?? GITHUB_DEFAULT_BRANCH_REF;
-    const out = await githubGet(
-      this.fetchFn,
+    const out = await this.treeCall(
       `https://${GITHUB_API_HOST}/repos/${session.org}/${session.repo}/git/trees/${encodeURIComponent(revision)}?recursive=1`,
-      { maxBytes: MAX_TREE_BYTES, detectMoved: true },
+      !!commit.sha,
     );
     switch (out.kind) {
       case 'ok': {
         const response = JSON.parse(out.text) as IGithubGitTreeResponse;
-        if (
-          requireComplete &&
-          (response.truncated !== false ||
-            !Array.isArray(response.tree) ||
-            !response.tree.every(isTreeEntry))
-        )
+        const complete =
+          response.truncated === false &&
+          Array.isArray(response.tree) &&
+          response.tree.every(isTreeEntry);
+        if (requireComplete && !complete)
           throw new Error('Complete project inventory unavailable');
         const tree = (response.tree || []).map(({ path, type }) => ({
           path,
           type,
         }));
         if (commitKey) {
-          await this.store.putFile(commitKey, treeCachePath, {
-            text: JSON.stringify(tree),
-            bytes: out.bytes,
-          });
+          // One call answers both listings: the complete one is kept too when GitHub gave it in full, so an inventory
+          // that must be complete (the quick search) is not asked of GitHub a second time, now or on a later visit.
+          const kept = { text: JSON.stringify(tree), bytes: out.bytes };
+          await this.store.putFile(commitKey, TREE_CACHE_PATH, kept);
+          if (complete) {
+            await this.store.putFile(commitKey, COMPLETE_TREE_CACHE_PATH, kept);
+          }
         }
         return tree;
       }
@@ -872,6 +890,35 @@ export class GithubProjectReaderService {
       default:
         throw new GithubReadError('the project listing', [GITHUB_API_HOST]);
     }
+  }
+
+  /**
+   * The listing call at `url`: shared by every reader that asks while it is on its way, and kept for the page when it
+   * is at a commit (`pinned`) and GitHub answered it. Carries the user's token, when there is one.
+   */
+  private treeCall(url: string, pinned: boolean): Promise<GithubOutcome> {
+    const known = this.treeCalls.get(url);
+    if (known) {
+      return known;
+    }
+    const call = githubGet(this.fetchFn, url, {
+      maxBytes: MAX_TREE_BYTES,
+      detectMoved: true,
+      token: this.userToken(),
+    });
+    this.treeCalls.set(url, call);
+    void call.then((out) => {
+      if (!pinned || out.kind !== 'ok') {
+        if (this.treeCalls.get(url) === call) this.treeCalls.delete(url);
+        return;
+      }
+      const pinnedUrls = [...this.treeCalls.keys()];
+      while (this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY && pinnedUrls.length) {
+        const oldest = pinnedUrls.shift() as string;
+        if (oldest !== url) this.treeCalls.delete(oldest);
+      }
+    });
+    return call;
   }
 
   /**

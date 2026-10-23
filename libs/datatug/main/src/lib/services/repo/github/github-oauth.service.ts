@@ -1,3 +1,4 @@
+import { GITHUB_TOKEN_STORAGE_KEY } from './github-user-token';
 import { Injectable, inject } from '@angular/core';
 import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
 import type { Auth } from 'firebase/auth';
@@ -23,7 +24,7 @@ import {
 export const GITHUB_REPO_SCOPE = 'repo';
 
 /** Where the token is kept: this tab only, cleared when the tab closes. */
-export const GITHUB_TOKEN_STORAGE_KEY = 'datatug:github:token';
+export { GITHUB_TOKEN_STORAGE_KEY };
 
 /**
  * Firebase error codes that mean "the browser refused the popup". Sign-in falls

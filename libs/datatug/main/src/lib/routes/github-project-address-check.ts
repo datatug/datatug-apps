@@ -13,6 +13,7 @@ import {
 } from '@datatug/project-address';
 import { DatatugStoreGithubService } from '../services/repo/datatug-store.service.github';
 import { githubGet } from '../services/repo/github/github-http';
+import { GITHUB_USER_TOKEN } from '../services/repo/github/github-user-token';
 import {
   GITHUB_FETCH,
   GithubProjectNotFoundError,
@@ -133,6 +134,7 @@ export type DefaultBranchLookup =
 @Injectable({ providedIn: 'root' })
 export class GithubDefaultBranchLookup {
   private readonly fetchFn = inject(GITHUB_FETCH);
+  private readonly userToken = inject(GITHUB_USER_TOKEN);
   private readonly answers = new Map<string, Promise<DefaultBranchLookup>>();
 
   lookup(owner: string, repo: string): Promise<DefaultBranchLookup> {
@@ -154,6 +156,7 @@ export class GithubDefaultBranchLookup {
         accept: 'application/vnd.github+json',
         detectMoved: true,
         timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
+        token: this.userToken(),
       },
     );
     if (outcome.kind === 'missing' || outcome.kind === 'moved') {
