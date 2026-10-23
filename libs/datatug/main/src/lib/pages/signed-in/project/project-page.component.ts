@@ -1,10 +1,7 @@
-import {
-  Component,
-  OnDestroy,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { SharedEvidenceLinkComponent } from '../../../evidence/shared-evidence-link.component';
+import { BusinessClockChipComponent } from '../../../source-workspace/business-clock-chip.component';
+import { SourceEntriesComponent } from '../../../source-workspace/source-entries.component';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { race, Subject, of, Observable } from 'rxjs';
 import { catchError, shareReplay, takeUntil } from 'rxjs/operators';
@@ -19,12 +16,11 @@ import {
   IonCard,
   IonCardContent,
   IonChip,
-  IonCardHeader,
-  IonCardTitle,
   IonContent,
   IonHeader,
   IonIcon,
   IonItem,
+  IonItemDivider,
   IonLabel,
   IonList,
   IonMenuButton,
@@ -36,11 +32,7 @@ import {
   ViewWillEnter,
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
-import {
-  IProjectRef,
-  equalProjectRef,
-  isSharedProjectRef,
-} from '../../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../../core/project-context';
 import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
@@ -72,18 +64,48 @@ import { qualifiedLocalReadVersionGuidance } from '../../../services/project/pro
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { QueriesService } from '../../../queries/queries.service';
 import type { IQueryFolder } from '../../../models/definition/query-def';
-import { ProjectQueriesPreviewComponent, countProjectQueries } from './project-queries-preview.component';
+import {
+  ProjectQueriesPreviewComponent,
+  countProjectQueries,
+} from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { ProjectOverviewCardComponent } from './project-overview-card.component';
+import {
+  ProjectTabPanelComponent,
+  matchesOverviewFilter,
+} from './project-tab-panel.component';
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
+import { ProjectQuickSearchBoxComponent } from '../../../quick-search/project-quick-search-box.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
+import {
+  isHostedReadRefused,
+  isSignedOut,
+} from '../../../services/project/hosted-read-refused';
+
+/**
+ * The words for a read the hosted API declined to answer, before the shared friendly mapping sees it: signed out gets
+ * a quiet "sign in" note, a refused actor or a missing resource (403/404) says access is needed. Undefined for any
+ * other failure, which the error state words itself.
+ */
+function refusedReadHint(error: unknown, what: string): string | undefined {
+  if (isSignedOut(error)) return `Sign in to see ${what}.`;
+  if (isHostedReadRefused(error))
+    return `Seeing ${what} needs access to this project in DataTug.`;
+  return undefined;
+}
 
 @Component({
   selector: 'sneat-datatug-project',
   templateUrl: './project-page.component.html',
   styleUrls: ['./project-page.component.scss'],
   imports: [
+    SharedEvidenceLinkComponent,
+    BusinessClockChipComponent,
     RouterLink,
+    ErrorStateComponent,
+    SourceEntriesComponent,
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
@@ -92,6 +114,9 @@ import { readGithubProjectId } from '@datatug/project-address';
     DemoDbConnectionsComponent,
     ProjectQueriesPreviewComponent,
     ProjectDatabaseServersPreviewComponent,
+    ProjectOverviewCardComponent,
+    ProjectTabPanelComponent,
+    ProjectQuickSearchBoxComponent,
     GitHubReauthorizationBannerComponent,
     IonHeader,
     IonToolbar,
@@ -102,11 +127,10 @@ import { readGithubProjectId } from '@datatug/project-address';
     IonContent,
     IonCard,
     IonCardContent,
-  IonChip,
-    IonCardHeader,
-    IonCardTitle,
+    IonChip,
     IonButton,
     IonItem,
+    IonItemDivider,
     IonLabel,
     IonIcon,
     IonList,
@@ -125,13 +149,18 @@ export class ProjectPageComponent
   private readonly projectAssets = inject(ProjectAssetsReadService);
   private readonly queriesService = inject(QueriesService);
   protected readonly queryCount = signal<number | undefined>(undefined);
-  protected readonly querySource = signal<Observable<IQueryFolder | null | undefined> | undefined>(undefined);
+  protected readonly querySource = signal<
+    Observable<IQueryFolder | null | undefined> | undefined
+  >(undefined);
   private readonly navController = inject(NavController);
 
   // readonly DbModel = ProjectItem.dbModel as const;
 
-  // Summary responses update this signal so the zoneless page refreshes its
-  // project identity and metadata as soon as they arrive.
+  protected goEnvironments(): void {
+    this.datatugNavService.goProject(this.project(), 'environments');
+  }
+
+  // Summary responses repaint the zoneless project identity and metadata.
   protected readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly authState = toSignal(this.auth.authState, {
     initialValue: undefined,
@@ -168,18 +197,8 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
+  /** The overview Quick Search text; cleared when the project changes. */
   readonly quickSearchQuery = signal('');
-  updateQuickSearch(event: Event): void {
-    if (event.target instanceof HTMLInputElement) this.quickSearchQuery.set(event.target.value);
-  }
-  submitQuickSearch(event: Event): void {
-    event.preventDefault();
-    const ref=this.project()?.ref,q=this.quickSearchQuery().trim();
-    if (!ref || !q) return;
-    const destination=this.router.parseUrl(projectPageHref(ref,['quick-search']));
-    destination.queryParams={...destination.queryParams,q};
-    void this.router.navigateByUrl(destination).catch(() => this.errorLogger.logError('Could not open Quick Search'));
-  }
 
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;
@@ -210,40 +229,68 @@ export class ProjectPageComponent
     'loading' | 'available' | 'unavailable'
   >('loading');
   protected readonly metadataReadError = signal<string | undefined>(undefined);
+  /** The failure behind `metadataReadError`, so the error state can word a rate limit or an outage plainly. */
+  protected readonly metadataFailure = signal<unknown>(undefined);
+  protected readonly metadataGuidance = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
-    'boards' | 'queries' | 'environments' | 'entities' | 'databases'
+    'boards' | 'queries' | 'entities' | 'databases'
   >('boards');
   protected readonly overviewTabs = [
     { id: 'boards', label: 'Boards' },
     { id: 'queries', label: 'Queries' },
-    { id: 'environments', label: 'Environments' },
     { id: 'entities', label: 'Entities' },
     { id: 'databases', label: 'Databases' },
   ] as const;
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
+  protected readonly environmentFailure = signal<unknown>(undefined);
   protected readonly environmentError = signal(false);
   protected readonly environmentErrorMessage = signal<string | undefined>(
     undefined,
   );
   protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  protected readonly boardFailure = signal<unknown>(undefined);
+  /** All the overview reads failed together (a rate limit, an outage): the page shows one state, not one per section. */
+  protected readonly everythingFailed = computed(
+    () =>
+      !this.project()?.ref?.spaceID &&
+      this.environmentError() &&
+      this.boardError() &&
+      this.entityError(),
+  );
   protected readonly boardError = signal(false);
   protected readonly boardErrorMessage = signal<string | undefined>(undefined);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
     undefined,
   );
+  protected readonly entityFailure = signal<unknown>(undefined);
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
-  protected readonly shippingHref = computed(() => {
+  /** Quick client-side filters typed in the Boards and Entities overview cards. */
+  readonly boardFilter = signal('');
+  readonly entityFilter = signal('');
+  protected readonly filteredBoards = computed(() => {
+    const filter = this.boardFilter();
+    return (this.boards() ?? []).filter((board) =>
+      matchesOverviewFilter(filter, board.title, board.id),
+    );
+  });
+  protected readonly filteredEntities = computed(() => {
+    const filter = this.entityFilter();
+    return (this.entities() ?? []).filter((entity) =>
+      matchesOverviewFilter(filter, entity.dbo?.title, entity.id),
+    );
+  });
+  /** Each overview card's title links to the section's full page. */
+  protected readonly sectionHref = computed(() => {
     const ref = this.project()?.ref;
-    return ref &&
-      isSharedProjectRef(ref) &&
-      ref.branch === undefined &&
-      ref.projectApi === undefined
-      ? projectPageHref(ref, 'shipping')
-      : undefined;
+    return {
+      boards: ref ? projectPageHref(ref, 'boards') : undefined,
+      entities: ref ? projectPageHref(ref, 'entities') : undefined,
+      servers: ref ? projectPageHref(ref, 'servers') : undefined,
+    };
   });
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
@@ -277,34 +324,43 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       this.scopeChanged.next();
-      if (!equalProjectRef(this.project()?.ref, ref)) this.quickSearchQuery.set('');
+      if (!equalProjectRef(this.project()?.ref, ref))
+        this.quickSearchQuery.set('');
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
       });
       this.metadataState.set('loading');
       this.metadataReadError.set(undefined);
+      this.metadataFailure.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.queryCount.set(undefined);
       this.querySource.set(undefined);
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.boards.set(undefined);
+      this.boardFilter.set('');
+      this.entityFilter.set('');
       this.environmentError.set(false);
       this.environmentErrorMessage.set(undefined);
+      this.environmentFailure.set(undefined);
       this.entityError.set(false);
       this.entityErrorMessage.set(undefined);
+      this.entityFailure.set(undefined);
       this.boardError.set(false);
       this.boardErrorMessage.set(undefined);
+      this.boardFailure.set(undefined);
       // These fixed-asset reads use the complete project ref so branch and
       // connection selectors stay aligned. Shared Space asset shortcuts remain
       // excluded because that API does not expose these asset collections.
       const cancel$ = race([this.scopeChanged, this.destroyed]);
       if (!ref.spaceID) {
-        const queries$ = this.queriesService.getQueriesFolder(ref, '~', 'shared').pipe(shareReplay({ bufferSize: 1, refCount: true }));
+        const queries$ = this.queriesService
+          .getQueriesFolder(ref, '~', 'shared')
+          .pipe(shareReplay({ bufferSize: 1, refCount: true }));
         this.querySource.set(queries$);
         queries$.pipe(takeUntil(cancel$)).subscribe({
-          next: folder => this.queryCount.set(countProjectQueries(folder)),
+          next: (folder) => this.queryCount.set(countProjectQueries(folder)),
           error: () => this.queryCount.set(undefined),
         });
         const environments$ = this.projectAssets.environments(ref);
@@ -313,14 +369,18 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.environmentError.set(true);
+              this.environmentFailure.set(error);
               this.environmentErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Environments could not be loaded. Refresh to try again.',
+                  refusedReadHint(error, 'environments'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview environments',
-              );
+              if (!isSignedOut(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview environments',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -331,14 +391,18 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.boardError.set(true);
+              this.boardFailure.set(error);
               this.boardErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Boards could not be loaded. Refresh to try again.',
+                  refusedReadHint(error, 'boards'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview boards',
-              );
+              if (!isSignedOut(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview boards',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -349,14 +413,18 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.entityError.set(true);
+              this.entityFailure.set(error);
               this.entityErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Entities could not be loaded. Refresh to try again.',
+                  refusedReadHint(error, 'entities'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview entities',
-              );
+              if (!isSignedOut(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview entities',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -373,9 +441,7 @@ export class ProjectPageComponent
       }
       this.projectService
         .watchProjectSummary(ref)
-        .pipe(
-          takeUntil(cancel$),
-        )
+        .pipe(takeUntil(cancel$))
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
           complete: () => {
@@ -389,6 +455,10 @@ export class ProjectPageComponent
           error: (error) => {
             if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
+            this.metadataFailure.set(error);
+            this.metadataGuidance.set(
+              qualifiedLocalReadVersionGuidance(error) ?? undefined,
+            );
             this.metadataReadError.set(
               qualifiedLocalReadVersionGuidance(error) ??
                 'Project details could not be loaded. Check access and refresh to try again.',
@@ -396,6 +466,7 @@ export class ProjectPageComponent
             this.errorLogger.logError(
               error,
               'Failed to load project summary for project page',
+              { show: false },
             );
           },
         });
@@ -437,7 +508,7 @@ export class ProjectPageComponent
   }
 
   protected selectTab(
-    tab: 'boards' | 'queries' | 'environments' | 'entities' | 'databases',
+    tab: 'boards' | 'queries' | 'entities' | 'databases',
   ): void {
     this.activeTab.set(tab);
   }
@@ -540,6 +611,11 @@ export class ProjectPageComponent
     });
   }
 
+  protected retryMetadata(): void {
+    const ref = this.project()?.ref;
+    if (ref) this.setProjRef(ref);
+  }
+
   private goProjItemPage(page: ProjectItemType): void {
     switch (page) {
       case ProjectItem.environment:
@@ -551,5 +627,4 @@ export class ProjectPageComponent
       projectContext: project,
     });
   }
-
 }

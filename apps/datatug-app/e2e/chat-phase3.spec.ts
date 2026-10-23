@@ -1,4 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
+import { chatDemoAgentMetadata } from './helpers/chat-demo-agent';
+
+test.beforeEach(async ({ page }) => chatDemoAgentMetadata(page));
 
 test('Chat workspace restores explicit context, selection, dock and a selected follow-up', async ({ page }) => {
   test.setTimeout(120_000);
@@ -64,7 +67,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
   const workspace = page.getByLabel('Chat workspace');
   await workspace.locator('ion-segment-button[value="project"]').click();
   await expect(workspace.getByText('Chinook', { exact: true })).toBeVisible({ timeout: 45_000 });
@@ -72,17 +75,17 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await workspace.locator('.workspace-table').filter({ hasText: 'Customer' }).getByRole('button', { name: 'Attach' }).click();
   await expect(page.getByLabel('Attached context')).toContainText('Customer');
 
-  await page.getByLabel('Ask about Chinook data').fill('Show 10 customers');
+  await page.getByLabel('Ask about project data').fill('Show 10 customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
   expect(attachedTableSeen).toBe(true);
 
-  await page.getByLabel('Ask about Chinook data').fill('Select first 3 customers');
+  await page.getByLabel('Ask about project data').fill('Select first 3 customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(2);
   await expect(page.locator('.turn').last()).toContainText('Selected 3 rows.');
   await expect(workspace.locator('.selected-fields')).toHaveCount(0);
-  await page.getByLabel('Ask about Chinook data').fill('Dock them');
+  await page.getByLabel('Ask about project data').fill('Dock them');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(3);
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
@@ -101,7 +104,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
     return count;
   });
   expect(recordSetCount).toBe(1);
-  await page.getByLabel('Ask about Chinook data').fill('Undock that');
+  await page.getByLabel('Ask about project data').fill('Undock that');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(4);
   await expect(workspace.locator('.dock-item')).toHaveCount(0);
@@ -131,7 +134,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await expect(workspace.getByRole('tab', { name: 'Selected' })).toHaveAttribute('aria-selected', 'true');
   await expect(workspace.locator('.selected-fields')).toContainText('CustomerId');
   await expect(workspace.locator('.selected-fields')).toContainText(String(selectedCustomerId));
-  await page.getByLabel('Ask about Chinook data').fill('Try current selection without attaching');
+  await page.getByLabel('Ask about project data').fill('Try current selection without attaching');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last()).toContainText('Attach or dock this Selection before using it in a follow-up query.');
   await workspace.getByRole('button', { name: 'Attach to chat' }).click();
@@ -144,7 +147,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
   await expect(page.getByLabel('Attached context')).toContainText('CustomerId · row 1');
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
-  await page.getByLabel('Ask about Chinook data').fill('Show their invoices');
+  await page.getByLabel('Ask about project data').fill('Show their invoices');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(6);
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows [1-9]/ })).toBeVisible();
@@ -173,21 +176,22 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await expect(workspace.locator('h3')).toHaveText('3 × 2 cells');
   await expect(workspace.locator('.workspace-grid')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.getByLabel('Attached context')).toHaveCount(0);
   await expect(workspace.locator('.dock-item')).toHaveCount(0);
-  await page.getByLabel('Ask about Chinook data').fill('Use an old selection');
+  await page.getByLabel('Ask about project data').fill('Use an old selection');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(1);
   await expect(page.locator('.turn').first()).toContainText('The referenced Selection is not in this chat session.');
-  await page.locator('.session-toolbar ion-select').click();
+  await page.locator('.chat-header-toolbar ion-select').click();
   await page.getByRole('radio', { name: 'Show 10 customers' }).click();
   await expect(page.getByLabel('Attached context')).toContainText('CustomerId · row 1');
   await expect(workspace.locator('h3')).toHaveText('3 × 2 cells');
   await workspace.locator('ion-segment-button[value="docked"]').click();
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByLabel('Attached context')).toHaveCount(0);
   await expect(workspace.locator('.dock-item')).toHaveCount(0);

@@ -90,6 +90,7 @@ describe('shared three-kind evidence leaf', () => {
     fixture.componentRef.setInput('data', prepared('timeline'));
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('[aria-label="Timeline status legend"]')?.textContent).toContain('Pass · ◆ Fail · ○ Unknown');
     expect(fixture.nativeElement.textContent).toContain('NULL');
     expect(fixture.nativeElement.textContent).toContain(
       '<script>unsafe</script>',
@@ -121,6 +122,74 @@ describe('shared three-kind evidence leaf', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'complete admitted held result',
     );
+    fixture.destroy();
+  });
+  it('keeps embedded charts primary while retaining exact data and keyboard inspection in a collapsed disclosure', async () => {
+    TestBed.configureTestingModule({
+      imports: [EvidenceChartComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: PLATFORM_ID, useValue: 'server' },
+      ],
+    });
+    const fixture = TestBed.createComponent(EvidenceChartComponent);
+    fixture.componentRef.setInput('embedded', true);
+    fixture.componentRef.setInput('showHeader', false);
+    fixture.componentRef.setInput('heading', 'Actual card title');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('header')).toBeNull();
+    expect(
+      fixture.nativeElement
+        .querySelector('[role="region"]')
+        .getAttribute('aria-label'),
+    ).toBe('Actual card title');
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="status"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Run this chart');
+    fixture.componentRef.setInput('loading', true);
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="status"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Loading chart');
+    fixture.componentRef.setInput('loading', false);
+    fixture.componentRef.setInput('data', {
+      ...prepared('timeline'),
+      limitations: [
+        { policy: 'restricted-source', rowsFiltered: true, hiddenColumns: [] },
+      ],
+    });
+    await fixture.whenStable();
+    const details = fixture.nativeElement.querySelector(
+      'details',
+    ) as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    const warning = fixture.nativeElement.querySelector('[role="note"]');
+    expect(warning.textContent).toContain('Source policy limitations apply');
+    expect(warning.closest('details')).toBeNull();
+    expect(details.textContent).toContain('generation g1');
+    expect(details.querySelector('table')?.textContent).toContain('NULL');
+    const emitted: EvidenceInspection[] = [];
+    fixture.componentInstance.inspect.subscribe((entry) => emitted.push(entry));
+    details.open = true;
+    (details.querySelector('button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([inspection]);
+    fixture.componentRef.setInput('error', 'Connection is not ready');
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="alert"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('table')).toBeNull();
+    fixture.componentRef.setInput('embedded', false);
+    fixture.componentRef.setInput('showHeader', true);
+    fixture.componentRef.setInput('heading', undefined);
+    fixture.componentRef.setInput('error', null);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('h3').textContent).toContain(
+      'Observed milestones',
+    );
+    expect(fixture.nativeElement.querySelector('details').open).toBe(true);
     fixture.destroy();
   });
   it.each(['timeline', 'timing-bars', 'heatmap'] as const)(
@@ -221,4 +290,42 @@ describe('shared three-kind evidence leaf', () => {
       )[0].data,
     ).toEqual([0]);
   });
+});
+
+it('uses numeric elapsed coordinates and status shapes while retaining calendar facts/equal-time points', () => {
+  const base = prepared('timeline');
+  const data: PreparedEvidenceChart = {
+    ...base,
+    timeMode: 'elapsed',
+    rows: ['pass', 'fail', 'unknown'].map((status, index) => ({
+      ...base.rows[0],
+      index,
+      status,
+      elapsedMs: 1000,
+      start: '2018-05-20T10:05:00Z',
+      end: '2018-05-20T10:05:01Z',
+      anchorIdentity: 'observed-start',
+    })),
+  };
+  const option = evidenceChartOption(data);
+  expect(option['xAxis']).toMatchObject({
+    type: 'value',
+    name: 'Elapsed (ms)',
+    min: 0,
+  });
+  const series = option['series'] as {
+    data: { value: unknown[]; symbol: string; name: string }[];
+  }[];
+  expect(series[0].data).toHaveLength(3);
+  expect(series[0].data.map((point) => point.value[0])).toEqual([
+    1000, 1000, 1000,
+  ]);
+  expect(series[0].data.map((point) => point.symbol)).toEqual([
+    'circle',
+    'diamond',
+    'emptyCircle',
+  ]);
+  expect(series[0].data[0].name).toContain('2018-05-20T10:05:00Z');
+  expect(series[0].data[0].name).not.toContain('1970');
+  expect(base.rows[0]).not.toHaveProperty('elapsedMs');
 });

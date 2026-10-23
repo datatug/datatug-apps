@@ -1,3 +1,4 @@
+import criterionFixture from '../detective/testdata/backend-criterion-v069.json';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -84,6 +85,12 @@ describe('IncidentClientService', () => {
     httpMock.verify();
   });
 
+
+  it('reads actual Core69 criterion projection through the generic strict allowlist',()=>{
+    let result:unknown;service.list(CONTEXT).subscribe(value=>result=value);
+    httpMock.expectOne(r=>r.url===BASE_URL).flush({incidents:[criterionFixture.finalizeSuccess.incident]});
+    expect(result).toEqual({kind:'ok',data:[criterionFixture.finalizeSuccess.incident]});
+  });
   describe('list', () => {
     it('GETs /datatug/incidents and wraps the response as an ok result', () => {
       const fixture: IncidentSummary[] = [INCIDENT];

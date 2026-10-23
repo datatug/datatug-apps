@@ -139,7 +139,12 @@ export interface GithubProjectCreateStatus {
 
 export interface PendingGithubProjectSetup {
   readonly operationID: string;
-  readonly status: 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
+  readonly status:
+    | 'initializing'
+    | 'pending_merge'
+    | 'needs_review'
+    | 'closed_unmerged'
+    | 'failed';
   readonly spaceID: string;
   readonly projectID: string;
   readonly title: string;
@@ -169,9 +174,39 @@ export interface GithubProjectCreateStatusRequest {
   readonly name: string;
 }
 
+/**
+ * Why GitHub access is needed: `expired` (API code `reauthorization_required`: a stored grant stopped working),
+ * `not_connected` (API code `github_not_connected`: no grant was ever stored), `scope_required` (codes
+ * `scope_required`/`workflow_scope_required`: the grant lacks a permission), or `access_denied` (`authorization_required`,
+ * or a bare 401/403 with no code: access was refused with no evidence about why). Only `expired` claims expiry.
+ */
+export type GithubReauthorizationReason =
+  | 'expired'
+  | 'not_connected'
+  | 'scope_required'
+  | 'access_denied';
+
+/** The honest reason for a GitHub API error code; anything without evidence of expiry is never `expired`. */
+export function githubReauthorizationReason(
+  code: string | undefined,
+): GithubReauthorizationReason {
+  switch (code) {
+    case 'reauthorization_required':
+      return 'expired';
+    case 'github_not_connected':
+      return 'not_connected';
+    case 'scope_required':
+    case 'workflow_scope_required':
+      return 'scope_required';
+    default:
+      return 'access_denied';
+  }
+}
+
 export interface GithubReauthorizationRequest {
   readonly ref: IProjectRef;
   readonly requiredScopes: readonly ('repo' | 'workflow')[];
+  readonly reason: GithubReauthorizationReason;
 }
 
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
@@ -179,8 +214,10 @@ export interface GithubReauthorizationRequest {
 export class ProjectQueryApiService {
   private readonly deniedReads = new Subject<IProjectRef>();
   readonly authorityDenied = this.deniedReads.asObservable();
-  private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
-  readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
+  private readonly githubReauthorization =
+    new Subject<GithubReauthorizationRequest>();
+  readonly githubReauthorizationRequired =
+    this.githubReauthorization.asObservable();
   private readonly api = inject(DatatugApiService);
   private readonly http = inject(HttpClient);
   private readonly storeApi = inject(StoreApiService);
@@ -295,16 +332,32 @@ export class ProjectQueryApiService {
           error: (error) => {
             const status = error?.status;
             const errorCode = apiErrorCode(error);
-            const isGitHub = ref.storeId === 'github' || ref.storeId === 'github.com';
-            const requiresReauthorization = errorCode === 'reauthorization_required';
-            const denied = [401, 403].includes(status) || (isGitHub && requiresReauthorization);
+            const isGitHub =
+              ref.storeId === 'github' || ref.storeId === 'github.com';
+            const reason: GithubReauthorizationReason | undefined =
+              errorCode === 'reauthorization_required'
+                ? 'expired'
+                : errorCode === 'github_not_connected'
+                  ? 'not_connected'
+                  : [401, 403].includes(status)
+                    ? 'access_denied'
+                    : undefined;
+            const requiresReauthorization =
+              reason === 'expired' || reason === 'not_connected';
+            const denied =
+              [401, 403].includes(status) ||
+              (isGitHub && requiresReauthorization);
             if (
               denied &&
               (ref.projectApi === 'cloud' || isSharedProjectRef(ref))
             )
               this.deniedReads.next(ref);
-            if (isGitHub && ([401, 403].includes(status) || requiresReauthorization))
-              this.githubReauthorization.next({ ref, requiredScopes: ['repo'] });
+            if (isGitHub && reason)
+              this.githubReauthorization.next({
+                ref,
+                requiredScopes: ['repo'],
+                reason,
+              });
           },
         }),
       );
@@ -399,6 +452,41 @@ export class ProjectQueryApiService {
     );
   }
 
+  /** The local agent's own identity endpoint: answers whenever the agent is reachable. */
+  agentInfo(ref: IProjectRef): Observable<unknown> {
+    return defer(() => this.storeApi.get<unknown>(ref.storeId, '/agent-info'));
+  }
+
+  environmentReference(ref: IProjectRef): IProjectRef {
+    const wire = this.reference(ref);
+    return {
+      storeId: wire.storage,
+      projectId: wire.project,
+      ...(ref.spaceID !== undefined ? { spaceID: ref.spaceID } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+    };
+  }
+
+  environmentState<T>(ref: IProjectRef): Observable<T> {
+    return this.get<T>(ref, 'environments/state', {
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+    });
+  }
+
+  environmentOperation<T>(
+    ref: IProjectRef,
+    path: string,
+    body: unknown,
+  ): Observable<T> {
+    return ['github.com', 'github', 'firestore'].includes(ref.storeId)
+      ? this.api.post<T>(`datatug/${path}`, body, {
+          retryUnauthorizedOnce: false,
+        })
+      : this.http.post<T>(buildAgentUrl(ref.storeId, `/${path}`), body);
+  }
+
   folder<T>(ref: IProjectRef): Observable<T> {
     return this.get(
       ref,
@@ -474,7 +562,9 @@ export class ProjectQueryApiService {
     );
   }
 
-  createStatus(request: GithubProjectCreateStatusRequest): Observable<GithubProjectCreateStatus> {
+  createStatus(
+    request: GithubProjectCreateStatusRequest,
+  ): Observable<GithubProjectCreateStatus> {
     return this.api.get<GithubProjectCreateStatus>(
       'datatug/projects/create_project/status',
       new HttpParams({ fromObject: { ...request, store: 'github.com' } }),
@@ -489,10 +579,11 @@ export class ProjectQueryApiService {
 
   reportGithubReauthorizationRequired(
     ref: IProjectRef,
-    requiredScopes: readonly ('repo' | 'workflow')[] = ['repo'],
+    requiredScopes: readonly ('repo' | 'workflow')[],
+    reason: GithubReauthorizationReason,
   ): void {
     this.deniedReads.next(ref);
-    this.githubReauthorization.next({ ref, requiredScopes });
+    this.githubReauthorization.next({ ref, requiredScopes, reason });
   }
 }
 

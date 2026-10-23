@@ -14,6 +14,11 @@ import {
 import { DatatugStoreGithubService } from '../services/repo/datatug-store.service.github';
 import { githubGet } from '../services/repo/github/github-http';
 import {
+  GITHUB_USER_TOKEN,
+  githubIdentity,
+  usableGithubToken,
+} from '../services/repo/github/github-user-token';
+import {
   GITHUB_FETCH,
   GithubProjectNotFoundError,
 } from '../services/repo/github/github-project-reader.service';
@@ -133,19 +138,26 @@ export type DefaultBranchLookup =
 @Injectable({ providedIn: 'root' })
 export class GithubDefaultBranchLookup {
   private readonly fetchFn = inject(GITHUB_FETCH);
+  private readonly userToken = inject(GITHUB_USER_TOKEN);
   private readonly answers = new Map<string, Promise<DefaultBranchLookup>>();
 
   lookup(owner: string, repo: string): Promise<DefaultBranchLookup> {
-    const key = `${owner}/${repo}`;
+    // An answer is kept for the identity that asked (anonymous, or the signed-in token's fingerprint) only.
+    const token = usableGithubToken(this.userToken());
+    const key = `${githubIdentity(token)}|${owner}/${repo}`;
     let answer = this.answers.get(key);
     if (!answer) {
-      answer = this.ask(owner, repo);
+      answer = this.ask(owner, repo, token);
       this.answers.set(key, answer);
     }
     return answer;
   }
 
-  private async ask(owner: string, repo: string): Promise<DefaultBranchLookup> {
+  private async ask(
+    owner: string,
+    repo: string,
+    token: string | undefined,
+  ): Promise<DefaultBranchLookup> {
     const outcome = await githubGet(
       this.fetchFn,
       `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
@@ -154,6 +166,7 @@ export class GithubDefaultBranchLookup {
         accept: 'application/vnd.github+json',
         detectMoved: true,
         timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
+        token,
       },
     );
     if (outcome.kind === 'missing' || outcome.kind === 'moved') {

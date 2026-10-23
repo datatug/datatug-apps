@@ -32,14 +32,21 @@
   </section>
 }
 @if (bare()) {
+  <!-- Body only: the host supplies the surrounding card and its title (no card in a card). -->
   <ng-container [ngTemplateOutlet]="content" />
 } @else {
   <ion-card>
-    @if (boarCardDef()?.title) {
-      <ion-item>
-        <ion-label>{{ boarCardDef()?.title }}</ion-label>
-      </ion-item>
-    }
+    <ion-card-header>
+      <ion-toolbar color="light">
+        <ion-card-title>{{ headerTitle() }}</ion-card-title>
+        @if (widget()?.hasHeaderActions()) {
+          <ion-buttons slot="end"
+            ><ng-container
+              [ngTemplateOutlet]="widget()?.headerActions() || null"
+          /></ion-buttons>
+        }
+      </ion-toolbar>
+    </ion-card-header>
     <ng-container [ngTemplateOutlet]="content" />
   </ion-card>
 }
@@ -78,7 +85,11 @@
       }
     }
   } @else {
+    <!-- Embedded: the card header above (or the bare host) owns the title and actions. -->
     <sneat-datatug-board-widget
+      #widget
+      [embedded]="true"
+      [cardTitle]="boarCardDef()?.title"
       [level]="0"
       [cardTab]="boardCardTab.currentTab"
       [widgetDef]="boarCardDef()?.widget"

@@ -1,21 +1,26 @@
 <div class="ion-page">
   <ion-header>
-    <ion-toolbar>
+    <ion-toolbar class="chat-header-toolbar">
       <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
-      <sneat-datatug-page-title pageTitle="Chat" />
-    </ion-toolbar>
-    <ion-toolbar class="session-toolbar">
+      <div class="chat-header-title">
+      <sneat-datatug-page-title pageTitle="Chat" [heading]="true" [compact]="true" />
       <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
         @for (session of sessions(); track session.id) {
           <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
         }
       </ion-select>
+      </div>
       <ion-buttons slot="end">
-        <ion-button (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()">New</ion-button>
+        <ion-button aria-label="New chat" title="New chat" (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()"><ion-icon slot="icon-only" name="add-outline" /></ion-button>
+        <ion-button id="chat-session-actions" aria-label="Chat session actions" title="Chat session actions"><ion-icon slot="icon-only" name="ellipsis-vertical-outline" /></ion-button>
+      </ion-buttons>
+      <ion-popover trigger="chat-session-actions" [dismissOnSelect]="true">
+        <ng-template><div class="session-action-menu">
         <ion-button (click)="openRename()" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Rename</ion-button>
         <ion-button (click)="askSessionAction('clear')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Clear</ion-button>
         <ion-button color="danger" (click)="askSessionAction('delete')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Delete</ion-button>
-      </ion-buttons>
+        </div></ng-template>
+      </ion-popover>
     </ion-toolbar>
   </ion-header>
 
@@ -37,7 +42,7 @@
     @if (sessionState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Restoring chat session…</ion-label></ion-item> }
     @if (sessionErrorView(); as failure) { <div class="ion-padding"><ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /></div> }
     @if (sessionState() === 'error') { <ion-button class="ion-margin" (click)="retrySessions()">Retry loading chats</ion-button> }
-    @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading local Chinook data…</ion-label></ion-item> }
+    @if (seedState() === 'loading') { <ion-item><ion-spinner name="dots" /><ion-label class="ion-padding-start">Loading project context…</ion-label></ion-item> }
     @if (seedState() === 'error' && seedErrorView(); as failure) { <div class="ion-padding"><ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /></div> }
 
     @for (turn of turns(); track turn.id) {
@@ -58,8 +63,8 @@
             <ion-card-content>
               <ion-segment [value]="turnTab(turn)" (ionChange)="selectTurnTab(turn.id, $event.detail.value)">
                 <ion-segment-button value="rows">Rows {{ turn.rows?.length || 0 }}</ion-segment-button>
-                <ion-segment-button value="dtql">TugQL</ion-segment-button>
-                <ion-segment-button value="sql">SQL</ion-segment-button>
+                @if (turn.dtqlYaml) { <ion-segment-button value="dtql">TugQL</ion-segment-button> }
+                @if (turn.sql) { <ion-segment-button value="sql">SQL</ion-segment-button> }
                 <ion-segment-button value="metrics">Metrics</ion-segment-button>
               </ion-segment>
               @if (turnTab(turn) === 'dtql') { <pre class="dtql">{{ turn.dtqlYaml }}</pre> }
@@ -89,7 +94,7 @@
                 </div>
                 <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz chat-grid" [attr.data-turn-id]="turn.id" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
               }
-              @if (turnTab(turn) === 'rows' && turn.recordSetId) {
+              @if (!managed() && !connectionId() && demoProject() && turnTab(turn) === 'rows' && turn.recordSetId) {
                 <section class="join-candidates" tabindex="0" aria-label="Related tables" (keydown)="onJoinKeys($event, turn)">
                   <h3>Related tables</h3>
                   @if (candidateError(turn); as failure) { <ng-container [ngTemplateOutlet]="failureView" [ngTemplateOutletContext]="{ $implicit: failure }" /> }
@@ -125,13 +130,18 @@
       <div class="workspace-body">
         @if (workspace().activeTab === 'project') {
           <ion-item><ion-label><strong>{{ projectId() }}</strong><p>Project</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(projectReference())">{{ attached(projectReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
-          @if (seedState() === 'ready') {
+          @if (!managed() && !connectionId() && demoProject() && seedState() === 'ready') {
             <ion-item><ion-label><strong>Chinook</strong><p>Local data source · main schema</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(sourceReference())">{{ attached(sourceReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
             <div class="workspace-group-label">Tables</div>
             @for (table of tables; track table.name) {
               <ion-item class="workspace-table"><ion-label>{{ table.name }}<p>{{ table.fields.length }} columns</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(tableReference(table.schema, table.name))">{{ attached(tableReference(table.schema, table.name)) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
             }
           }
+        }
+        @if ((managed() || !demoProject() || connectionId()) && workspace().activeTab === 'project') {
+          @for (entity of projectContext()?.entities || []; track entity.id) {
+            <ion-item><ion-label><strong>{{ entity.id }}</strong><p>@for (field of entity.fields; track field.id) { {{ field.id }} ({{ field.type }}) }</p></ion-label></ion-item>
+          } @empty { <p>Schema metadata is read from this project’s entities and saved query columns.</p> }
         }
         @if (workspace().activeTab === 'selected') {
           @if (focusedJoin(); as focus) {
@@ -215,12 +225,42 @@
 
   <ion-footer class="composer-footer">
     <ion-toolbar>
-      @if (!providers.providers().length) {
+      <ion-segment aria-label="AI mode" [value]="managed() ? 'managed' : 'byok'" (ionChange)="chooseAIMode($event.detail.value === 'managed')">
+        <ion-segment-button value="managed">Managed AI</ion-segment-button>
+        <ion-segment-button value="byok">Your own provider (BYOK)</ion-segment-button>
+      </ion-segment>
+      @if (!managed() && !providers.providers().length) {
         <div class="ion-padding-horizontal" role="status" aria-label="AI provider setup">
-          <p>Add your own AI provider to send a question about Chinook. You’ll need a provider API key; requests go directly from this browser to that provider.</p>
+          <p>Add your own AI provider to send a question about this project. You’ll need a provider API key; requests go directly from this browser to that provider.</p>
           <ion-button fill="outline" (click)="selectProvider('__add_provider__')">Add AI provider</ion-button>
         </div>
       }
+      @if (managed()) {
+        <div class="ion-padding-horizontal" role="status" aria-label="Managed AI status">
+          <p>Managed AI uses your signed-in DataTug allowance. No provider API key is needed. Select a source and ask about its schema and data.</p>
+          @if (managedGateway.allowance(); as allowance) { <p>{{ allowance.limit - allowance.used > 0 ? allowance.limit - allowance.used : 0 }} / {{ allowance.limit }} {{ allowance.unit }} remaining · resets {{ allowance.resetsAt || 'as reported by the service' }}</p> }
+          @if (managedGateway.usageState() === 'loading') { <p>Loading allowance…</p> }
+          @if (managedGateway.usageState() === 'unavailable') { <p>Allowance unavailable. The service will check your limit when you send.</p> }
+          @if (managedGateway.usageError()) { <ion-text color="danger"><p>{{ managedGateway.usageError() }}</p></ion-text> }
+          <ion-button fill="clear" (click)="refreshAllowance()">Refresh allowance</ion-button>
+        </div>
+      }
+      @if (projectContext(); as context) {
+          <ion-item><ion-select aria-label="AI environment" placeholder="Select environment" [value]="environment()" (ionChange)="changeAIContext('environment', $event.detail.value)">
+            @for (item of context.environments; track item.id) { <ion-select-option [value]="item.id">{{ item.title || item.id }}</ion-select-option> }
+          </ion-select>
+          <ion-select aria-label="AI connection" placeholder="Select connection" [value]="connectionId()" (ionChange)="changeAIContext('connection', $event.detail.value)">
+            @for (item of context.connections; track item.id) { <ion-select-option [value]="item.id" [disabled]="!connectionAvailable(item.id)">{{ item.title || item.id }}{{ connectionAvailable(item.id) ? '' : ' (another environment)' }}</ion-select-option> }
+          </ion-select></ion-item>
+          @if (pinnedBrowserAvailable() || workingCopies().length || runtimeId()) {
+            <ion-item><ion-select aria-label="AI query runtime" [value]="runtimeId()" (ionChange)="changeAIContext('runtime', $event.detail.value)">
+              <ion-select-option value="">{{ serverProject() ? 'Project server (saved queries)' : 'Project default (pinned source)' }}</ion-select-option>
+              @if (pinnedBrowserAvailable()) { <ion-select-option value="browser-sqlite">Browser SQLite (pinned snapshot)</ion-select-option> }
+              @for (runtime of workingCopies(); track runtime.selectionId) { <ion-select-option [value]="runtime.selectionId">{{ runtime.title }} (working copy)</ion-select-option> }
+            </ion-select></ion-item>
+          }
+      }
+      @if (projectContext() && connectionId() && !connectionAvailable(connectionId())) { <ion-text color="warning"><p class="ion-padding-horizontal">Choose a connection available in the selected environment.</p></ion-text> }
       @if (workspace().attachments.length) {
         <div class="attachment-chips" aria-label="Attached context">
           @for (reference of workspace().attachments; track reference.kind + reference.objectId) {
@@ -231,17 +271,19 @@
       <ion-grid class="ion-grid-layout composer-grid">
         <ion-row>
           <ion-col class="composer-question">
-            <ion-item class="composer-input-item" lines="none"><ion-input aria-label="Ask about Chinook data" placeholder="Ask about Chinook schema and data" [value]="question()" (ionInput)="question.set($event.detail.value || '')" (keyup.enter)="submit()" /></ion-item>
+            <ion-item class="composer-input-item" lines="none"><ion-input aria-label="Ask about project data" placeholder="Ask about this project’s schema and saved queries" [value]="question()" (ionInput)="question.set($event.detail.value || '')" (keyup.enter)="submit()" /></ion-item>
           </ion-col>
           <ion-col class="composer-provider">
             <ion-select class="provider-select" aria-label="AI provider" interface="popover" [value]="providerChoice()" (ionChange)="selectProvider($event.detail.value)" placeholder="AI provider">
+              <ion-select-option value="__managed__">Managed AI</ion-select-option>
               @for (provider of providers.providers(); track provider.id) {
-                <ion-select-option [value]="provider.id">{{ provider.name }}</ion-select-option>
+                <ion-select-option [value]="provider.id">{{ provider.name }} (BYOK)</ion-select-option>
               }
-              <ion-select-option value="__add_provider__">Add new AI provider</ion-select-option>
+              <ion-select-option value="__add_provider__">Your own provider (BYOK)…</ion-select-option>
             </ion-select>
           </ion-col>
-          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="!selectedProvider() || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="(!managed() && !selectedProvider()) || ((managed() || !demoProject() || connectionId()) && (!projectContext() || !connectionId())) || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+          @if (submitting() && (managed() || !demoProject() || connectionId())) { <ion-col><ion-button fill="clear" (click)="cancelRequest()">Cancel request</ion-button></ion-col> }
         </ion-row>
       </ion-grid>
       <div class="chat-status-bar">{{ projectId() }} · {{ activeSessionTitle() }} · {{ turns().length }} turns · {{ workspace().attachments.length }} attached · {{ currentSelection()?.rows?.length || 0 }} selected · {{ submitting() ? 'working' : sessionState() }}</div>

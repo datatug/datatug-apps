@@ -103,7 +103,9 @@ describe('datatugProjectRoutes', () => {
  */
 describe('datatugProjectRoutes — "query" route (S158, NG04002 regression)', () => {
   function findQueryRoute(): Route {
-    const route = datatugProjectRoutes.find((r) => r.path === 'query');
+    const route = datatugProjectRoutes.find(
+      (r) => r.path === 'query' && !r.canMatch,
+    );
     if (!route) {
       throw new Error('"query" route not found in datatugProjectRoutes');
     }
@@ -309,5 +311,44 @@ describe('public sample investigation routes', () => {
       '',
     ]);
     expect(children.at(-1)?.pathMatch).toBe('full');
+  });
+});
+
+describe('datatugProjectRoutes: the project-wide 404 does not shadow nested pages', () => {
+  @Component({ template: '' })
+  class StubComponent {}
+
+  it('reaches env/:environmentId/db/... (not the 404 or the env redirect)', async () => {
+    const reached: string[] = [];
+    const stub = (path: string | undefined) => () => {
+      reached.push(path ?? '');
+      return StubComponent;
+    };
+    const config: Routes = datatugProjectRoutes.flatMap((route) => {
+      if (route.path === '**') return [{ path: '**', loadComponent: stub('**') }];
+      if (route.path === 'env/:environmentId')
+        return [{ path: route.path, children: [{ path: '**', loadComponent: stub('env/:environmentId') }] }];
+      if (route.redirectTo !== undefined) return [route];
+      return [];
+    });
+    TestBed.configureTestingModule({ providers: [provideRouter(config)] });
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl('env/local/db/chinook-local/table/Album?schema=');
+    expect(reached).toEqual(['env/:environmentId']);
+  });
+
+  it('keeps the bare env address redirecting to the environments page', () => {
+    const redirect = datatugProjectRoutes.find((route) => route.path === 'env');
+    expect(redirect).toMatchObject({ pathMatch: 'full', redirectTo: 'environments' });
+  });
+});
+
+describe('datatugProjectRoutes: redirects', () => {
+  it('match their exact address only, so the project-wide 404 cannot answer the redirected remainder', () => {
+    const redirects = datatugProjectRoutes.filter((route) => route.redirectTo !== undefined);
+    expect(redirects.map((route) => route.path)).toEqual(
+      expect.arrayContaining(['board', 'card', 'env', 'entity']),
+    );
+    for (const route of redirects) expect(route.pathMatch, String(route.path)).toBe('full');
   });
 });

@@ -17,6 +17,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   signal,
@@ -34,6 +35,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -43,6 +45,8 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { arrowBackOutline } from 'ionicons/icons';
 import { map } from 'rxjs';
 import {
   DEMO_POSTGRESQL_LABEL,
@@ -62,6 +66,8 @@ type OpenState =
   | { readonly kind: 'failed'; readonly message: string }
   | { readonly kind: 'ready'; readonly connection: OvdbConnection };
 
+addIcons({ arrowBackOutline });
+
 @Component({
   selector: 'sneat-datatug-demo-ovdb-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,6 +82,7 @@ type OpenState =
     IonCardTitle,
     IonContent,
     IonHeader,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,
@@ -86,12 +93,21 @@ type OpenState =
     IonToolbar,
     OvdbDatabaseBrowserComponent,
   ],
+  styles: `
+    /* The back link leads to the table list: say so where there is room, keep the arrow only on a phone. */
+    @media (max-width: 575px) { .back-to-tables .back-label { display: none; } .back-to-tables ion-icon { margin: 0; } }
+  `,
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-menu-button />
-          <ion-back-button [defaultHref]="backHref()" />
+          <!-- Both stay in the toolbar (one is hidden): the link leads to the table list whatever page the user came from. -->
+          <ion-button class="page-back-link back-to-tables" [class.ion-hide]="!tableParam()" data-testid="back-to-tables" aria-label="All tables" [routerLink]="backHref()" routerDirection="back">
+            <ion-icon slot="start" name="arrow-back-outline" />
+            <span class="back-label">All tables</span>
+          </ion-button>
+          <ion-back-button [class.ion-hide]="!!tableParam()" [defaultHref]="backHref()" />
         </ion-buttons>
         <ion-title>{{
           entry()
@@ -162,6 +178,7 @@ type OpenState =
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [statusText]="label"
+                [showTitle]="false"
               />
             }
           }
@@ -170,9 +187,7 @@ type OpenState =
               <ion-item lines="none">
                 <ion-spinner slot="start" />
                 <ion-label class="ion-text-wrap" role="status">
-                  Connecting to {{ entry()!.title }} through OpenVaultDB… A
-                  hosted database that has been idle can take a few seconds to
-                  wake up.
+                  {{ connectingText() }}
                 </ion-label>
               </ion-item>
             </ion-card>
@@ -205,6 +220,13 @@ export class DemoOvdbPageComponent {
     () => findDemoPostgresqlEdition(this.databaseParam()),
   );
   protected readonly state = signal<OpenState>({ kind: 'idle' });
+  protected readonly waking = signal(false);
+  protected readonly connectingText = computed(() => {
+    const title = this.entry()?.title ?? '';
+    return this.waking()
+      ? `The hosted demo database is waking up. This can take up to about 90 seconds; ${title} will open by itself.`
+      : `Connecting to ${title} through OpenVaultDB… A hosted database that has been idle can take a few seconds to wake up.`;
+  });
   protected readonly connection = computed(() => {
     const state = this.state();
     return state.kind === 'ready' ? state.connection : undefined;
@@ -224,8 +246,13 @@ export class DemoOvdbPageComponent {
   });
   readonly #attempt = signal(0);
   #epoch = 0;
+  #controller?: AbortController;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      this.#epoch++;
+      this.#controller?.abort();
+    });
     // One connection per database (`entry` keeps its identity while only the table changes). "Try again" opens it again.
     effect(() => {
       const entry = this.entry();
@@ -238,13 +265,23 @@ export class DemoOvdbPageComponent {
     entry: DemoPostgresqlCatalogEntry | undefined,
   ): Promise<void> {
     const epoch = ++this.#epoch;
+    // A new attempt (Try again, another edition) ends the previous one: no more requests, no live timers.
+    this.#controller?.abort();
+    const controller = new AbortController();
+    this.#controller = controller;
     if (!entry) {
       this.state.set({ kind: 'idle' });
       return;
     }
     this.state.set({ kind: 'connecting' });
+    this.waking.set(false);
     try {
-      const connection = await openDemoPostgresql(entry);
+      const connection = await openDemoPostgresql(entry, {
+        signal: controller.signal,
+        onWaking: () => {
+          if (epoch === this.#epoch) this.waking.set(true);
+        },
+      });
       if (epoch === this.#epoch) this.state.set({ kind: 'ready', connection });
     } catch (error) {
       if (epoch === this.#epoch)

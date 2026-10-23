@@ -153,7 +153,7 @@ const SEGMENT_MAX = 3;
       }
       .panel {
         padding: 0.25rem 0 0.75rem;
-        border-bottom: 1px solid var(--ion-color-step-150, #d9d9d9);
+        border-bottom: 1px solid var(--ion-background-color-step-150, #d9d9d9);
       }
       .bar {
         display: flex;
@@ -170,7 +170,7 @@ const SEGMENT_MAX = 3;
         margin: 0;
         padding: 0.25rem 0;
         font-size: 0.8rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

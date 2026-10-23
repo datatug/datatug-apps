@@ -37,6 +37,15 @@ export const loadDemoOvdbPage = () =>
 export const loadDemoLogsPage = () =>
   import('./lib/pages/demo-logs/demo-logs-page.component').then((m) => m.DemoLogsPageComponent);
 
+// The app-level 404 (datatug-app-routes.ts): any address no route answers, instead of NG04002 and the crash dialog.
+export const loadNotFoundPage = () =>
+  import('./lib/routes/project-not-found-page.component').then((m) => m.ProjectNotFoundPageComponent);
+
+export {
+  ErrorStateComponent,
+  type ErrorStateLink,
+} from './lib/components/error-state/error-state.component';
+
 // Project cards (spec/features/project-cards): storage service, standalone card view and the shared result cache.
 export {
   ProjectCardsService,
@@ -61,3 +70,22 @@ export {
   cardResultScope,
   canonicalJson,
 } from './lib/board/core/board-query-results.service';
+export * from './lib/analytics/usage-analytics';
+export {
+  QUERY_TYPE_DISPLAY_NAMES,
+  QueryTypeIconComponent,
+  queryTypeKey,
+  queryTypeLabel,
+} from './lib/components/query-type-icon/query-type-icon.component';
+export {
+  QUERY_PREVIEW_HOVER_DELAY_MS,
+  QUERY_PREVIEW_LINES,
+  QueryListItemComponent,
+  queryPreviewText,
+} from './lib/components/query-list-item/query-list-item.component';
+export { QueryTextPreviewService } from './lib/components/query-list-item/query-text-preview.service';
+export {
+  QueryItemHeadingComponent,
+  formatQueryTimestamp,
+  type QueryTimestamp,
+} from './lib/components/query-list-item/query-item-heading';

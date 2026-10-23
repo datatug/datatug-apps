@@ -585,6 +585,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
       'section[aria-label="Board runtime parameters"] ion-input',
     );
     expect(input.value).toBe('7');
+    expect(input.label).toBe('order');
+    expect(input.labelPlacement).toBe('fixed');
+    expect(input.closest('.runtime-parameter')).not.toBeNull();
     button(f, 'Run on board').click();
     await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
     expect(dispatch.mock.calls[0][0].parameters).toEqual({
@@ -620,6 +623,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     );
     await f.whenStable();
     expect(f.nativeElement.textContent).toContain('supported integer range');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(input.getAttribute('aria-describedby')).toBe('hosted-board-parameter-error-order');
+    expect(f.nativeElement.querySelector('#hosted-board-parameter-error-order')?.textContent).toContain('supported integer range');
     expect(f.componentInstance.boardContext().parameters).toEqual({});
     expect(dispatch.mock.calls[1][0].signal.aborted).toBe(true);
     button(f, 'Run on board').click();

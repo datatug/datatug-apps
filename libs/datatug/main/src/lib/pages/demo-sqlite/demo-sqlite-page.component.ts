@@ -1,3 +1,6 @@
+import { LogSourceCatalogService } from '../demo-logs/log-source-catalog.service';
+import { relatedLogEvidenceLinks, type LogSource } from '../demo-logs/log-source-declarations';
+import { demoDbOvdbDatabaseUrl } from '../../queries/demodb-ovdb';
 import { ProjectCopyOfferComponent } from '../../project/new-project/project-copy-offer.component';
 // /demo/sqlite/:dataset — "Explore SQLite in DataTug" from a DemoDB.dev database page.
 //
@@ -26,6 +29,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -36,6 +40,8 @@ import {
   IonToolbar,
   type ViewWillEnter,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { arrowBackOutline } from 'ionicons/icons';
 import { map } from 'rxjs';
 import { OvdbDatabaseBrowserComponent } from '../../ovdb/ovdb-database-browser.component';
 import {
@@ -58,6 +64,8 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   open: 'Opening the local copy…',
 };
 
+addIcons({ arrowBackOutline });
+
 @Component({
   selector: 'sneat-datatug-demo-sqlite-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -74,6 +82,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
     IonCardTitle,
     IonContent,
     IonHeader,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,
@@ -86,13 +95,20 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   ],
   styles: `
     .demo-sqlite-progress { width: 100%; height: 8px; accent-color: var(--ion-color-primary); }
+    /* The back link leads to the table list: say so where there is room, keep the arrow only on a phone. */
+    @media (max-width: 575px) { .back-to-tables .back-label { display: none; } .back-to-tables ion-icon { margin: 0; } }
   `,
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-menu-button />
-          <ion-back-button [defaultHref]="backHref()" />
+          <!-- Both stay in the toolbar (one is hidden): the link leads to the table list whatever page the user came from. -->
+          <ion-button class="page-back-link back-to-tables" [class.ion-hide]="!tableParam()" data-testid="back-to-tables" aria-label="All tables" [routerLink]="backHref()" routerDirection="back">
+            <ion-icon slot="start" name="arrow-back-outline" />
+            <span class="back-label">All tables</span>
+          </ion-button>
+          <ion-back-button [class.ion-hide]="!!tableParam()" [defaultHref]="backHref()" />
         </ion-buttons>
         <ion-title>{{ entry() ? entry()!.title + ' · local SQLite' : 'DemoDB in DataTug' }}</ion-title>
       </ion-toolbar>
@@ -199,16 +215,21 @@ const installLabels: Record<DemoDbInstallStep, string> = {
             }
             <sneat-datatug-project-copy-offer [dataset]="datasetParam()" [table]="tableParam() || undefined" />
             @if (session()?.connection(); as connection) {
-              <ion-button data-testid="demo-sqlite-close" fill="clear" (click)="closeCopy()">Close local runtime</ion-button>
               <sneat-datatug-ovdb-database-browser
                 [connection]="connection"
+                [showTitle]="false"
+                [hasSourceActions]="true"
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [focusRecordId]="focusRecordId()"
-                [relatedEvidence]="entry()?.dataset === 'northwind' ? northwindLogMapping : undefined"
+                [relatedEvidence]="relatedLogEvidence()"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
                 [resetNote]="resetNote()"
-              />
+              >
+                <ion-item ovdbSourceAction button detail="false" data-testid="demo-sqlite-close" (click)="closeCopy()">
+                  <ion-label>Close local runtime</ion-label>
+                </ion-item>
+              </sneat-datatug-ovdb-database-browser>
             }
           }
         }
@@ -253,7 +274,14 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       return value && /^\d{1,10}$/.test(value) ? value : undefined;
     })() },
   );
-  protected readonly northwindLogMapping = { collection: 'Orders', field: 'OrderID', path: '/demo/logs' } as const;
+  private readonly logSourceCatalog = inject(LogSourceCatalogService);
+  /** Declared log sources, read only once a table is open: record → logs links are optional, so a failed read shows none. */
+  private readonly logSources = signal<readonly LogSource[]>([]);
+  protected readonly relatedLogEvidence = computed(() => {
+    const dataset = this.entry()?.dataset;
+    // A browser copy of a DemoDB dataset is identified by the OVDB database it was published as.
+    return dataset ? relatedLogEvidenceLinks(this.logSources(), demoDbOvdbDatabaseUrl(dataset), this.tableParam()) : [];
+  });
   protected readonly entry = computed<DemoSqliteCatalogEntry | undefined>(() => findDemoSqliteDataset(this.datasetParam()));
   protected readonly session = signal<LocalDemoDbSession | undefined>(undefined);
   protected readonly state = computed<LocalDemoDbState>(() => this.session()?.state() ?? { kind: 'checking' });
@@ -312,6 +340,10 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
   });
 
   constructor() {
+    effect(() => {
+      if (!this.entry() || !this.tableParam() || this.logSources().length) return;
+      this.logSourceCatalog.sources().then((sources) => this.logSources.set(sources), () => undefined);
+    });
     // One session per dataset; changing only the table keeps it.
     effect(() => {
       const entry = this.entry();

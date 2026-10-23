@@ -1,3 +1,4 @@
+import { PERSONAL_LOG_FIELDS } from './cloud-logs-presentation';
 import { Component, input, output, signal } from '@angular/core';
 import { AgGridAngular } from 'ag-grid-angular';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
@@ -117,6 +118,36 @@ describe('CloudLogsPageComponent', () => {
   afterEach(() => {
     sessionStorage.clear();
     delete window.__datatugTakeGoogleLogsReturn;
+  });
+
+  it('uses registered field labels with the existing exact protocol key and clears filters on source replacement', async () => {
+    TestBed.overrideProvider(PERSONAL_LOG_FIELDS, { useValue: [
+      { key: 'orderId', label: 'External identifier', elementId: 'registered-identifier', sourceField: 'external_ref' },
+    ] });
+    api.query.mockReturnValue(of({ entries: [{ severity: 'INFO', source: 'registered-view', message: 'Actual entry', orderId: 'asset-7' }], capped: false, morePossible: false }));
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    fixture.detectChanges();
+    const input = fixture.nativeElement.querySelector('#registered-identifier');
+    expect(input).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('External identifier');
+    expect(fixture.nativeElement.textContent).not.toContain('Order ID');
+    input.value = ' asset-7 ';
+    input.dispatchEvent(new CustomEvent('ionInput'));
+    await component.runQuery();
+    expect(api.query).toHaveBeenCalledWith(expect.objectContaining({ orderId: 'asset-7' }));
+    fixture.detectChanges();
+    component.selectedEntry.set(component.entries()[0]);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[aria-label="Entry details"]').textContent).toContain('External identifier');
+    expect(fixture.nativeElement.querySelector('[aria-label="Entry details"]').textContent).toContain('asset-7');
+    component.selectConnection(connections[1]);
+    expect(component.equalityValues()).toEqual({});
+    component.setEqualityField('service', 'unregistered');
+    expect(component.equalityValues()).toEqual({});
   });
 
   it('clears connection and log data and ignores a stale list response after access changes', async () => {

@@ -17,7 +17,7 @@ test('project side menu opens Chat', async ({ page }) => {
   await page.goto('/store/localhost:8989/project/datatug-demo-project/environments');
   await page.locator('ion-menu').getByText('Chat', { exact: true }).click();
   await expect(page).toHaveURL(/\/store\/localhost:8989\/project\/datatug-demo-project\/chat$/);
-  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo: DemoDB datasets|datatug-demo-project)/)).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project|datatug-demo-project)/)).toBeVisible();
 });
 
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
@@ -64,10 +64,10 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo: DemoDB datasets|datatug-demo-project)/)).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project|datatug-demo-project)/)).toBeVisible();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 30_000 });
+  await page.getByLabel('Ask about project data').fill('Show last 100 orders');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
   expect(fixtureRequests).toBe(1);
   const stores = await page.evaluate(async () => {
@@ -100,7 +100,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
     ['Show the newest 30 invoices', 30], ['Show 10 tracks by AC/DC', 10],
     ['Show 10 artists', 10], ['Show 10 invoice lines', 10],
   ] as const) {
-    await page.getByLabel('Ask about Chinook data').fill(question);
+    await page.getByLabel('Ask about project data').fill(question);
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: `Rows ${count}` }).last()).toBeVisible();
   }
@@ -156,7 +156,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(cell(grids.nth(6), 0, 'ArtistId')).toHaveText('1');
   await expect(cell(grids.nth(7), 0, 'InvoiceLineId')).toHaveText('1');
 
-  await page.getByLabel('Ask about Chinook data').fill('Show nobody from nowhere');
+  await page.getByLabel('Ask about project data').fill('Show nobody from nowhere');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('No matching rows.')).toBeVisible();
   const emptyColumns = await page.evaluate(async () => {
@@ -176,22 +176,22 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   expect(emptyColumns).toContain('CustomerId');
   expect(emptyColumns).toContain('City');
 
-  await page.getByLabel('Ask about Chinook data').fill('Return malformed DTQL');
+  await page.getByLabel('Ask about project data').fill('Return malformed DTQL');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText(/DTQL|from/i);
 
-  await page.getByLabel('Ask about Chinook data').fill('Return oversized response');
+  await page.getByLabel('Ask about project data').fill('Return oversized response');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().locator('ion-text[color="danger"]')).toHaveText('The AI provider response is too large.');
 
   await page.reload();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 30_000 });
+  await page.getByLabel('Ask about project data').fill('Show last 100 orders');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 30_000 });
   expect(fixtureRequests).toBe(1);
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
-  await page.locator('ion-footer ion-select').click({ timeout: 5000 });
-  await page.getByRole('radio', { name: 'Add new AI provider' }).click({ timeout: 5000 });
+  await page.locator('ion-footer .provider-select').click({ timeout: 5000 });
+  await page.getByRole('radio', { name: 'Your own provider (BYOK)…' }).click({ timeout: 5000 });
   await expect(page.getByText('API keys are stored in this browser origin')).toBeVisible();
   await expect(page.getByText('Key test-••••cret')).toBeVisible();
   await page.getByRole('button', { name: 'Edit' }).click();
@@ -203,22 +203,22 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /My DeepSeek/);
 
   await page.goto('/store/evil.example/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 30_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show last 100 orders');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 30_000 });
+  await page.getByLabel('Ask about project data').fill('Show last 100 orders');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('tab', { name: 'Rows 100' }).last()).toBeVisible();
   expect(localInterpretRequests).toBe(0);
 
   await page.goto('/store/localhost:8989/project/a-different-project/chat');
-  await expect(page.getByText('This local Chat trial has Chinook data only for the Chinook demo project.')).toBeVisible();
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
   await expect(page.getByText('Show last 100 orders')).toHaveCount(0);
 });
 
 test('composer can add a provider and restore it after reload', async ({ page }) => {
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await page.locator('ion-footer ion-select').click();
-  await page.getByRole('radio', { name: 'Add new AI provider' }).click();
+  await page.locator('ion-footer .provider-select').click();
+  await page.getByRole('radio', { name: 'Your own provider (BYOK)…' }).click();
   await expect(page.getByRole('heading', { name: 'Add AI provider' })).toBeVisible();
   await page.getByRole('button', { name: 'Add AI provider' }).click();
   await expect(page.getByText('Enter a name, base URL, model, and API key.')).toBeVisible();
@@ -282,8 +282,8 @@ test('existing three-table Chinook database upgrades in place to all eleven tabl
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.locator('ion-footer ion-select')).toBeVisible();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  await expect(page.locator('ion-footer .provider-select')).toBeVisible();
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
   const upgraded = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open('chinook');
@@ -345,8 +345,8 @@ for (const provider of [
     });
     await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
     await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
-    await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
-    await page.getByLabel('Ask about Chinook data').fill('Show 10 artists');
+    await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
+    await page.getByLabel('Ask about project data').fill('Show 10 artists');
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
     await expect(cell(page.locator('ag-grid-angular'), 0, 'ArtistId')).toHaveText('1');

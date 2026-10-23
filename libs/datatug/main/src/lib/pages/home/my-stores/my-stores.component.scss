@@ -11,7 +11,7 @@ ion-card {
 
 .store-intro {
   margin: 0 0 12px;
-  color: var(--ion-color-step-600, #666);
+  color: var(--dt-text-muted);
   font-size: 0.875rem;
   line-height: 1.45;
 }
@@ -39,7 +39,7 @@ ion-card {
 
   p {
     margin: 2px 0 0;
-    color: var(--ion-color-step-600, #666);
+    color: var(--dt-text-muted);
     font-size: 0.78rem;
     line-height: 1.4;
   }
@@ -70,4 +70,11 @@ ion-card {
 ion-item-divider h3 {
   margin: 0;
   font-size: 0.85rem;
+}
+
+// The pencil sketches are dark line art on white paper, drawn with multiply; on a dark surface invert them
+// to light lines (screen drops the now-black paper).
+:host-context(.ion-palette-dark) .storage-visual {
+  mix-blend-mode: screen;
+  filter: grayscale(1) invert(1);
 }

@@ -1,7 +1,7 @@
 import { JsonPipe } from '@angular/common';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
@@ -20,8 +20,21 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
-import { combineLatest, Subject, Subscription } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import {
+  combineLatest,
+  forkJoin,
+  Observable,
+  of,
+  Subject,
+  Subscription,
+} from 'rxjs';
+import {
+  catchError,
+  defaultIfEmpty,
+  map,
+  take,
+  takeUntil,
+} from 'rxjs/operators';
 import { HttpClient } from '@angular/common/http';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IGridColumn } from '@sneat/grid';
@@ -41,6 +54,17 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
+import { ProjectCardsService } from '../../../cards/project-cards.service';
+import { QueriesService } from '../../../queries/queries.service';
+import {
+  cardShowsEntity,
+  queriesForEntity,
+  type RelatedQueryFolder,
+  type RelatedQueryShape,
+} from '../../../cards/related-links';
+import { projectPageHref } from '../../../nav/project-page-href';
+import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../../components/query-list-item/query-text-preview.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -58,6 +82,7 @@ import { qualifiedLocalReadVersionGuidance } from '../../../services/project/pro
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     DataGridComponent,
+    QueryListItemComponent,
     FormsModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -76,6 +101,7 @@ import { qualifiedLocalReadVersionGuidance } from '../../../services/project/pro
     JsonPipe,
     IonMenuButton,
     IonBackButton,
+    RouterLink,
   ],
 })
 export class EntityPageComponent implements OnDestroy {
@@ -83,6 +109,8 @@ export class EntityPageComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   readonly entityService = inject(EntityService);
   readonly http = inject(HttpClient);
+  private readonly cardsService = inject(ProjectCardsService);
+  private readonly queriesService = inject(QueriesService);
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts) — every one of these is
@@ -106,6 +134,11 @@ export class EntityPageComponent implements OnDestroy {
   >('missing');
   readonly sourceData = signal<Record<string, unknown>[]>([]);
   readonly sourceCols = signal<IGridColumn[] | undefined>(undefined);
+  readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  readonly relatedState = signal<'loading' | 'ready'>('loading');
+  readonly relatedCards = signal<readonly { id: string; title?: string }[]>([]);
+  readonly relatedQueries = signal<readonly RelatedQueryShape[]>([]);
+  private readonly relatedRequest = signal<Subscription | undefined>(undefined);
   private destroyed = new Subject<void>();
   private readonly entityRequest = signal<Subscription | undefined>(undefined);
   private readonly sourceRequest = signal<Subscription | undefined>(undefined);
@@ -148,6 +181,8 @@ export class EntityPageComponent implements OnDestroy {
           ...(branch ? { branch } : {}),
           ...(spaceID ? { spaceID } : {}),
         };
+        this.projectRef.set(ref);
+        this.loadRelated(ref, entityId);
         this.entityRequest.set(
           this.entityService.getEntity(ref, entityId).subscribe({
             next: (entity) => {
@@ -169,6 +204,59 @@ export class EntityPageComponent implements OnDestroy {
           }),
         );
       });
+  }
+
+  /** A page of this entity's project, for a Related link. */
+  projectLink(page: string[]): string {
+    return projectPageHref(this.projectRef(), page);
+  }
+
+  /** A saved query's page; the id itself rides in `?id=` (the `query/**` route). */
+  queryLink(queryId: string): string {
+    return this.projectLink(['query', ...queryId.split('/')]);
+  }
+
+  private readonly textPreviews = inject(QueryTextPreviewService);
+
+  /** Reads a related query's text for its row's hover preview (the folder listing carries no text). */
+  queryTextLoader(
+    queryId: string,
+  ): (() => Observable<string | undefined>) | undefined {
+    const ref = this.projectRef();
+    return ref ? this.textPreviews.loader(ref, queryId) : undefined;
+  }
+
+  /** Cards that show this entity and saved queries whose parameters mean it. */
+  private loadRelated(ref: IProjectRef, entityId: string): void {
+    this.relatedRequest()?.unsubscribe();
+    this.relatedCards.set([]);
+    this.relatedQueries.set([]);
+    this.relatedState.set('loading');
+    const cards = this.cardsService.listCards(ref).pipe(
+      take(1),
+      map((briefs) =>
+        briefs
+          .filter((card) => cardShowsEntity(card, entityId))
+          .map((card) => ({ id: card.id, title: card.title })),
+      ),
+      catchError(() => of([] as { id: string; title?: string }[])),
+      defaultIfEmpty([] as { id: string; title?: string }[]),
+    );
+    const queries = this.queriesService.getQueriesFolder(ref, '~').pipe(
+      take(1),
+      map((folder) =>
+        queriesForEntity(folder as RelatedQueryFolder | undefined, entityId),
+      ),
+      catchError(() => of([] as RelatedQueryShape[])),
+      defaultIfEmpty([] as RelatedQueryShape[]),
+    );
+    this.relatedRequest.set(
+      forkJoin([cards, queries]).subscribe(([c, q]) => {
+        this.relatedCards.set(c);
+        this.relatedQueries.set(q);
+        this.relatedState.set('ready');
+      }),
+    );
   }
 
   selectSource(index: number): void {
@@ -274,6 +362,7 @@ export class EntityPageComponent implements OnDestroy {
   ngOnDestroy(): void {
     this.entityRequest()?.unsubscribe();
     this.sourceRequest()?.unsubscribe();
+    this.relatedRequest()?.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
   }

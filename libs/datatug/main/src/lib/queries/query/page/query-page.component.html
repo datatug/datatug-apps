@@ -12,39 +12,66 @@
     <sneat-datatug-page-title
       class="query-page-title"
       [pageTitle]="queryPageTitle()"
+      [subtitle]="querySourceSubtitle()"
+      [heading]="true"
     />
-    <ion-title class="query-mobile-title">Query</ion-title>
-    <ion-note slot="end" class="query-save-state" data-testid="query-save-state" role="status">{{ querySaveState() }}</ion-note>
+    <!-- Narrow screens: the same name, truncated, stays the page's h1. -->
+    <ion-title class="query-mobile-title"><span role="heading" aria-level="1">{{ queryPageTitle() }}</span></ion-title>
+    <!-- One header: the title has priority; the save state lives in the Save
+         button itself, and read-only visitors see no authoring actions. -->
+    @if (!isQueryReadOnly()) {
     <ion-buttons slot="end">
+      @if (canRenameQuery()) {
+        <ion-button class="query-action" data-testid="query-rename" fill="clear" color="medium" aria-label="Rename query" title="Rename"
+          [disabled]="queryState.isSaving || queryState.saveSupported === false" (click)="renameQuery()">
+          <ion-icon name="create-outline" slot="icon-only" />
+        </ion-button>
+      }
       @if (queryValidatorsHref; as href) {
-        <ion-button class="query-action" [href]="href" fill="clear" aria-label="Edit query Validators">
-          <ion-icon name="shield-checkmark-outline" slot="start" />
-          <ion-label class="query-action-text">Validators</ion-label>
+        <ion-button class="query-action" [href]="href" fill="clear" color="medium" aria-label="Edit query Validators" title="Validators">
+          <ion-icon name="shield-checkmark-outline" slot="icon-only" />
         </ion-button>
       }
       <ion-button
-        class="query-action"
-        slot="end"
-        [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery() || !!httpSaveProblem"
+        class="query-action query-save-button"
+        [disabled]="!isChanged || semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery() || !!httpSaveProblem"
         [fill]="isChanged ? 'solid' : 'clear'"
-        [color]="isChanged ? 'danger' : 'medium'"
-        aria-label="Save changes"
+        [color]="isChanged ? 'primary' : 'medium'"
+        [attr.aria-label]="isChanged ? 'Save changes' : null"
         (click)="saveChanges()"
       >
-        <ion-icon name="save-outline" slot="start" />
-        <ion-label class="query-action-text">
-          @if (queryState.isSaving) {
-            Saving...
-          } @else {
-            Save
-          }
-        </ion-label>
+        @if (queryState.isSaving) {
+          <ion-spinner name="dots" slot="start" />
+        } @else if (isChanged) {
+          <ion-icon name="save-outline" slot="start" />
+        } @else {
+          <ion-icon name="checkmark-outline" slot="start" />
+        }
+        <span class="query-save-state" data-testid="query-save-state">{{ saveButtonLabel() }}</span>
       </ion-button>
     </ion-buttons>
+    <!-- Save progress is announced from outside the button (button content is presentational). -->
+    <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap" role="status" aria-live="polite" data-testid="query-save-announcement">{{ saveAnnouncement() }}</span>
+    }
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
+  @if (isQueryReadOnly() && queryDef()) {
+    <p class="query-read-only-note" data-testid="query-read-only-note" role="note">
+      {{ queryReadOnlyReason() }}
+      @if (isTugqlQuery()) {
+        <a
+          class="query-read-only-note-link"
+          data-testid="query-read-only-tugql-link"
+          href="https://tugql.org/"
+          target="_blank"
+          rel="noopener"
+          >Learn about TugQL</a
+        >
+      }
+    </p>
+  }
   @if (demoDraftRecovery(); as message) {
     <ion-card data-testid="browser-query-recovery" color="warning">
       <ion-card-content>
@@ -110,27 +137,69 @@
   }
   <ng-template #queryEditor>
   <ng-template #workspaceTabs>
+    <!-- A saved SQL/DTQL query shows its source and Parameters as tabs; the other
+         views sit under More and appear as a tab only while open. The TugQL
+         author journey keeps every authoring tab visible. -->
     <ion-segment #workspaceTabBar mode="md" class="workspace-main-tabs" data-testid="author-view-tabs" aria-label="Query workspace tabs"
       [scrollable]="true" [value]="workspaceTab()" (ionChange)="setWorkspaceTab($event.detail.value)">
-      <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
-      <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>TugQL Query</ion-label></ion-segment-button>
-      <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
       @if (isNativeSqlWorkspace()) {
-        <ion-segment-button value="sql" data-testid="workspace-sql-tab" aria-label="SQL source"><ion-label>SQL source</ion-label></ion-segment-button>
+        <ion-segment-button value="sql" data-testid="workspace-sql-tab" aria-label="SQL source"><ion-label>Source</ion-label></ion-segment-button>
       }
       @if (isNativeDtqlWorkspace()) {
-        <ion-segment-button value="dtql" data-testid="workspace-dtql-tab" aria-label="DTQL source"><ion-label>DTQL source</ion-label></ion-segment-button>
+        <ion-segment-button value="dtql" data-testid="workspace-dtql-tab" aria-label="DTQL source"><ion-label>Source</ion-label></ion-segment-button>
+      }
+      @if (showWorkspaceTab('compose') && !nativeOverflowLayout()) {
+        <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
+      }
+      @if (showWorkspaceTab('tugql') && !nativeOverflowLayout()) {
+        <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>{{ isTugqlAuthorJourney() || (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) ? 'TugQL Query' : 'TugQL' }}</ion-label></ion-segment-button>
+      }
+      @if (showWorkspaceTab('preview') && !nativeOverflowLayout()) {
+        <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
       }
       <ion-segment-button value="parameters" data-testid="workspace-parameters-tab">
         <ion-label [attr.aria-label]="'Parameters, ' + authorParameterCountLabel()">Parameters <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorParameterDeclarationCount() ?? '…' }}</ion-text></ion-chip></ion-label>
       </ion-segment-button>
-      <ion-segment-button value="sources" data-testid="workspace-sources-tab">
-        <ion-label [attr.aria-label]="'Sources, ' + authorSourceCountLabel()">Sources <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorSourceOccurrenceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
-      </ion-segment-button>
-      <ion-segment-button value="related" data-testid="workspace-related-tab">
-        <ion-label [attr.aria-label]="'Related, ' + authorRelatedSourceCountLabel()">Related <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorRelatedSourceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
-      </ion-segment-button>
+      <!-- An open view from More always follows Parameters, so the tab order stays stable. -->
+      @if (nativeOverflowLayout()) {
+        @if (workspaceTab() === 'compose') {
+          <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
+        } @else if (workspaceTab() === 'tugql') {
+          <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>TugQL</ion-label></ion-segment-button>
+        } @else if (workspaceTab() === 'preview') {
+          <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
+        }
+      }
+      @if (showWorkspaceTab('sources')) {
+        <ion-segment-button value="sources" data-testid="workspace-sources-tab">
+          <ion-label [attr.aria-label]="'Sources, ' + authorSourceCountLabel()">Sources <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorSourceOccurrenceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
+        </ion-segment-button>
+      }
+      @if (showWorkspaceTab('related')) {
+        <ion-segment-button value="related" data-testid="workspace-related-tab">
+          <ion-label [attr.aria-label]="'Related, ' + authorRelatedSourceCountLabel()">Related <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorRelatedSourceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
+        </ion-segment-button>
+      }
     </ion-segment>
+    @if (workspaceOverflowTabs().length) {
+      <ion-button id="workspace-more-trigger" class="workspace-more" data-testid="workspace-more-tab" fill="clear" color="medium" size="small" aria-label="More query views"
+        aria-haspopup="menu" [attr.aria-expanded]="workspaceMoreOpen()">
+        <ion-icon name="ellipsis-horizontal" slot="start" aria-hidden="true" />
+        <span class="narrow-hidden">More</span>
+      </ion-button>
+      <ion-popover trigger="workspace-more-trigger" [dismissOnSelect]="true" data-testid="workspace-more-menu"
+        (willPresent)="workspaceMoreOpen.set(true)" (didDismiss)="workspaceMoreOpen.set(false)">
+        <ng-template>
+          <ion-list lines="none" aria-label="More query views">
+            @for (tab of workspaceOverflowTabs(); track tab.value) {
+              <ion-item button [detail]="false" [attr.data-testid]="'workspace-more-' + tab.value" (click)="setWorkspaceTab(tab.value)">
+                <ion-label>{{ tab.label }}</ion-label>
+              </ion-item>
+            }
+          </ion-list>
+        </ng-template>
+      </ion-popover>
+    }
   </ng-template>
   @if (project?.ref?.projectApi && !isTugqlAuthorJourney()) {
     <ion-item
@@ -480,7 +549,7 @@
   @if(isHostedProject && selectedWorkingCopy() === 'project' && isNativeSqlWorkspace()) {
     <p class="ion-padding-horizontal">Hosted saved SQL query · source {{ queryDef()?.connectionId || 'not specified by this definition' }}. Current server admission controls execution.</p>
   }
-  @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney()) {
+  @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney() && !isQueryReadOnly()) {
     <ion-card>
       <ion-card-header
         ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
@@ -501,7 +570,8 @@
         </ion-item>
     </ion-card>
   }
-  @if (!isTugqlAuthorJourney()) {
+  @if (!isTugqlAuthorJourney() && (queryState.isNew || !queryState.title)) {
+    <!-- The page header carries the title; this card is only for naming a new query. -->
     <ion-card>
       <ion-item>
         <ion-input
@@ -531,9 +601,18 @@
 
   @if (queryState.queryType === 'HTTP') {
     @if (httpRequest; as httpReq) {
+      <ion-item lines="none" color="light" data-testid="http-source-step-label">
+        <ion-icon name="globe-outline" slot="start" aria-hidden="true" />
+        <ion-label><h2>HTTP source step</h2><p>This query reads rows from one HTTP request.</p></ion-label>
+      </ion-item>
       <sneat-datatug-http-query-editor
         [request]="httpReq"
         (requestChange)="httpRequestChanged($event)"
+        [parameters]="httpParameters"
+        (parametersChange)="httpParametersChanged($event)"
+        [rowBinding]="httpRowBinding()"
+        [bagEntries]="httpBagEntries()"
+        [showRun]="!httpSemanticRun()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -917,18 +996,43 @@
     } @else {
       <ion-card class="author-card" data-testid="unified-text-workspace">
         <ion-card-header>
-          <ion-item class="author-card-title-row" lines="none">
-            <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
-              <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
-              <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
-                [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
-                (click)="runQuery()">
-                @if (running()) { <ion-spinner name="dots" slot="start" /> }
-                Run
-              </ion-button>
-          </ion-item>
-          <ng-container *ngTemplateOutlet="workspaceTabs" />
+          <div class="workspace-tab-row">
+            <ng-container *ngTemplateOutlet="workspaceTabs" />
+            <ion-button class="workspace-run" data-testid="workspace-run" aria-label="Run query" size="default" color="primary"
+              [disabled]="nativeRunDisabled()"
+              [attr.aria-describedby]="nativeRunBlock() ? 'workspace-run-readiness' : null"
+              (click)="runQuery()">
+              @if (running()) { <ion-spinner name="dots" slot="start" /> }
+              Run
+            </ion-button>
+          </div>
+          @if (nativeRunBlock(); as block) {
+            <ion-item class="author-run-readiness" lines="none" data-testid="workspace-run-readiness-row">
+              <ion-icon name="information-circle-outline" slot="start" color="medium" aria-hidden="true" />
+              <ion-label class="ion-text-wrap">
+                <p id="workspace-run-readiness" data-testid="workspace-run-readiness" role="status">{{ block.message }}</p>
+              </ion-label>
+              @if (block.action && workspaceTab() !== 'parameters') {
+                <ion-buttons slot="end">
+                  <ion-button fill="clear" data-testid="workspace-run-recovery" (click)="setWorkspaceTab('parameters')">{{ block.action }}</ion-button>
+                </ion-buttons>
+              }
+            </ion-item>
+          }
           <ng-container *ngTemplateOutlet="executionRuntime" />
+          @if (httpLookupSteps().length) {
+            <ion-list lines="none" class="http-source-steps" data-testid="http-source-steps" aria-label="HTTP source steps">
+              @for (step of httpLookupSteps(); track $index) {
+                <ion-item data-testid="http-source-step">
+                  <ion-icon name="globe-outline" slot="start" color="medium" aria-hidden="true" />
+                  <ion-label class="ion-text-wrap">
+                    <h3>HTTP source step</h3>
+                    <p>{{ step }}</p>
+                  </ion-label>
+                </ion-item>
+              }
+            </ion-list>
+          }
         </ion-card-header>
         <ion-card-content>
           @if (isNativeSqlWorkspace()) {
@@ -943,10 +1047,11 @@
           }
           @if (isNativeDtqlWorkspace()) {
             <section [hidden]="workspaceTab() !== 'dtql'" data-testid="workspace-dtql-pane" aria-label="DTQL source">
-              <ion-textarea data-testid="query-body-text" aria-label="DTQL source" autoGrow="true"
-                [value]="queryBodyText() ?? ''" [disabled]="queryState.isSaving || running()"
+              <!-- DTQL shares the SQL source's code component, so both read the same. -->
+              <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" ariaLabel="DTQL source"
+                [sql]="queryBodyText() ?? ''" [disabled]="queryState.isSaving || running()"
                 [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
-                (ionInput)="queryTextChanged($event)" />
+                [lineNumbers]="false" [autoCloseBrackets]="false" [hashComments]="true" (sqlChanged)="sqlTextChanged($event)" />
             </section>
           }
           @if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {
@@ -1050,6 +1155,11 @@
                 <ion-note [id]="parameterDetailsPrefix + '-hint-' + $index">{{ nativeParameterHint(parameter) }}</ion-note>
                 </div>
                 <ion-buttons slot="end">
+                  @if (nativeParameterSupported(parameter)) {
+                    <sneat-datatug-parameter-lookup-button [parameter]="parameter" [context]="parameterLookupContext()"
+                      [currentValue]="nativeParameterValue(parameter.id)" [disabled]="running() || !!queryState.isSaving"
+                      (picked)="onNativeParameterPicked(parameter, $event)" />
+                  }
                   @if (nativeParameterValue(parameter.id) !== '') {
                     <ion-button fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
                       (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" slot="icon-only" /></ion-button>
@@ -1226,7 +1336,7 @@
         </ion-item>
       }
 
-      @if (queryDef()?.federation) {
+      @if (readsOvdb()) {
         <ion-item>
           <ion-label position="stacked">OVDB bearer token (optional)</ion-label>
           <ion-input
@@ -1318,41 +1428,43 @@
   </ng-template>
   <ng-template #executionRuntime>
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
-        <p class="ion-padding-horizontal">
-          @if (usesFixedPublicQuerySource()) {
-            Selected source: {{ connectionId }}. This query uses the fixed public Northwind OVDB API.
-            Project environment is not used for execution. Run validates the saved definition and publisher evidence.
-          } @else {
-            Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
-          }
+        @if (usesFixedPublicQuerySource()) {
+        <p class="ion-padding-horizontal query-runtime-note" data-testid="query-runtime-note">
+          Runs on the public Northwind OVDB API; the project environment is not used.
         </p>
+        }
         @if (!isTugqlAuthorJourney()) {
-          <ion-item lines="none">
-            <ion-label>Execution runtime</ion-label>
-            <select aria-label="Execution runtime" [value]="selectedWorkingCopy()" (change)="selectWorkingCopy($any($event.target).value)">
-              <option value="project" [selected]="selectedWorkingCopy() === 'project'">Project runtime</option>
+          <ion-item lines="none" class="query-runtime-row">
+            <ion-select label="Runtime" labelPlacement="start" interface="popover" aria-label="Execution runtime"
+              data-testid="query-execution-runtime"
+              [value]="selectedWorkingCopy()" (ionChange)="selectWorkingCopy($event.detail.value)">
+              <ion-select-option value="project">Project runtime</ion-select-option>
               @if (unavailableWorkingCopy()) {
-                <option [value]="selectedWorkingCopy()" [selected]="true">Selected working copy unavailable</option>
+                <ion-select-option [value]="selectedWorkingCopy()">Selected working copy unavailable</ion-select-option>
               }
               @for (runtime of workingCopyOptions(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId" [selected]="runtime.selectionId === selectedWorkingCopy()">{{ runtime.title }} · working copy</option>
+                <ion-select-option [value]="runtime.selectionId">{{ runtime.title }} · working copy</ion-select-option>
               }
-            </select>
+            </ion-select>
+            <ion-button slot="end" fill="clear" size="small" aria-label="Find working copies" title="Find working copies" [disabled]="workingCopyLoading()" (click)="loadWorkingCopies()">
+              <ion-icon name="search-outline" slot="start" aria-hidden="true" />
+              <span class="narrow-hidden">{{ workingCopyLoading() ? 'Checking…' : 'Find working copies' }}</span>
+            </ion-button>
           </ion-item>
-          <ion-button class="ion-margin-horizontal" fill="clear" size="small" [disabled]="workingCopyLoading()" (click)="loadWorkingCopies()">
-            {{ workingCopyLoading() ? 'Checking working copies…' : 'Find open working copies' }}
-          </ion-button>
-          @if (workingCopyError(); as error) { <ion-note color="danger" role="alert">{{ error }}</ion-note> }
+          @if (!usesFixedPublicQuerySource()) {
+            <p class="query-runtime-hint" data-testid="query-runtime-hint">Checked against {{ connectionId }} before Run.</p>
+          }
+          @if (workingCopyError(); as error) { <ion-note color="danger" class="ion-padding-horizontal" role="alert">{{ error }}</ion-note> }
         }
       }
   </ng-template>
-  @if (!isTextQueryWorkspace() && queryState.queryType !== 'HTTP') {
+  @if ((!isTextQueryWorkspace() && queryState.queryType !== 'HTTP') || httpSemanticRun()) {
     <ion-card>
       <ng-container *ngTemplateOutlet="nativeParameters" />
       <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
-          [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+          [disabled]="nativeRunDisabled()"
           (click)="runQuery()">
           @if (running()) { <ion-spinner name="dots" slot="start" /> }
           Run query
@@ -1406,9 +1518,23 @@
       }
     </ul>
   }
-  @if (!demoDraftRecovery() && runError(); as error) {
-    <ion-card color="danger">
+  @if (!demoDraftRecovery() && localOvdbNeeded(); as needed) {
+    <ion-card data-testid="local-ovdb-needed">
       <ion-card-content>
+        <p>
+          <strong>This query reads a local OVDB server</strong> at
+          {{ needed.baseUrl }} (databases {{ needed.databases.join(', ') }}),
+          and none is running on this computer. Start one, then run the query
+          again. The project's README names the manifest for each database.
+        </p>
+        <pre class="local-ovdb-command">{{ needed.command }}</pre>
+        <ion-button size="small" fill="outline" (click)="copyLocalOvdbCommand(needed.command)">Copy command</ion-button>
+        @if (localOvdbCopyStatus()) { <span role="status">{{ localOvdbCopyStatus() }}</span> }
+      </ion-card-content>
+    </ion-card>
+  } @else if (!demoDraftRecovery() && runError(); as error) {
+    <ion-card color="danger">
+      <ion-card-content role="alert">
         {{ error }}
         @if (sourceUnavailable() && availableSnapshot(); as snapshot) {
           <!-- api-contract.md "Bounded lookups and HTTP" — the user must explicitly
@@ -1696,6 +1822,32 @@
             recorded local output · {{ result.provenance.source }}
           }
         </ion-text>
+        @for (git of result.gitSources ?? []; track git.repositoryUrl) {
+          <p class="git-source" data-testid="result-git-source">
+            <ion-text>
+              <strong>{{ git.title }} comes from inGitDB on GitHub.</strong>
+              It is a public database kept as plain files in a Git repository. An
+              OpenVaultDB (OVDB) descriptor tells DataTug where it is, and your
+              browser reads it straight from GitHub, with no server in between.
+            </ion-text>
+            <ion-text color="medium">
+              <a href="https://ingitdb.com" target="_blank" rel="noopener">inGitDB</a>
+              ·
+              <a href="https://openvaultdb.com" target="_blank" rel="noopener">OpenVaultDB</a>
+            </ion-text>
+            <ion-button
+              data-testid="result-git-source-link"
+              fill="clear"
+              size="small"
+              [href]="git.repositoryUrl + '/tree/' + git.revision"
+              target="_blank"
+              rel="noopener"
+            >
+              See the source
+              <ion-icon slot="end" name="open-outline" aria-hidden="true" />
+            </ion-button>
+          </p>
+        }
 
         @if (
           !selectedHistoricalResult() &&
@@ -1883,6 +2035,11 @@
       }
       </div>
     </div>
+    <sneat-datatug-http-row-action
+      [project]="project"
+      [row]="httpActionRow()"
+      [checkedRows]="httpCheckedRows()"
+    />
     @if (resultChartUnavailableText(); as chartUnavailable) {
       <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }
@@ -1900,6 +2057,7 @@
         </ion-card-header>
         <ion-card-content>
           <p>Saved query revision {{ hosted.queryRevision }} · result fingerprint {{ hosted.resultFingerprint }} · execution {{ hosted.execution.executionId }}.</p>
+          <sneat-datatug-evidence-copy-link [projectRef]="project?.ref" [environment]="hosted.environment" [target]="{ kind: 'execution', execution: hosted.execution }" />
           @if (hostedScenarioTarget()) {
             <ion-button [disabled]="hostedScenarioBusy()" (click)="completeHostedScenarioStep()">Record Scenario query step from this execution</ion-button>
             <p>Completing the manual step records this authorized query receipt. It does not assert that its rows passed validation.</p>

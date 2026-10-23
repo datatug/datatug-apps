@@ -1,3 +1,6 @@
+import { QueryType } from '../../models/definition/query-def';
+import assignment from '../../queries/testdata/shipping-assignment-outcome.query.json';
+import assignmentSQL from '../../queries/testdata/shipping-assignment-outcome.query.sql?raw';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import {
@@ -16,10 +19,15 @@ import {
   type CreateGithubProject,
 } from './project-query-api.service';
 import { StoreApiService } from '../repo/store-api.service';
-import { toProjectQueryWire } from '../../queries/project-query-contract';
+import {
+  toProjectQueryWire,
+  type ProjectQueryWire,
+} from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
-import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
-
+import {
+  datatugApiRealProviders,
+  expectDatatugApiRequest,
+} from '../base/datatug-api.test-helpers';
 
 describe('ProjectQueryApiService', () => {
   const api = {
@@ -90,7 +98,9 @@ describe('ProjectQueryApiService', () => {
     };
     await firstValueFrom(service.createStatus(statusRequest));
     const params = api.get.mock.calls[0][1] as HttpParams;
-    expect(api.get.mock.calls[0][0]).toBe('datatug/projects/create_project/status');
+    expect(api.get.mock.calls[0][0]).toBe(
+      'datatug/projects/create_project/status',
+    );
     expect(params.get('operationID')).toBe(request.operationID);
     expect(params.get('repositoryID')).toBe('42');
     expect(params.get('owner')).toBe('owner');
@@ -326,11 +336,17 @@ describe('ProjectQueryApiService', () => {
       expect(params.get('project')).toBe('project_1');
       expect(params.has('branch')).toBe(false);
     }
+    const typedQuery: ProjectQueryWire = {
+      ...assignment,
+      type: QueryType.SQL,
+      folderPath: 'shipping',
+      text: assignmentSQL,
+    };
     await firstValueFrom(
       service.save(ref, {
         operationId: 'operation_1',
         ifNoneMatch: true,
-        query: toProjectQueryWire(createHostedDemoDbQuery('q')),
+        query: typedQuery,
       }),
     );
     expect(api.post.mock.calls[0][1]).toMatchObject({
@@ -339,6 +355,7 @@ describe('ProjectQueryApiService', () => {
       project: 'project_1',
       operationId: 'operation_1',
       ifNoneMatch: true,
+      query: typedQuery,
     });
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('branch');
     expect(http.get).not.toHaveBeenCalled();
@@ -494,13 +511,17 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
   const denied: unknown[] = [];
   const reconnect: unknown[] = [];
   service.authorityDenied.subscribe((value) => denied.push(value));
-  service.githubReauthorizationRequired.subscribe((value) => reconnect.push(value));
+  service.githubReauthorizationRequired.subscribe((value) =>
+    reconnect.push(value),
+  );
 
   await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+  expect(reconnect).toEqual([
+    { ref, requiredScopes: ['repo'], reason: 'expired' },
+  ]);
 
   get.mockImplementation(() =>
     throwError(() => ({
@@ -512,7 +533,36 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+  expect(reconnect).toEqual([
+    { ref, requiredScopes: ['repo'], reason: 'expired' },
+  ]);
+
+  // A missing credential has its own code and is not reported as expired.
+  get.mockImplementation(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'github_not_connected' } },
+    })),
+  );
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(reconnect.at(-1)).toEqual({
+    ref,
+    requiredScopes: ['repo'],
+    reason: 'not_connected',
+  });
+
+  // A bare 403 carries no evidence of expiry.
+  get.mockImplementation(() => throwError(() => ({ status: 403 })));
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 403,
+  });
+  expect(reconnect.at(-1)).toEqual({
+    ref,
+    requiredScopes: ['repo'],
+    reason: 'access_denied',
+  });
 });
 
 it('discovers pending GitHub setup operations through the authenticated common API', async () => {
@@ -526,7 +576,9 @@ it('discovers pending GitHub setup operations through the authenticated common A
     ],
   });
   const service = TestBed.inject(ProjectQueryApiService);
-  await expect(firstValueFrom(service.pendingGithubProjectSetups())).resolves.toEqual({
+  await expect(
+    firstValueFrom(service.pendingGithubProjectSetups()),
+  ).resolves.toEqual({
     setups: [],
     truncated: false,
   });

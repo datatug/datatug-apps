@@ -1,3 +1,5 @@
+import { ProjectAIService } from '../../../chat/project-ai.service';
+import { ManagedAIGatewayService } from '../../../chat/managed-ai-gateway.service';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA, provideZonelessChangeDetection, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -50,11 +52,13 @@ describe('ChatPageComponent failed turns', () => {
         error: message,
       }),
     ),
+    completeQuery: vi.fn(async (_scope: string, _session: string, id: string) => ({ id, question: 'Question', state: 'empty' as const })),
     completeWorkspaceAction: vi.fn(async (_scope: string, _session: string, id: string) => ({
       workspace: emptyChatWorkspace(),
       turn: { id, question: 'Sales by country?', state: 'result' as const },
     })),
   };
+  const assistant = { workingCopies: () => [], context: vi.fn(async (ref) => ({ ref, connections: [], environments: [], queries: [], entities: [] })), answer: vi.fn(async () => ({ dtql: 'from: Equipment', generatedDtql: '{}', dtqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } })) };
   const data = {
     ensureSeed: vi.fn<(...args: Parameters<ChinookChatDataService['ensureSeed']>) => Promise<void>>(
       async () => undefined,
@@ -102,6 +106,8 @@ describe('ChatPageComponent failed turns', () => {
       imports: [ChatPageComponent],
       providers: [
         provideZonelessChangeDetection(),
+      { provide: ProjectAIService, useValue: assistant },
+      { provide: ManagedAIGatewayService, useValue: { allowance: signal(undefined), usageState: signal('unavailable'), usageError: signal(undefined), reset: vi.fn() } },
         { provide: ActivatedRoute, useValue: route },
         { provide: ChatSessionService, useValue: store },
         { provide: ChinookChatDataService, useValue: data },
@@ -148,6 +154,29 @@ describe('ChatPageComponent failed turns', () => {
       dtql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     }));
+  });
+
+  it.each(['auth', 'environment', 'connection'])('cancels generic AI and prevents stale result persistence when %s changes', async (change) => {
+    await render([], { storeId: 'local', projectId: 'equipment-project' }, { env: 'prod', aiConnection: 'factory' });
+    const component = fixture.componentInstance;
+    component.managed.set(true);
+    let resolve!: (value: Awaited<ReturnType<typeof assistant.answer>>) => void;
+    let signal: AbortSignal | undefined;
+    assistant.answer.mockImplementationOnce(async (...args: unknown[]) => {
+      signal = args[5] as AbortSignal;
+      return new Promise((done) => { resolve = done; });
+    });
+    component.question.set('Show equipment');
+    const pending = component.submit();
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    if (change === 'auth') authState.next({ status: 'authenticated', user: { uid: 'other-actor' } });
+    else routeQuery.next(convertToParamMap({ env: change === 'environment' ? 'test' : 'prod', aiConnection: change === 'connection' ? 'shipping' : 'factory' }));
+    expect(signal?.aborted).toBe(true);
+    resolve({ dtql: 'from: Equipment', generatedDtql: '{}', dtqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } });
+    await pending;
+    expect(store.completeQuery).not.toHaveBeenCalled();
+    expect(component.turns()).toEqual([]);
+    expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'This request was interrupted. Ask it again to retry.');
   });
 
   it('explains why a fresh visitor cannot send and opens the existing provider flow', async () => {
@@ -346,7 +375,7 @@ describe('ChatPageComponent failed turns', () => {
     component.question.set('Sales by country?');
     await component.submit();
     expect(eligibility.read).not.toHaveBeenCalled();
-    expect(interpreter.interpret).toHaveBeenCalledTimes(1);
+    expect(assistant.answer).toHaveBeenCalledTimes(1);
   });
 
   it('ignores a restore failure from the previous full project ref', async () => {
@@ -566,7 +595,7 @@ describe('ChatPageComponent failed turns', () => {
     it('shows a failure of the local Chinook data in plain language, with the raw text on demand', async () => {
       data.ensureSeed.mockRejectedValueOnce(new Error('QuotaExceededError: the quota has been exceeded'));
       await render([]);
-      expect(alert()?.querySelector('ion-text')?.textContent).toBe('The local Chinook data could not be loaded.');
+      expect(alert()?.querySelector('ion-text')?.textContent).toBe('Project context could not be loaded.');
       expect(alert()?.querySelector('details.error-detail pre')?.textContent).toBe('QuotaExceededError: the quota has been exceeded');
     });
 

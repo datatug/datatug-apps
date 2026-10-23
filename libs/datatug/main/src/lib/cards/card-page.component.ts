@@ -10,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
   AlertController,
   IonBackButton,
@@ -74,7 +74,19 @@ import {
   uniqueCardId,
 } from './card-model';
 import { injectCardsContext } from './cards-context';
+import {
+  cardEntityNames,
+  cardQueryIds,
+  queryTitlesById,
+  type RelatedQueryFolder,
+} from './related-links';
 import { ProjectCardViewComponent } from './project-card-view.component';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../components/parameters/parameter-lookup.service';
+import type { IParameterDef } from '../models/definition/parameter';
 import {
   CardNotFoundError,
   ProjectCardsService,
@@ -126,6 +138,7 @@ function move<T>(list: T[], index: number, delta: number): void {
     CardParametersEditorComponent,
     CardWidgetEditorComponent,
     ProjectCardViewComponent,
+    ParameterLookupButtonComponent,
     RouterLink,
     SneatDatatugPageTitleComponent,
     IonBackButton,
@@ -192,6 +205,24 @@ export class CardPageComponent {
   private readonly view = viewChild(ProjectCardViewComponent);
 
   protected readonly finished = computed(() => finishCard(this.card()));
+  /** Entities this card shows, for its Related list. */
+  protected readonly relatedEntities = computed(() =>
+    cardEntityNames(this.card()),
+  );
+  /** Saved queries this card's widgets read, for its Related list. */
+  protected readonly relatedQueries = computed(() => cardQueryIds(this.card()));
+  /** Saved query titles by folder-qualified id, for the Related list. */
+  private readonly queryTitles = signal<ReadonlyMap<string, string>>(new Map());
+  protected queryTitle(queryId: string): string {
+    return this.queryTitles().get(queryId) ?? queryId;
+  }
+
+  /** A saved query's page: the id rides in `?id=` (see the `query/**` route). */
+  protected queryUrl(queryId: string): UrlTree | undefined {
+    const tree = this.ctx.url(['query', ...queryId.split('/')]);
+    if (tree) tree.queryParams = { ...tree.queryParams, id: queryId };
+    return tree;
+  }
   protected readonly problem = computed<string | undefined>(() => {
     const card = this.finished();
     if (!card.title.trim()) return 'Give the card a title.';
@@ -307,7 +338,12 @@ export class CardPageComponent {
       const subscription = this.queriesService
         .getQueriesFolder(ref, '~')
         .subscribe({
-          next: (folder) => this.queries.set(flattenQueryFolder(folder)),
+          next: (folder) => {
+            this.queries.set(flattenQueryFolder(folder));
+            this.queryTitles.set(
+              queryTitlesById(folder as RelatedQueryFolder | null | undefined),
+            );
+          },
           error: () =>
             this.queriesError.set('Saved queries could not be loaded.'),
         });
@@ -500,7 +536,30 @@ export class CardPageComponent {
 
   // ---- preview -------------------------------------------------------------------
 
+  /** Where preview input pickers look values up (parameter-lookup); a card has no host source. */
+  protected readonly previewLookupContext = computed<ParameterLookupHost>(() => {
+    const environment = this.ctx.environment();
+    return { projectRef: this.ctx.ref(), ...(environment ? { environment } : {}) };
+  });
+  /** Preview inputs whose value was picked in the lookup ("from lookup"). */
+  protected readonly previewPicked = signal<Readonly<Record<string, true>>>({});
+
+  protected previewLookupPicked(id: string, pick: ParameterLookupPick): void {
+    this.setPreviewText(id, String(pick.value));
+    this.previewPicked.update((all) => ({ ...all, [id]: true }));
+  }
+
+  protected asParameterDef(param: object): IParameterDef {
+    return param as IParameterDef;
+  }
+
   protected setPreviewText(id: string, text: string): void {
+    if (this.previewPicked()[id])
+      this.previewPicked.update((all) => {
+        const next = { ...all };
+        delete next[id];
+        return next;
+      });
     this.previewText.update((all) => ({ ...all, [id]: text }));
     const type = this.previewCard()?.parameters?.find((p) => p.id === id)?.type;
     let message = '';

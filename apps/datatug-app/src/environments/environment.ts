@@ -3,7 +3,11 @@ import {
   PUBLIC_OVDB_DEV_TRANSPORT,
   PUBLIC_OVDB_LOOPBACK_MODE,
 } from '@sneat/datatug-semantic';
-import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
+import {
+  IPosthogSettings,
+  IEnvironmentConfig,
+  IFirebaseEmulatorConfig,
+} from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugBusinessCheckoutApiOrigin: string | null = null;
@@ -13,6 +17,9 @@ export const datatugBusinessCheckoutLiveEnabled = false;
 // No analytics in a development or end-to-end build.
 export const datatugGoogleAnalyticsMeasurementId: string | undefined =
   undefined;
+
+// No anonymous usage analytics (PostHog) in a development or end-to-end build.
+export const datatugUsagePosthog: IPosthogSettings | undefined = undefined;
 
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';

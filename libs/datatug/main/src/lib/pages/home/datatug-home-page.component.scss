@@ -26,7 +26,7 @@
     margin-inline-start: 0.6rem;
     font-size: 0.85em;
     font-weight: 400;
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
   }
 }
 
@@ -42,6 +42,24 @@
 
   ::ng-deep sneat-app-version ion-item:first-child {
     --inner-padding-end: 120px;
+  }
+}
+
+.home-theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 4px 16px 0;
+
+  .home-theme-label {
+    font-size: 0.8rem;
+    color: var(--dt-text-muted);
+  }
+
+  sneat-theme-switcher {
+    flex: 1;
+    max-width: 18rem;
   }
 }
 
@@ -113,7 +131,7 @@
   padding: 3px 8px;
   border-radius: 999px;
   background: var(--ion-color-light);
-  color: var(--ion-color-medium-shade, var(--ion-color-medium));
+  color: var(--dt-text-muted);
   font-size: 0.7rem;
   line-height: 1.3;
   text-decoration: none;
@@ -152,6 +170,18 @@
 }
 
 @media (max-width: 575.98px) {
+  // The control is labelled by its own aria-label; the visible "Theme" word is
+  // dropped so Light / Dark / Auto fit the narrow width.
+  .home-theme-row {
+    .home-theme-label {
+      display: none;
+    }
+
+    sneat-theme-switcher {
+      max-width: none;
+    }
+  }
+
   .home-footer ::ng-deep sneat-app-version ion-item:first-child {
     --inner-padding-end: 116px;
   }
@@ -192,6 +222,49 @@
     }
     .hero-copy {
       font-size: 0.95rem;
+    }
+  }
+}
+
+// The hero is a card: in dark it takes the dark card surface, light text, and a dark scrim over the (light) picture.
+:host-context(.ion-palette-dark) .home-hero {
+  background: var(--ion-card-background, #1e1e1e);
+
+  .hero-layout::before {
+    background: linear-gradient(
+      90deg,
+      rgba(30, 30, 30, 0.94),
+      rgba(30, 30, 30, 0.7) 32%,
+      transparent 56%
+    );
+  }
+
+  .hero-message,
+  h1 {
+    color: #f2f2f2;
+  }
+
+  .hero-copy {
+    color: #d0d2d8;
+  }
+
+  .hero-visual {
+    filter: brightness(0.78) saturate(0.95);
+  }
+}
+
+@media (max-width: 575.98px) {
+  :host-context(.ion-palette-dark) .home-hero {
+    .hero-layout::before {
+      background: linear-gradient(
+        rgba(30, 30, 30, 0.96) 0%,
+        rgba(30, 30, 30, 0.9) 44%,
+        transparent 76%
+      );
+    }
+
+    .hero-visual {
+      background: var(--ion-card-background, #1e1e1e);
     }
   }
 }

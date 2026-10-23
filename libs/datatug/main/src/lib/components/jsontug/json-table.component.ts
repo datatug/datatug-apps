@@ -46,6 +46,7 @@ export class JsonTableComponent implements OnChanges {
   public isSimpleType(o: unknown): boolean {
     return (
       typeof o === 'string' ||
+      typeof o === 'boolean' ||
       o instanceof String ||
       (typeof o === 'number' && isFinite(o))
     );

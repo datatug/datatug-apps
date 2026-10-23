@@ -1,0 +1,28 @@
+titles:
+  en: Country aliases
+# Spellings that other systems use for a country, mapped to the countries
+# record they mean. One record per file under $records/, keyed by the slug of
+# the alias. `alias` holds the exact text as the source system spells it, so it
+# can be used as a join key; `source` records where it came from and how it was
+# matched (provenance, not inference).
+record_file:
+  name: "{key}.json"
+  type: "map[string]any"
+  format: json
+columns:
+  alias:
+    type: string
+    required: true
+  country:
+    type: string
+    required: true
+    foreign_key: countries
+  source:
+    type: string
+    required: true
+columns_order: [alias, country, source]
+# Exported to $ingitdb/country_aliases/country_aliases.ingr by `ingitdb materialize --views`, so a
+# browser can fetch the whole collection as one file.
+# Its foreign key also yields one view per country under
+# $ingitdb/countries/$fk/country_aliases/country/<iso2>.ingr.
+default_view: {}

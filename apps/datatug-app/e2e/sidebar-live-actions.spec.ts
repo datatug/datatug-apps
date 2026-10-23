@@ -1,16 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const project =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
-const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
-
-test.beforeEach(async ({ context }) => {
-  if (fake)
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: fake },
-    ]);
-});
 
 test('project sidebar offers active queries and a working saved-query path at wide and narrow widths', async ({
   page,
@@ -20,7 +11,7 @@ test('project sidebar offers active queries and a working saved-query path at wi
     await page.goto(project);
     const menu = page.locator('sneat-datatug-project-menu');
     if (width < 992) {
-      await page.locator('ion-menu-button.app-level-menu-button').click();
+      await page.locator('ion-menu-button.app-level-menu-button:visible').click();
     }
     await expect(menu).toBeVisible();
     await expect(

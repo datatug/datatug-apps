@@ -1,10 +1,10 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { IRecord } from '@sneat/data';
-import { Observable, of, throwError, forkJoin } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { DatatugApiService } from '../base/datatug-api.service';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
-import { switchMap, startWith, tap } from 'rxjs/operators';
+import { startWith, tap } from 'rxjs/operators';
 import { IProjectRef } from '../../core/project-context';
 import { CreateNamedRequest } from '../../dto/requests';
 import { IOptionallyTitled } from '../../models/core';
@@ -16,6 +16,7 @@ import { ICatalogTables } from '../../models/definition/apis/database';
 import { createProjItem } from '../base/create-object';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
+import { ProjectAssetsReadService } from '../project/project-assets-read.service';
 import { StoreApiService } from '../repo/store-api.service';
 import { GithubProjectReaderService } from '../repo/github/github-project-reader.service';
 
@@ -46,22 +47,13 @@ export class EnvironmentService {
   private readonly projectService = inject(ProjectService);
   private readonly storeApiService = inject(StoreApiService);
   private readonly githubReader = inject(GithubProjectReaderService);
+  private readonly injector = inject(Injector);
 
   /** Load folder identities and their optional presentation metadata together. */
-  public listEnvironments(projectId: string): Observable<IEnvironmentFull[]> {
-    return this.githubReader
-      .listEnvironmentIds(projectId)
-      .pipe(
-        switchMap((ids) =>
-          ids.length
-            ? forkJoin(
-                ids.map((id) =>
-                  this.githubReader.getEnvironmentSummary(projectId, id),
-                ),
-              )
-            : of([]),
-        ),
-      );
+  public listEnvironments(
+    project: IProjectRef,
+  ): Observable<IEnvironmentFull[]> {
+    return this.injector.get(ProjectAssetsReadService).environments(project);
   }
 
   createEnvironment = (

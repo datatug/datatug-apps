@@ -10,23 +10,21 @@
         "
       />
     </ion-buttons>
-    <ion-title><h1 class="project-title">{{ projectTitle() }}</h1></ion-title>
+    <ion-title
+      ><h1 class="project-title">{{ projectTitle() }}</h1>
+      <sneat-datatug-business-clock
+    /></ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <form class="overview-quick-search ph-no-capture" role="search" (submit)="submitQuickSearch($event)">
-    <label for="project-quick-search">Quick Search</label>
-    <div>
-      <input id="project-quick-search" class="ph-no-capture ph-mask sentry-mask" data-sentry-mask type="search" name="q" placeholder="Search tables, columns, queries, tags…" [value]="quickSearchQuery()" (input)="updateQuickSearch($event)" />
-      <button type="submit" [disabled]="!quickSearchQuery().trim() || !project()?.ref">Search</button>
-    </div>
-  </form>
-  @if (shippingHref(); as href) {
-    <ion-item [routerLink]="href" detail="true"
-      ><ion-label>Shipping training workspace</ion-label></ion-item
-    >
-  }
+  <sneat-datatug-shared-evidence-link [projectRef]="project()?.ref" />
+  <!-- Instant suggestions as the person types; the query resets when the project changes (setProjRef). -->
+  <sneat-datatug-project-quick-search-box
+    class="overview-quick-search"
+    [projectRef]="project()?.ref"
+    [(query)]="quickSearchQuery"
+  />
   @if (projectMetadata().length) {
     <p class="project-context-meta" aria-label="Project connection details">
       @for (item of projectMetadata(); track item) {
@@ -42,38 +40,95 @@
   }
   @if (metadataState() === 'unavailable' && !metadataReadError()) {
     <p class="project-metadata-unavailable" role="status">
-      Project details are unavailable. Showing the project identity from its address.
+      Project details are unavailable. Showing the project identity from its
+      address.
     </p>
   }
-  @if (metadataReadError(); as error) {
-    <p class="project-metadata-error" role="alert">{{ error }}</p>
+  @if (everythingFailed()) {
+    <!-- Every read failed (a rate limit, an outage): one state with one action, not a Retry per section. -->
+    <sneat-datatug-error-state
+      what="this project"
+      [error]="boardFailure()"
+      [hint]="boardErrorMessage()"
+      (retry)="retryMetadata()"
+    />
+  } @else if (metadataReadError(); as error) {
+    <sneat-datatug-error-state
+      what="the project details"
+      [error]="metadataFailure()"
+      [hint]="metadataGuidance()"
+      (retry)="retryMetadata()"
+    />
   }
 
   @if (project()?.ref; as projectRef) {
-    <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
+    <sneat-datatug-github-reauthorization-banner
+      [projectRef]="projectRef"
+      [publicRepository]="project()?.brief?.access === 'public'"
+    />
   }
 
-  @if (!project()?.ref?.spaceID) {
+  @if (sandboxHref(); as href) {
+    <sneat-datatug-project-overview-card
+      class="sandbox-summary"
+      cardTitle="Private DemoDB sandbox"
+      testId="overview-sandbox-summary"
+    >
+      <ion-card-content class="card-message-row">
+        @if (signedIn()) {
+          <p>
+            Create a private, writable clone of six sample databases for your
+            registered account.
+          </p>
+        } @else {
+          <p>
+            Sign in to create a private, writable clone of six sample databases
+            for your registered account.
+          </p>
+        }
+        <ion-button fill="outline" [routerLink]="href">{{
+          signedIn()
+            ? 'Set up private sandbox'
+            : 'Sign in to use a private sandbox'
+        }}</ion-button>
+      </ion-card-content>
+    </sneat-datatug-project-overview-card>
+  }
+
+  @if (!project()?.ref?.spaceID && !everythingFailed()) {
     <section class="overview-environments" aria-label="Project environments">
-      <h2>Environments</h2>
+      <button
+        type="button"
+        class="environment-label"
+        (click)="goEnvironments()"
+      >
+        Environments:
+      </button>
       @if (projectItemsUnsupported()) {
         <p role="status">
           Environment shortcuts are unavailable for this project connection or
           branch.
         </p>
       } @else if (environmentError()) {
-        <p role="alert">
-          {{
-            environmentErrorMessage() ||
-              'Environments could not be loaded. Refresh to try again.'
-          }}
-        </p>
+        <sneat-datatug-error-state
+          compact
+          what="the environments"
+          [error]="environmentFailure()"
+          [hint]="environmentErrorMessage()"
+          (retry)="retryMetadata()"
+        />
       } @else if (environments(); as items) {
         <div class="environment-strip">
           @for (environment of items; track environment.id) {
             <button
               type="button"
               class="environment-shortcut"
+              [class.environment-danger]="
+                environmentPresentation(environment).tone === 'danger'
+              "
+              [class.environment-warning]="
+                environmentPresentation(environment).tone === 'warning'
+              "
               (click)="goEnvironment(environment)"
               [attr.aria-label]="
                 'Open ' +
@@ -115,13 +170,21 @@
           type="button"
           [class.active]="activeTab() === tab.id"
           [attr.aria-label]="tab.label"
-          [attr.aria-description]="tab.id === 'queries' && queryCount() !== undefined ? queryCount() + ' queries' : null"
+          [attr.aria-description]="
+            tab.id === 'queries' && queryCount() !== undefined
+              ? queryCount() + ' queries'
+              : null
+          "
           [attr.aria-pressed]="activeTab() === tab.id"
           (click)="selectTab(tab.id)"
         >
           {{ tab.label }}
           @if (tab.id === 'queries' && queryCount() !== undefined) {
-            <ion-chip class="overview-tab-count" [attr.aria-label]="queryCount() + ' queries'">{{ queryCount() }}</ion-chip>
+            <ion-chip
+              class="overview-tab-count"
+              [attr.aria-label]="queryCount() + ' queries'"
+              >{{ queryCount() }}</ion-chip
+            >
           }
         </button>
       }
@@ -146,9 +209,13 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  @if (project()?.ref?.spaceID) {
+  @if (everythingFailed()) {
+    <!-- shown above -->
+  } @else if (project()?.ref?.spaceID) {
     <ion-card>
-      <ion-item><ion-label>Shared project</ion-label></ion-item>
+      <ion-item-divider color="light">
+        <ion-label><h2 class="card-header-title">Shared project</h2></ion-label>
+      </ion-item-divider>
       @if (metadataState() === 'available') {
         <ion-item button (click)="goProjFolder('query')"
           ><ion-label>Queries</ion-label></ion-item
@@ -172,49 +239,94 @@
     </ion-card>
   } @else if (activeTab() === 'boards') {
     @if (projectAssetsUnsupported()) {
-      <ion-card>
-        <ion-card-content role="status">
-          Boards are unavailable for this project connection or branch.
-        </ion-card-content>
-      </ion-card>
+      <sneat-datatug-project-tab-panel
+        panelTitle="Boards"
+        [titleHref]="sectionHref().boards"
+        [filterable]="false"
+      >
+        <ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Boards are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        >
+      </sneat-datatug-project-tab-panel>
     } @else {
-      <ion-card
+      <sneat-datatug-project-tab-panel
+        panelTitle="Boards"
+        filterNoun="boards"
+        testId="overview-boards-panel"
+        [titleHref]="sectionHref().boards"
+        [filterable]="!!boards()?.length"
+        [(filter)]="boardFilter"
         ><ion-list>
           @if (boardError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                boardErrorMessage() ||
-                  'Boards could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the boards"
+              [error]="boardFailure()"
+              [hint]="boardErrorMessage()"
+              (retry)="retryMetadata()"
+            />
           } @else if (boards(); as items) {
-            @for (board of items; track board.id) {
-              <ion-item button detail (click)="goBoard(board)"
-                ><ion-icon name="easel-outline" slot="start" color="medium" aria-hidden="true" />
+            @for (board of filteredBoards(); track board.id) {
+              <!-- The list ends at the panel edge: no bottom rule under the last row. -->
+              <ion-item
+                button
+                detail
+                [lines]="$last ? 'none' : undefined"
+                (click)="goBoard(board)"
+                ><ion-icon
+                  name="easel-outline"
+                  slot="start"
+                  color="medium"
+                  aria-hidden="true"
+                />
                 <ion-label>{{ board.title || board.id }}</ion-label></ion-item
               >
             } @empty {
-              <ion-item
-                ><ion-label
-                  >No boards have been created yet.</ion-label
-                ></ion-item
-              >
+              @if (items.length) {
+                <ion-item lines="none"
+                  ><ion-label color="medium"
+                    >No boards match “{{ boardFilter() }}”.</ion-label
+                  ></ion-item
+                >
+              } @else {
+                <ion-item
+                  ><ion-label
+                    >No boards have been created yet.</ion-label
+                  ></ion-item
+                >
+              }
             }
           } @else {
             <ion-item><ion-label>Loading boards…</ion-label></ion-item>
           }
-        </ion-list></ion-card
+        </ion-list></sneat-datatug-project-tab-panel
       >
     }
   } @else if (activeTab() === 'queries') {
-    <sneat-datatug-project-queries-preview [querySource]="querySource()" [projectRef]="project()?.ref" />
+    <sneat-datatug-project-queries-preview
+      [querySource]="querySource()"
+      [projectRef]="project()?.ref"
+    />
   } @else if (activeTab() === 'databases') {
+    <sneat-source-entries />
     @if (projectItemsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Databases are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
+      <sneat-datatug-project-tab-panel
+        panelTitle="Databases"
+        [titleHref]="sectionHref().servers"
+        [filterable]="false"
+        ><ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Databases are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        ></sneat-datatug-project-tab-panel
       >
     } @else if (sandboxHref()) {
       <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
@@ -223,134 +335,76 @@
         [projectRef]="project()?.ref"
       />
     }
-  } @else if (activeTab() === 'environments') {
-    @if (projectAssetsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Environments are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
-      >
-    } @else {
-      <ion-card>
-        <ion-list>
-          @if (environmentError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                environmentErrorMessage() ||
-                  'Environments could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
-          } @else if (environments(); as items) {
-            @for (environment of items; track environment.id) {
-              <ion-item
-                button
-                detail
-                (click)="goEnvironment(environment)"
-                data-testid="overview-environment-item"
-              >
-                <ion-icon
-                  slot="start"
-                  [icon]="environmentPresentation(environment).icon"
-                  aria-hidden="true"
-                />
-                <ion-label
-                  ><h3>{{ environmentPresentation(environment).label }}</h3>
-                  @if (
-                    environmentPresentation(environment).label !==
-                    environment.id
-                  ) {
-                    <p>Environment ID: {{ environment.id }}</p>
-                  }
-                  @if (
-                    environmentPresentation(environment).safetyLabel;
-                    as safety
-                  ) {
-                    <p>{{ safety }}</p>
-                  }
-                </ion-label>
-              </ion-item>
-            } @empty {
-              <ion-item
-                ><ion-label
-                  >No environments have been configured yet.</ion-label
-                ></ion-item
-              >
-            }
-          } @else {
-            <ion-item><ion-label>Loading environments…</ion-label></ion-item>
-          }
-        </ion-list>
-      </ion-card>
-    }
   } @else {
     @if (projectAssetsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Entities are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
+      <sneat-datatug-project-tab-panel
+        panelTitle="Entities"
+        [titleHref]="sectionHref().entities"
+        [filterable]="false"
+        ><ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Entities are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        ></sneat-datatug-project-tab-panel
       >
     } @else {
-      <ion-card>
+      <sneat-datatug-project-tab-panel
+        panelTitle="Entities"
+        filterNoun="entities"
+        testId="overview-entities-panel"
+        [titleHref]="sectionHref().entities"
+        [filterable]="!!entities()?.length"
+        [(filter)]="entityFilter"
+      >
         <ion-list>
           @if (entityError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                entityErrorMessage() ||
-                  'Entities could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the entities"
+              [error]="entityFailure()"
+              [hint]="entityErrorMessage()"
+              (retry)="retryMetadata()"
+            />
           } @else if (entities(); as items) {
-            @for (entity of items; track entity.id) {
+            @for (entity of filteredEntities(); track entity.id) {
               <ion-item
                 button
                 detail
                 (click)="goEntity(entity)"
                 data-testid="overview-entity-item"
               >
-                <ion-icon name="book-outline" slot="start" color="medium" aria-hidden="true" />
+                <ion-icon
+                  name="book-outline"
+                  slot="start"
+                  color="medium"
+                  aria-hidden="true"
+                />
                 <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
               </ion-item>
             } @empty {
-              <ion-item
-                ><ion-label
-                  >No entities have been created yet.</ion-label
-                ></ion-item
-              >
+              @if (items.length) {
+                <ion-item lines="none"
+                  ><ion-label color="medium"
+                    >No entities match “{{ entityFilter() }}”.</ion-label
+                  ></ion-item
+                >
+              } @else {
+                <ion-item
+                  ><ion-label
+                    >No entities have been created yet.</ion-label
+                  ></ion-item
+                >
+              }
             }
           } @else {
             <ion-item><ion-label>Loading entities…</ion-label></ion-item>
           }
         </ion-list>
-      </ion-card>
+      </sneat-datatug-project-tab-panel>
     }
-  }
-  @if (sandboxHref(); as href) {
-    <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">
-      <ion-card-header>
-        <ion-card-title>Private DemoDB sandbox</ion-card-title>
-      </ion-card-header>
-      <ion-card-content>
-        @if (signedIn()) {
-          <p>
-            Create a private, writable clone of six sample databases for your
-            registered account.
-          </p>
-          <ion-button fill="outline" [routerLink]="href"
-            >Set up private sandbox</ion-button
-          >
-        } @else {
-          <p>
-            Sign in to create a private, writable clone of six sample databases
-            for your registered account.
-          </p>
-          <ion-button fill="outline" [routerLink]="href"
-            >Sign in to use a private sandbox</ion-button
-          >
-        }
-      </ion-card-content>
-    </ion-card>
   }
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->
   <!--							 title="Agents"-->

@@ -1,3 +1,4 @@
+import type { GithubReauthorizationReason } from '../../services/project/project-query-api.service';
 import { DemoProjectContinuationService } from './demo-project-continuation.service';
 import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
@@ -14,6 +15,7 @@ import type { IProjectRef } from '../../core/project-context';
 import { isValidProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
+import { sha256Hex } from './sha256-hex';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
@@ -27,6 +29,7 @@ import {
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
 import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
+
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
@@ -92,9 +95,15 @@ async function harness(
   const createCloud = vi.fn(() => of('cloud-id'));
   const createStatus = vi.fn(() => of({ ...created, status: 'pending_merge' }));
   const pendingGithubProjectSetups = vi.fn(() => of({ setups: [] as PendingGithubProjectSetup[], truncated: false }));
-  const githubReauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
-  const reportGithubReauthorizationRequired = vi.fn((ref: IProjectRef, requiredScopes: readonly ('repo' | 'workflow')[] = ['repo']) =>
-    githubReauthorizationRequired.next({ ref, requiredScopes }));
+  const githubReauthorizationRequired = new Subject<{
+    ref: IProjectRef;
+    requiredScopes: readonly ('repo' | 'workflow')[];
+    reason: GithubReauthorizationReason;
+  }>();
+  const reportGithubReauthorizationRequired = vi.fn(
+    (ref: IProjectRef, requiredScopes: readonly ('repo' | 'workflow')[], reason: GithubReauthorizationReason) =>
+      githubReauthorizationRequired.next({ ref, requiredScopes, reason }),
+  );
   const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
   const startResult = new Subject<{ authorizationURL: string }>();
   const createSpace = vi.fn(() => spaceResult);
@@ -427,6 +436,18 @@ describe('New project through authenticated common API', () => {
     expect(h.component['pendingGithubSetups']()).toEqual([]);
   });
 
+  it.each([
+    ['authorization_required', 'access_denied'],
+    ['reauthorization_required', 'expired'],
+  ] as const)('reports %s on a replayed setup as %s, never claiming expiry without evidence', async (code, reason) => {
+    const h = await harness();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.create.mockReturnValue(throwError(() => ({ status: 409, error: { error: { code } } })) as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pendingSetup);
+    expect(h.reportGithubReauthorizationRequired).toHaveBeenCalledWith(expect.anything(), ['repo'], reason);
+  });
+
   it('requests combined scopes when replaying a CI setup requires workflow authorization', async () => {
     const h = await harness();
     h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
@@ -440,6 +461,7 @@ describe('New project through authenticated common API', () => {
     expect(h.reportGithubReauthorizationRequired).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: 'github.com', projectId: 'repo@owner@datatug' }),
       ['repo', 'workflow'],
+      'scope_required',
     );
     expect(h.component['isRefreshingPendingSetup'](pendingSetup)).toBe(false);
     const reauthRef = h.reportGithubReauthorizationRequired.mock.calls[0][0];
@@ -1125,7 +1147,7 @@ describe('New project through authenticated common API', () => {
     h.component.create();
 
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['oauthResumePending']()).toBe(false);
     expect(h.connection.startOAuth).not.toHaveBeenCalled();
     setItem.mockRestore();
@@ -1149,11 +1171,33 @@ describe('New project through authenticated common API', () => {
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    expect(writes).toBe(4);
+    await vi.waitFor(() => expect(writes).toBe(4));
     expect(h.component['isCreating']()).toBe(false);
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
     setItem.mockRestore();
+  });
+
+  it('stores only a hash of the OAuth state before redirecting to GitHub', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    const authorizationURL = 'https://github.com/login/oauth/authorize?state=secure-state';
+    h.component.create();
+    h.startResult.next({ authorizationURL });
+
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(authorizationURL));
+    const stored = sessionStorage.getItem('datatug:new-project:draft') ?? '';
+    expect(stored).not.toContain('secure-state');
+    expect(JSON.parse(stored)).toMatchObject({
+      oauthResumePending: true,
+      oauthStateHash: await sha256Hex('secure-state'),
+    });
+    expect(JSON.parse(stored)).not.toHaveProperty('oauthState');
+    assign.mockRestore();
   });
 
   it('ignores a delayed OAuth start response after the Firebase actor changes', async () => {
@@ -1172,7 +1216,7 @@ describe('New project through authenticated common API', () => {
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthStateHash']()).toBeUndefined();
     expect(h.component['isCreating']()).toBe(false);
     expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
   });
@@ -1701,11 +1745,17 @@ describe('New project through authenticated common API', () => {
     const legacyIntent = JSON.parse(saved.operationPayload);
     delete legacyIntent.selectedBranch;
     saved.operationPayload = JSON.stringify(legacyIntent);
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify(saved));
+    // The restoring page reads the pre-branch-identity draft; serve it from the read, not a second write to storage.
+    const legacyDraft = JSON.stringify(saved);
+    const readStorage = sessionStorage.getItem.bind(sessionStorage);
+    const legacyRead = vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
+      key === 'datatug:new-project:draft' ? legacyDraft : readStorage(key),
+    );
 
     const restored = await harness(false, {}, true, true);
     restored.fixture.detectChanges();
     await restored.fixture.whenStable();
+    legacyRead.mockRestore();
     restored.component.create();
 
     expect(restored.create).toHaveBeenCalledTimes(1);

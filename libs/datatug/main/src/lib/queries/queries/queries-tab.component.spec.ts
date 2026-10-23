@@ -1,10 +1,9 @@
-import { CUSTOM_ELEMENTS_SCHEMA, Component, input } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 
 import { QueriesTabComponent } from './queries-tab.component';
-import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
 import { IProjectContext } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
@@ -73,17 +72,6 @@ describe('QueriesTabComponent', () => {
     expect(component).toBeTruthy();
   });
 });
-
-/** Stand-in for `SqlEditorComponent` (`sneat-datatug-sql`) — same selector
- * and `sql` input, no `@acrodata/code-editor` dependency — same technique
- * `queries-page.component.spec.ts`'s own S154 describe uses, needed here so
- * the describes below can render `QueriesTabComponent`'s REAL template
- * (proving the empty-state notice/real items actually (dis)appear in the
- * DOM, not just in component state). */
-@Component({ selector: 'sneat-datatug-sql', template: '' })
-class SqlEditorStubComponent {
-  readonly sql = input<string>();
-}
 
 /**
  * S163 — founder-reported follow-up: "On a GitHub-store project the
@@ -155,11 +143,7 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
       ],
     })
       .overrideComponent(QueriesTabComponent, {
-        remove: { imports: [SqlEditorComponent] },
-        add: {
-          imports: [SqlEditorStubComponent],
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-        },
+        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
 
@@ -195,6 +179,16 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
     ]);
     const text = (fixture.nativeElement as HTMLElement).innerHTML;
     expect(text).not.toContain(GITHUB_PERSONAL_QUERIES_MESSAGE);
+  });
+
+  it('lists queries as shared rows with no inline code editor', () => {
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelectorAll('sneat-datatug-query-list-item')).toHaveLength(
+      1,
+    );
+    expect(el.querySelector('sneat-datatug-sql')).toBeNull();
   });
 
   it('keeps New query while hiding unsupported hosted GitHub folder actions', () => {
@@ -304,11 +298,7 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
       ],
     })
       .overrideComponent(QueriesTabComponent, {
-        remove: { imports: [SqlEditorComponent] },
-        add: {
-          imports: [SqlEditorStubComponent],
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-        },
+        add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
   }

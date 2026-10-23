@@ -59,6 +59,36 @@ describe('GithubOAuthService', () => {
     service = TestBed.inject(GithubOAuthService);
   });
 
+  it('signs in without throwing when the browser blocks storage (the token is just not kept)', async () => {
+    linkWithPopupMock.mockResolvedValue({ user: { uid: 'user2' } });
+    credentialFromResultMock.mockReturnValue({ accessToken: 'gho_popup' });
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+    try {
+      await expect(service.signIn()).resolves.toBe('gho_popup');
+      expect(service.accessToken).toBeUndefined();
+      expect(service.isSignedIn).toBe(false);
+      expect(() => service.forget()).not.toThrow();
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+    }
+  });
+
+  it('keeps the token with the Sneat user it was obtained for, and forgets both', async () => {
+    linkWithPopupMock.mockResolvedValue({ user: { uid: 'user2' } });
+    credentialFromResultMock.mockReturnValue({ accessToken: 'gho_popup' });
+    await service.signIn();
+    expect(sessionStorage.getItem('datatug:github:token-owner')).toBe('user2');
+    service.forget();
+    expect(sessionStorage.getItem('datatug:github:token')).toBeNull();
+    expect(sessionStorage.getItem('datatug:github:token-owner')).toBeNull();
+  });
+
   it('keeps the popup as the default path and remembers the token', async () => {
     linkWithPopupMock.mockResolvedValue({});
     credentialFromResultMock.mockReturnValue({ accessToken: 'gho_popup' });

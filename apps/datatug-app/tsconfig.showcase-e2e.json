@@ -13,6 +13,7 @@
     "playwright.showcase-measurement.config.ts",
     "playwright.showcase-routing-ab.config.ts",
     "e2e/showcase-country-comparison.spec.ts",
+    "e2e/showcase-independent-sources.spec.ts",
     "e2e/showcase-tutorial-acceptance.spec.ts",
     "e2e/showcase-inspector-polish.spec.ts",
     "e2e/query-grid-enterprise.spec.ts",

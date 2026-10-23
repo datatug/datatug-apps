@@ -129,7 +129,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     h.params.next(h.route.snapshot.queryParamMap);
     await recreated.whenStable();
     expect(recreated.nativeElement.querySelector('[data-testid="browser-query-recovery"]')).toBeNull();
-    expect(recreated.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Unsaved');
+    expect(recreated.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Save');
     expect(recreated.componentInstance.queryBodyText()).toBe('from: Artist\nlimit: 25');
   });
 
@@ -195,9 +195,9 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const page = h.fixture.componentInstance;
     expect(page.activeEnv).toBeUndefined();
     expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).not.toHaveBeenCalledWith('local');
-    expect(h.fixture.nativeElement.textContent).toContain('fixed public Northwind OVDB API');
-    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
-    expect(h.fixture.nativeElement.textContent).not.toContain('The selected runtime is checked against this connection');
+    expect(h.fixture.nativeElement.textContent).toContain('public Northwind OVDB API');
+    expect(h.fixture.nativeElement.textContent).toContain('the project environment is not used');
+    expect(h.fixture.nativeElement.textContent).not.toContain('before Run.');
     page.runQuery();
     await h.fixture.whenStable();
     page.updateUrl();
@@ -214,8 +214,8 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, QueryType.DTQL, { projectEnvironments: true });
     h.fixture.componentInstance.selectWorkingCopy(h.runtime.selectionId);
     await h.fixture.whenStable();
-    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
-    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
+    expect(h.fixture.nativeElement.textContent).toContain('before Run.');
+    expect(h.fixture.nativeElement.textContent).not.toContain('public Northwind OVDB API');
     h.fixture.componentInstance.runQuery();
     await h.fixture.whenStable();
     expect(admission).not.toHaveBeenCalled();
@@ -228,8 +228,8 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     expect(h.fixture.componentInstance.activeEnv?.id).toBe('local');
     h.fixture.componentInstance.updateUrl();
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: 'local' }) }));
-    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
-    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
+    expect(h.fixture.nativeElement.textContent).toContain('before Run.');
+    expect(h.fixture.nativeElement.textContent).not.toContain('public Northwind OVDB API');
   });
 
   it.each(['url', 'context'] as const)('preserves explicit %s environment for a fixed public query', async (entry) => {
@@ -241,7 +241,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     expect(h.fixture.componentInstance.activeEnv?.id).toBe(expected);
     h.fixture.componentInstance.updateUrl();
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: expected }) }));
-    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
+    expect(h.fixture.nativeElement.textContent).toContain('the project environment is not used');
   });
 
   it('retains the agent notice for arbitrary GitHub DTQL', async () => {

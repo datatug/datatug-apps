@@ -1,3 +1,5 @@
+import { readRetainedComparison, comparisonEvidenceIdentity, type RetainedComparison } from './retained-comparison-contract';
+import type { QueryComparison } from '../queries/query-comparison';
 import {
   decodeResult,
   evidenceText,
@@ -27,6 +29,7 @@ export interface RetainedSourcePin {
   readonly revision: ShippingRevision;
 }
 export interface RetainedQueryResponse {
+  readonly comparison?: RetainedComparison;
   readonly result: Result;
   readonly queryRevision: string;
   readonly resultFingerprint: string;
@@ -125,8 +128,10 @@ export async function readRetainedQueryResponse(
   scope: RetainedEvidenceScope,
   queryId: string,
   sharing?: { incidentRef: string },
+  comparisonRequest?: { declaration: QueryComparison; inputs: unknown },
 ): Promise<RetainedQueryResponse> {
   const wire = object(value, [
+    'comparison',
     'result',
     'queryRevision',
     'resultFingerprint',
@@ -188,7 +193,10 @@ export async function readRetainedQueryResponse(
     );
   if (sharing && attached !== sharing.incidentRef)
     throw new Error('The server attached this run to a different Incident.');
+  if (wire['comparison'] !== undefined && !comparisonRequest) throw new Error('Unexpected comparative execution.');
+  const comparison = readRetainedComparison(wire['comparison'], { queryId, queryRevision, manifestRef: applied || '', result, ...comparisonRequest });
   return {
+    ...(comparison ? { comparison } : {}),
     result,
     queryRevision,
     resultFingerprint: fingerprint,
@@ -216,6 +224,7 @@ export function heldEvidenceIdentity(
     return undefined;
   const pin = readRetainedSourcePin(response.sourcePin, scope);
   return {
+    ...(response.comparison ? { comparison: comparisonEvidenceIdentity(response.comparison) } : {}),
     execution: response.result.execution,
     scope: {
       storeId: scope.projectRef.storeId,

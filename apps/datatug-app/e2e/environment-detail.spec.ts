@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const demoDir = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const base =
@@ -9,16 +8,12 @@ test.skip(
   !demoDir,
   'Set DATATUG_E2E_GITHUB_FAKE to a checkout of the demo repository',
 );
-test.beforeEach(async ({ context }) => {
-  if (!demoDir) return;
-  await installFakeGithub(context, [
-    { fullName: 'datatug/datatug-demo-project', dir: demoDir },
-  ]);
-});
 for (const width of [1440, 900, 390]) {
   test(`environment connections and catalog journey at ${width}px`, async ({
     page,
   }) => {
+    // Eight cold page loads: 28-29.5s on a 4-vCPU runner, over the 30s default on the private repository's 2-vCPU runner.
+    test.setTimeout(60_000);
     await page.setViewportSize({ width, height: 900 });
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
@@ -38,7 +33,11 @@ for (const width of [1440, 900, 390]) {
       detail.getByText('Data connections', { exact: true }),
     ).toBeVisible();
     await expect(detail.getByText('sqlite3', { exact: true })).toBeVisible();
-    await expect(detail.getByText('Sign in', { exact: true })).toHaveCount(0);
+    // A public project's environment needs no sign-in prompt in its content; the shell header's own Sign in
+    // link (one per page, #508) is outside it.
+    await expect(
+      detail.locator('ion-content').getByText('Sign in', { exact: true }),
+    ).toHaveCount(0);
     await expect(list).toBeHidden();
     await page.screenshot({
       path: `/tmp/datatug-environment-local-${width}.png`,

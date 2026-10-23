@@ -1,0 +1,63 @@
+{
+  "$comment": [
+    "The one list of GitHub repositories the e2e suites read, each at the exact commit it is read at.",
+    "scripts/fetch-github-pins.mjs (Playwright globalSetup) makes a shallow checkout of each commit under tmp/github-checkouts/<owner>/<repo>/<sha>;",
+    "the e2e guard (helpers/demodb-guard.ts + helpers/fake-github.ts) answers api.github.com, raw.githubusercontent.com and cdn.jsdelivr.net",
+    "from those checkouts. A branch name (`refs`) is answered only by the pin that maps it; anything else fails the test loudly.",
+    "One repository may have several pins: the lane picks which one answers its refs with DATATUG_E2E_GITHUB_PINS=<id>[,<id>] (default: the first pin of the repository).",
+    "Bump a pin deliberately, with the specs that depend on it. helpers/github-pins.unit.ts checks the workflows and the product code agree with this file."
+  ],
+  "pins": [
+    {
+      "id": "demo-browser",
+      "repo": "datatug/datatug-demo-project",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "refs": [
+        "HEAD",
+        "main"
+      ],
+      "why": "The browser catalog revision the app admits: required creation dates on every query definition and the server-comparison query the showcase specs read (docs/testing-workflow.md). Bumped to the commit that renames the project title to \"DataTug Demo Project\" (datatug-demo-project#85); the three demo pins share that commit."
+    },
+    {
+      "id": "demo-independent",
+      "repo": "datatug/datatug-demo-project",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "refs": [
+        "HEAD",
+        "main"
+      ],
+      "why": "Revision the independent chart sources spec (spec/features/independent-chart-sources/local-acceptance.md) runs against; same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
+    },
+    {
+      "id": "demo-agent",
+      "repo": "datatug/datatug-demo-project",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "refs": [
+        "HEAD",
+        "main"
+      ],
+      "why": "The project the real datatug agent serves in the journey and card-link lanes (#515); same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
+    },
+    {
+      "id": "meta-iso",
+      "repo": "datatug/datatug-meta-iso",
+      "sha": "068db7d8fd0a74c341f5a7ac6ed795f491f9db17",
+      "refs": [
+        "main"
+      ],
+      "why": "The demo Country entity extends raw.githubusercontent.com/datatug/datatug-meta-iso/main/geo/country/country.json."
+    },
+    {
+      "id": "northwind-country-count",
+      "repo": "demo-db/northwind",
+      "sha": "76fe0a1ccc82b6c0c5a035d76c9df7522713d618",
+      "why": "The Northwind country-count publication and its rights the app admits (libs/datatug/main/src/lib/queries/public-data/public-country-count-admission.ts)."
+    },
+    {
+      "id": "northwind-orders",
+      "repo": "demo-db/northwind",
+      "sha": "83ea600a7eae8b35ad33bf4c53bab6440d697850",
+      "why": "The Northwind orders publication and its rights the app admits (libs/datatug/main/src/lib/queries/public-data/public-orders-admission.ts)."
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { Component, input } from '@angular/core';
+import { IonPopover } from '@ionic/angular';
 import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
@@ -301,7 +302,10 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     const primary = fixture.nativeElement.querySelector('.session-primary-actions');
-    const secondary = fixture.nativeElement.querySelector('.session-secondary-actions');
+    const popover = fixture.debugElement.query(By.directive(IonPopover)).componentInstance as IonPopover;
+    await popover.present();
+    const secondary = document.querySelector('.session-secondary-actions');
+    if (!secondary) throw new Error('Session actions did not open');
     expect(primary.textContent).toContain('All sessions');
     expect(primary.textContent).toContain('Context · 3 applied');
     expect(primary.textContent).not.toContain('Run history');
@@ -311,6 +315,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(secondary.textContent).toContain('Resume');
     primary.querySelector('.session-context-button').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(component.drawerOpen()).toBe(true);
+    await popover.dismiss();
   });
 
   it('keeps Context Bag controls locked until the mapped field picker is dismissed', () => {

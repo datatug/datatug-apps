@@ -86,11 +86,19 @@ export async function nativeQueryFetch(
   input: string,
   init: RequestInit,
   stage: NativeQueryDiagnostic['stage'],
+  /** Map only the browser's own network failure (`TypeError: Failed to fetch`, a CORS block, an unreachable
+   * host). Errors a wrapping transport throws on purpose (byte budget, bounds, identity checks) keep their own
+   * message. */
+  networkErrorsOnly = false,
 ): Promise<Response> {
   try {
     return await fetcher(input, init);
   } catch (cause) {
-    if (init.signal?.aborted) throw cause;
+    if (
+      init.signal?.aborted ||
+      (networkErrorsOnly && !(cause instanceof TypeError))
+    )
+      throw cause;
     throw new NativeQueryFailure({ stage, reason: 'network' }, { cause });
   }
 }

@@ -1,5 +1,8 @@
-import { nativeHttpFailure, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
+import { abortableWait } from '../ovdb/abortable-wait';
+import { isSelfRetryingFetch } from '../ovdb/ovdb-retrying-fetch';
+import { nativeHttpFailure, nativeQueryDiagnostic, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
 import { currentDemoDbOvdbUrl } from './demodb-ovdb';
+import { IngitdbGithubSources } from './ingitdb-github-source';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
   executeJoinedDTQLQuery,
@@ -207,9 +210,21 @@ export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
   readonly hasMore?: boolean;
   readonly publicDataExceptions?: PublicDataExceptions;
   readonly publicDataBytes?: number;
+  /** inGitDB databases this run read straight from GitHub, for the provenance line. */
+  readonly gitSources?: readonly import('./ingitdb-github-source').IngitdbGitSource[];
   readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
   readonly providerReads?: unknown;
   readonly nativeStream?: true;
+  /** Local transport observation, not a provider execution profile or source attestation. */
+  readonly nativeStreamRead?: {
+    readonly endpoint: string;
+    readonly queryId: string;
+    readonly plannedSources: readonly { readonly database: string; readonly collection: string }[];
+    readonly terminalComplete: true;
+    readonly observedRows: number;
+    readonly providerSources?: readonly { readonly database: string; readonly collection: string }[];
+    readonly providerRows?: number;
+  };
   /** Worker staging marker for a complete ordinary /dtql response. */
   readonly nativeDirect?: true;
   /** Validated ordinary envelope, distinct from a protected execution receipt. */
@@ -272,7 +287,9 @@ function ovdbBaseUrl(raw: string): string {
 
 function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: PlannedNativeSource[] } | undefined {
   const config = definition.federation;
-  if (!config || config.lookups?.length || config.bounds || definition.request.queryType !== 'DTQL') return undefined;
+  // An inGitDB source on GitHub is read by the browser, so the plan cannot run on the OVDB server.
+  if (!config || config.lookups?.length || config.bounds || config.ingitdbSources?.length ||
+    definition.request.queryType !== 'DTQL') return undefined;
   const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
   const configured = new Set(config.tables.map((table) => table.database).filter((database): database is string => !!database));
   const implicit = configured.size === 1 && config.tables.every((table) => table.database)
@@ -477,6 +494,23 @@ async function runNativeStream(
   }, signal, undefined, mappedErrors);
   signal?.throwIfAborted();
   rights.acceptWholeQuery(stream.footer as unknown as Record<string, unknown>);
+  const footer = stream.footer as unknown as Record<string, unknown>;
+  if ((footer['hasMore'] !== undefined && footer['hasMore'] !== false) || (footer['truncated'] !== undefined && footer['truncated'] !== false))
+    throw new Error('The native query stream is partial.');
+  const execution = footer['execution'] as Record<string, unknown> | undefined;
+  const declaredSources = execution?.['sources'];
+  let providerSources: { database: string; collection: string }[] | undefined;
+  if (declaredSources !== undefined) {
+    if (!Array.isArray(declaredSources) || declaredSources.some((source) => !source || typeof source !== 'object' || typeof source.database !== 'string' || typeof source.collection !== 'string'))
+      throw new Error('The native query stream has invalid execution sources.');
+    providerSources = declaredSources.map((source) => ({ database: source.database, collection: source.collection }));
+    const planned = sources.map((source) => `${source.database}/${source.name}`).sort();
+    const actual = providerSources.map((source) => `${source.database}/${source.collection}`).sort();
+    if (JSON.stringify(planned) !== JSON.stringify(actual)) throw new Error('The native query stream execution sources differ from its plan.');
+  }
+  const providerRows = execution?.['rowsReturned'];
+  if (providerRows !== undefined && (!Number.isSafeInteger(providerRows) || providerRows !== count))
+    throw new Error('The native query stream execution count differs from its records.');
   const columns = ovdbResultColumns(stream.footer.columns, definition);
   const rows = first.map((record) => ovdbStreamRow(record, columns));
   if (onOutputPage && !observer?.onNativeRecord) await onOutputPage(rows);
@@ -486,6 +520,13 @@ async function runNativeStream(
     ...rights.evidence(),
     ...(stream.footer.providerReads === undefined ? {} : { providerReads: stream.footer.providerReads }),
     recordset: { columns, rows }, totalRows: count, hasMore: false, nativeStream: true,
+    nativeStreamRead: {
+      endpoint: `${base}/v1/databases/${encodeURIComponent(database)}/dtql`, queryId: definition.id,
+      plannedSources: sources.map((source) => ({ database: source.database, collection: source.name })),
+      terminalComplete: true, observedRows: count,
+      ...(providerSources ? { providerSources } : {}),
+      ...(typeof providerRows === 'number' ? { providerRows } : {}),
+    },
     limitations: [], bindingsApplied: [], truncated: false,
     provenance: { source: `${base}/v1/databases/${database} (direct OVDB)`, queryId: definition.id,
       mode: 'live', observedAt: new Date().toISOString() },
@@ -506,22 +547,7 @@ function admittedServerId(config: NonNullable<IQueryDef['federation']>, base: st
 }
 
 function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const timer = setTimeout(done, 200 * (attempt + 1));
-    function done(): void {
-      signal?.removeEventListener('abort', abort);
-      resolve();
-    }
-    function abort(): void {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    }
-    signal?.addEventListener('abort', abort, { once: true });
-  });
+  return abortableWait(200 * (attempt + 1), signal);
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
@@ -782,8 +808,17 @@ async function runFederatedQueryInternal(
     for (const joined of relation.joins) visit(joined.from);
   };
   visit(parsed.from);
+  // Late-bound like httpFetch; GitHub reads are anonymous and never carry the OVDB token.
+  const gitSources = new IngitdbGithubSources(config.ingitdbSources, httpFetch, signal);
+  // Name only what this run reads: OVDB, GitHub, or both.
+  const readsOvdb = relations.some((relation) => !gitSources.has(relation.database));
+  const sourceLabel = [
+    ...(readsOvdb ? [`${baseUrl} (direct OVDB)`] : []),
+    ...(relations.some((relation) => gitSources.has(relation.database)) ? ['GitHub (direct, no server)'] : []),
+  ].join(' and ');
   const rights = capturedRights ?? await preflightSourceRights(baseUrl,
-    [...relations.map((relation) => ({ database: relation.database as string, name: relation.name })),
+    [...relations.filter((relation) => !gitSources.has(relation.database))
+      .map((relation) => ({ database: relation.database as string, name: relation.name })),
       ...(config.lookups ?? []).map((lookup) => ({ database: lookup.database, name: lookup.collection }))],
     httpFetch, authHeaders, signal, undefined, config.expectedSourceRights, expectedServerId);
   const storeName = `datatug-federated-${observer?.storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
@@ -903,22 +938,26 @@ async function runFederatedQueryInternal(
       value: string,
     ): Promise<Data> => {
       const url = `${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(value)}`;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      // A self-retrying fetch already waits out transient and pending-mount answers (about 110 s in total):
+      // one attempt here, so the waits are never multiplied by this loop.
+      const selfRetrying = isSelfRetryingFetch(httpFetch);
+      const attempts = selfRetrying ? 1 : 3;
+      for (let attempt = 0; attempt < attempts; attempt++) {
         signal?.throwIfAborted();
         const timeout = new AbortController();
-        const timer = setTimeout(() => timeout.abort(), 15000);
+        const timer = setTimeout(() => timeout.abort(), selfRetrying ? 120000 : 15000);
         try {
-          const response = await httpFetch(url, {
+          const response = await nativeQueryFetch(httpFetch, url, {
             headers: { Accept: 'application/json', ...authHeaders },
             redirect: 'error',
             signal: signal
               ? AbortSignal.any([signal, timeout.signal])
               : timeout.signal,
-          });
+          }, 'query_execution', true);
           if (!response.ok) {
             if (
               [408, 429, 502, 503, 504].includes(response.status) &&
-              attempt < 2
+              attempt < attempts - 1
             ) {
               await retryDelay(attempt, signal);
               continue;
@@ -938,8 +977,12 @@ async function runFederatedQueryInternal(
           return record.data;
         } catch (error) {
           signal?.throwIfAborted();
-          if (attempt === 2) throw error;
-          if (!timeout.signal.aborted && !(error instanceof TypeError))
+          if (attempt === attempts - 1) throw error;
+          if (
+            !timeout.signal.aborted &&
+            !(error instanceof TypeError) &&
+            nativeQueryDiagnostic(error)?.reason !== 'network'
+          )
             throw error;
           await retryDelay(attempt, signal);
         } finally {
@@ -973,6 +1016,7 @@ async function runFederatedQueryInternal(
     };
     const pagedResponse = (): FederatedQueryResult => ({
       ...rights.evidence(),
+      ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
       recordset: {
         columns: (
           outputNames ??
@@ -988,7 +1032,7 @@ async function runFederatedQueryInternal(
       bindingsApplied: [],
       truncated: false,
       provenance: {
-        source: `${baseUrl} (direct OVDB)`,
+        source: sourceLabel,
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),
@@ -1001,6 +1045,27 @@ async function runFederatedQueryInternal(
       const ordered = query.orders;
       let remaining = query.limit;
       if (remaining === 0) return;
+      if (gitSources.has(relation.database)) {
+        // One published view file per collection; DALgo orders and filters the cached rows.
+        const sourceStarted = performance.now();
+        stage = 'preparing';
+        report();
+        const rows = await gitSources.read(relation.database as string, relation.name);
+        // A view has no server-side order: limit only an unordered scan here.
+        const records = remaining === undefined || ordered.length ? rows : rows.slice(0, remaining);
+        rowsLoaded += records.length;
+        stage = 'loading';
+        report();
+        yield { records };
+        observer?.onSourceLoaded?.({
+          database: relation.database || '',
+          name: relation.name,
+          rows: records.length,
+          requests: 1,
+          elapsedMs: performance.now() - sourceStarted,
+        });
+        return;
+      }
       const pageSize = Math.min(
         remaining ?? (mode === 'visible' ? 100 : 500),
         mode === 'visible' ? 100 : 500,
@@ -1031,7 +1096,8 @@ async function runFederatedQueryInternal(
             stage = 'preparing';
             report();
           }
-          const response = await httpFetch(
+          const response = await nativeQueryFetch(
+            httpFetch,
             `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`,
             {
               method: 'POST',
@@ -1046,6 +1112,8 @@ async function runFederatedQueryInternal(
               redirect: 'error',
               signal,
             },
+            'query_execution',
+            true,
           );
           if (response.status === 410)
             throw new Error(
@@ -1240,6 +1308,7 @@ async function runFederatedQueryInternal(
           []);
       return {
         ...rights.evidence(),
+        ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
         recordset: {
           columns: names.map((name) => ({ name, type: 'unknown' })),
           rows: records.map((row) =>
@@ -1250,7 +1319,7 @@ async function runFederatedQueryInternal(
         bindingsApplied: [],
         truncated: false,
         provenance: {
-          source: `${baseUrl} (direct OVDB)`,
+          source: sourceLabel,
           queryId: definition.id,
           mode: 'live',
           observedAt: new Date().toISOString(),
@@ -1359,6 +1428,7 @@ async function runFederatedQueryInternal(
     if (records.length) observer?.onFirstRecord?.();
     return {
       ...rights.evidence(),
+      ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
       recordset: {
         columns: names.map((name) => ({ name, type: 'unknown' })),
         rows: records.map((row) => names.map((name) => typed(row.data[name]))),
@@ -1367,7 +1437,7 @@ async function runFederatedQueryInternal(
       bindingsApplied: [],
       truncated: false,
       provenance: {
-        source: `${baseUrl} (direct OVDB)`,
+        source: sourceLabel,
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),

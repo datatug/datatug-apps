@@ -11,14 +11,15 @@ or pushes (the live PostgreSQL test has its own workflow, `e2e-postgres-ovdb.yml
 | `build`, `test` | yes | yes | none |
 | `e2e-checkout` | yes, `nx affected` | yes | none |
 | `e2e-cloud-logs` | yes | yes | none |
-| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | none: the app's own chinook.sqlite download is served from local fixtures; GitHub from the pinned checkouts |
 | `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | none: pinned files from local fixtures |
 | `e2e-demo-handoff` | yes, `nx affected` | yes | none (local build, third parties stubbed) |
-| `journey e2e (real datatug-cli agent)` | yes, always | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
+| `journey e2e (real datatug-cli agent)` | yes, always | yes | none to demodb.dev; the browser sends GitHub nothing (CI steps download the CLI release and the Chinook file) |
 | `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | yes (may be `skipped`) | none |
 | `demo-sqlite-adventureworks.yml` (own workflow, Chromium: only when demo SQLite code, catalog, guard or fixtures changed, on `pull_request` and push to `main`; or manual; never scheduled) | path-filtered | no | none: gzip parts from the `demo-db/adventureworks` GitHub repo |
 | `e2e-postgres-ovdb.yml` (own workflow: manual or path-filtered push to main, never a PR) | no | no | `cloud.openvaultdb.com` |
 | `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | `*.demodb.dev`, Chromium only |
+| `github-live-smoke.yml` (push to `main` or manual; never a PR, never scheduled) | no | no | `api.github.com` (budget 50/run), `raw.githubusercontent.com`; every other lane answers GitHub from the pins ("GitHub checkouts") |
 
 `deploy-gate` requires exact `success` for its lanes (only `agent-links` may be `skipped`), so a lane that is
 `skipped` because `nx affected` found nothing still reports `success` (the job runs, its step is a no-op). A job that is
@@ -53,6 +54,49 @@ All lanes that run on a pull request, merge group or push (above, plus the manua
    ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), writes `coverage/demodb-request-report-<job>-<pid>.md` (one file per Playwright run) and prints all of them in a late CI step, and fails the run when
    anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
    and `cloud-logs` configs report too.
+
+### GitHub checkouts: real repositories, pinned, served locally
+
+No lane but one talks to GitHub. `e2e/github-pins.json` is the one list of `owner/repo@sha` the suites read (the demo
+project at three commits, `datatug/datatug-meta-iso`, the `demo-db/northwind` publications the app admits), each with the
+branch names it answers (`HEAD`, `main`). It is the source of the pins for CI too: no workflow names a SHA of its own
+(`helpers/github-pins.unit.ts` fails the build if one does, or if the product reads a pinned repository at a commit the
+manifest lacks).
+
+1. **Fetch.** Every lane's globalSetup (`helpers/github-pins-setup.ts`) runs `scripts/fetch-github-pins.mjs`: for each
+   pin missing from `tmp/github-checkouts/<owner>/<repo>/<sha>`, `git init` + `git fetch --depth 1 origin <sha>` +
+   `git checkout`, in parallel; a present, clean checkout at the right commit is reused with no network. CI caches the
+   directory with `actions/cache`, keyed on the manifest, so a warm run fetches nothing. Lazy blobs
+   (`--filter=blob:none`) are not used: the fake serves whole trees, so the checkout fetched every blob anyway in a
+   second round trip.
+2. **Serve.** The guard installs `helpers/fake-github.ts` on every browser context as the fallback route for
+   `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net`. It answers from the git objects of the exact
+   commit (`git ls-tree`, `git cat-file`), in GitHub's shapes: `repos/{o}/{r}`, `commits/{ref}` (the bare SHA for
+   `application/vnd.github.sha`, JSON otherwise), `git/trees/{commit|tree}` (recursive or not, with modes, SHAs and
+   sizes), `contents/{path}`, raw files (binaries stay binary) and the jsDelivr `/gh/` mirror, with
+   `cache-control: max-age=300`, an `etag` (304 on `If-None-Match`) and CORS. (Playwright turns the browser HTTP cache
+   off on a routed context, so the headers reach the app's own logic but not Chromium's disk cache.)
+3. **Strict.** A repository that is not pinned, a branch name no pin maps, a commit no pin has, a write, or an endpoint
+   the fake does not implement is answered 404 with `x-datatug-github-fake: unpinned` and FAILS the test, naming the
+   URL. A file missing at a pinned commit is an ordinary 404. Several pins of one repository: all answer their SHA; only
+   the lane's selected one (`DATATUG_E2E_GITHUB_PINS=<id>`, default the first) answers its branch names.
+4. **Guard.** The GitHub hosts are counted in the request report beside DemoDB; any GitHub request that reaches the
+   network (a real server address, or a failed name lookup: Chromium resolves the three names to nothing,
+   `helpers/demodb-config.ts`) is ESCAPED and fails the test and the run. The real-agent lanes stay passive (no route at
+   all: a route makes Chromium intercept every request, which pushes those long flows past their timeouts); a GitHub
+   request there still escapes and fails.
+5. **Live.** `GITHUB_E2E_MODE=live` sends GitHub requests to the real hosts: `api.github.com` under a budget
+   (`GITHUB_E2E_MAX_LIVE_REQUESTS` per test, 30; `GITHUB_E2E_MAX_RUN_LIVE_REQUESTS` per run, 50, under the anonymous 60
+   an hour), each URL once per run, and a 403 with `x-ratelimit-remaining: 0` stops the run. Only
+   `.github/workflows/github-live-smoke.yml` uses it (push to `main` or by hand, never a PR, never a schedule): it checks
+   every pin against the real GitHub (commit, tree, one raw file byte for byte) and walks the G-A2 request-budget and
+   side-menu tests of `github-store.spec.ts` at the demo project's live `main`. The production read configs
+   (`playwright.showcase-measurement.config.ts`, `playwright.business-preview.config.ts`) default to live too.
+
+To serve your own variant of a repository (a scratch clone with an extra commit), call `installFakeGithub(context,
+[{ fullName, dir }])` in the spec: it answers that repository at the clone's `HEAD` ahead of the pins and passes
+everything else to the guard. Bump a pin by editing the manifest (CI's cache key changes with it) together with the
+specs that read it.
 
 ### DemoDB fixtures
 
@@ -168,9 +212,8 @@ two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 Safari testing is a separate check. The default CI projects remain unchanged.
 
 ```sh
-# Use a clean checkout of demo revision 7c67575a8313d67ecae364c1dd7164ee85c48ae0
-# (the CI browser catalog pin) and an unused local port.
-DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
+# The demo project comes from the GitHub pins (see "GitHub checkouts"); pick an unused local port.
+DATATUG_E2E_PORT=4200 \
   pnpm nx run datatug-app:e2e-query-mobile
 ```
 
@@ -276,7 +319,7 @@ fails CI hard just because the binary wasn't provisioned for that job.
 | `DATATUG_BIN`             | Path to a built `datatug` binary.                                                                                                                                                                                                                                                                                                                                   | —                                                                                                                                                                                   |
 | `DATATUG_CLI_DIR`         | Path to a `datatug-cli` checkout; used to `go build` a binary on demand when `DATATUG_BIN` is not set.                                                                                                                                                                                                                                                              | —                                                                                                                                                                                   |
 | `DATATUG_DEMO_DIR`        | Path to `datatug-demo-project/demo-project-1`.                                                                                                                                                                                                                                                                                                                      | `../datatug-demo-project/demo-project-1` relative to this repo (tried at 1–3 directory levels up, to cover both a plain sibling checkout and a nested `.worktrees/<task>` checkout) |
-| `DATATUG_E2E_GITHUB_FAKE` | A checkout of `datatug/datatug-demo-project`, served in place of `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net` (`helpers/fake-github.ts`): no network, none of the 60 anonymous API requests an hour. Used by `github-store.spec.ts`, `query-author.spec.ts`, and `query-compare.spec.ts`. Unset, tests using the fake read the real GitHub. | Unset                                                                                                                                                                               |
+| `DATATUG_E2E_GITHUB_FAKE` | Set by globalSetup to the lane's demo project pin checkout (see "GitHub checkouts"), for specs that read its files directly. Set it by hand only to serve a local working checkout of `datatug/datatug-demo-project` as its `HEAD`/`main` instead of the pin. | The lane's demo pin |
 | `DATATUG_LARGE_E2E`       | Set to `1` to run the cross-source join journey with 120,000 rows instead of the CI default of 205 rows and 25-row source pages.                                                                                                                                                                                                                                    | Unset                                                                                                                                                                               |
 
 If neither `DATATUG_BIN` nor `DATATUG_CLI_DIR` is set, or the demo project

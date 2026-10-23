@@ -1,15 +1,31 @@
 overrides:
-  '@angular-devkit/core': 22.1.5
-  '@angular-devkit/schematics': 22.1.5
-  '@angular/router': 22.1.3
-  '@angular/platform-server': 22.1.3
-  '@angular/platform-browser-dynamic': 22.1.3
-  '@angular/platform-browser': 22.1.3
-  '@angular/forms': 22.1.3
-  '@angular/core': 22.1.3
-  '@angular/compiler': 22.1.3
-  '@angular/common': 22.1.3
-  '@angular/animations': 22.1.3
+  # compiler-cli 22.2.3 imports encodeRangeMappings, missing in sourcemap-codec 1.5.5 (from main #506).
+  '@angular/compiler-cli>@jridgewell/sourcemap-codec': 1.6.0
+  '@angular-devkit/core': 22.2.3
+  '@angular-devkit/schematics': 22.2.3
+  '@angular/router': 22.2.3
+  '@angular/platform-server': 22.2.3
+  '@angular/platform-browser-dynamic': 22.2.3
+  '@angular/platform-browser': 22.2.3
+  '@angular/forms': 22.2.3
+  '@angular/core': 22.2.3
+  '@angular/compiler': 22.2.3
+  '@angular/common': 22.2.3
+  '@angular/animations': 22.2.3
+  # Align with the other @angular-devkit pins: @analogjs/vitest-angular's open peer
+  # range otherwise pulls a release younger than minimumReleaseAge.
+  '@angular-devkit/architect': 0.2202.3
+  # Security overrides: transitive deps whose parent has no fixed release yet.
+  # Dependabot #62 (high), #61 #63 #64 #69 #70: nx 23.x and 24.0.0 pin undici 7.29.0 exactly.
+  'nx>undici': 7.30.1
+  # Dependabot #97 (high), #95: @firebase/firestore (latest 4.19.0) pins @grpc/grpc-js ~1.9.0.
+  '@firebase/firestore>@grpc/grpc-js': ^1.14.6
+  # Dependabot #6: @dalgo/core (dal-go/dalgo-js@24eb5b7) pins yaml 2.8.2 exactly (runtime,
+  # via @dalgo/ovdb and @openvaultdb/inprocess); drop once dalgo-js bumps it.
+  'yaml@>=2.0.0 <2.8.3': 2.9.1
+  # Dependabot #136 (high), #133 #138 #140 #141: @angular/build 22.2.3 and 22.2.4 pin vite 8.3.0
+  # exactly; these GHSAs now also cover 8.3.0-8.3.2 (fixed in 8.3.3).
+  'vite@>=8.0.0 <8.3.3': 8.3.5
   '@sneat/api-public': 0.27.41
   '@sneat/api': 0.27.41
   '@sneat/auth-core': 0.27.41

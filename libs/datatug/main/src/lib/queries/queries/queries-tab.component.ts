@@ -22,10 +22,11 @@ import {
   IonLabel,
   IonText,
 } from '@ionic/angular';
-import { Subscription } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
-import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
+import { QueryListItemComponent } from '../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../components/query-list-item/query-text-preview.service';
 import { IProjectRef } from '../../core/project-context';
 import { IProjItemBrief } from '../../models/definition/project';
 import {
@@ -60,7 +61,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   selector: 'sneat-datatug-queries-tab',
   templateUrl: 'queries-tab.component.html',
   imports: [
-    SqlEditorComponent,
+    QueryListItemComponent,
     IonItem,
     IonLabel,
     IonInput,
@@ -320,8 +321,27 @@ export class QueriesTabComponent {
     return !!this.filter && this.type !== '*';
   }
 
-  getText(query: IQueryDef): string {
-    return (query.request as ISqlQueryRequest).text;
+  private readonly textPreviews = inject(QueryTextPreviewService);
+
+  /**
+   * The hover preview's text loader for a row. The folder listing deliberately leaves every query's `text` unset
+   * (one read per definition file, none per body), so the text comes from the single-query read, which also reads
+   * the body sidecar (`<id>.query.sql`/`.tugql`/`.http`), cached per project by `QueryTextPreviewService`.
+   */
+  textLoader(
+    query: IQueryDef,
+    folders?: string[],
+  ): (() => Observable<string | undefined>) | undefined {
+    const project = this.project();
+    if (!project) return undefined;
+    const segments = folders ?? this.currentFolder?.path.split('/') ?? [];
+    const folderId = segments.filter((s) => s && s !== '~').join('/');
+    const id = folderId ? `${folderId}/${query.id}` : query.id;
+    return this.textPreviews.loader(
+      project.ref,
+      id,
+      (query.request as ISqlQueryRequest | undefined)?.text,
+    );
   }
 
   public readonly trackById = (_: number, v: IProjItemBrief) => v.id;

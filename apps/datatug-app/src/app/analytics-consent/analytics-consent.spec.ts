@@ -246,6 +246,26 @@ describe('analytics consent', () => {
     });
   });
 
+  describe('granted(): the gate every analytics backend shares', () => {
+    it('is true only for a grant on a page where analytics may run', () => {
+      const f = fixture();
+      const consent = createAnalyticsConsent(f.env, ID);
+      expect(consent.granted()).toBe(false);
+      consent.choose('denied');
+      expect(consent.granted()).toBe(false);
+      consent.choose('granted');
+      expect(consent.granted()).toBe(true);
+      f.state.checkout = true;
+      expect(consent.granted()).toBe(false);
+      f.state.checkout = false;
+      f.page.hostname = 'localhost';
+      expect(consent.granted()).toBe(false);
+      expect(createAnalyticsConsent(fixture().env, undefined).granted()).toBe(
+        false,
+      );
+    });
+  });
+
   describe('choosing in the banner', () => {
     it('accept: stores it, loads the tag and reports the page the visitor is on, once', () => {
       const f = fixture();

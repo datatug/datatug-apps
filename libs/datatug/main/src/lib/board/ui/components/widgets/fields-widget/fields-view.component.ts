@@ -36,7 +36,7 @@ export interface FieldPair {
         margin: 0;
       }
       dt {
-        color: var(--ion-color-medium);
+        color: var(--dt-text-muted);
       }
       dd {
         margin: 0;

@@ -55,6 +55,7 @@ import {
 import {
   ProjectQueryApiService,
   DATATUG_DEMO_PROJECT_TEMPLATE,
+  githubReauthorizationReason,
   type CreateGithubProject,
   type GithubProjectCreateStatus,
   type PendingGithubProjectSetup,
@@ -66,6 +67,7 @@ import {
   clearBusinessGithubContinuation,
   saveBusinessGithubContinuation,
 } from './business-github-continuation';
+import { sha256Hex, isSha256Hex } from './sha256-hex';
 
 interface NewProjectDraft {
   readonly demoContinuation?: string;
@@ -92,11 +94,13 @@ interface NewProjectDraft {
   readonly oauthResumePending?: boolean;
   readonly projectCreateSubmitted?: boolean;
   readonly setupPR?: { readonly url: string; readonly number: number };
-  readonly oauthState?: string;
+  /** SHA-256 hash of the OAuth state; the state itself is never stored. */
+  readonly oauthStateHash?: string;
   readonly resolvedCreateRequest?: CreateGithubProject;
 }
 
 const NEW_PROJECT_DRAFT_KEY = 'datatug:new-project:draft';
+
 
 @Component({
   selector: 'sneat-datatug-new-project-form',
@@ -190,7 +194,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly createConflictNeedsStatusCheck = signal(false);
   private readonly oauthResumePending = signal(false);
   private readonly projectCreateSubmitted = signal(false);
-  private readonly oauthState = signal<string | undefined>(undefined);
+  private readonly oauthStateHash = signal<string | undefined>(undefined);
   private readonly resolvedCreateRequest = signal<CreateGithubProject | undefined>(undefined);
   private oauthResumeQueued = false;
   private readonly restoredDraft = signal<NewProjectDraft | undefined>(
@@ -387,12 +391,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const oauthResult = this.route.snapshot.queryParamMap.get('oauthResult');
     if (oauthResult === 'actor-changed') {
       this.oauthResumePending.set(false);
-      this.oauthState.set(undefined);
+      this.oauthStateHash.set(undefined);
       this.formError.set('Your GitHub account changed. Choose a repository and branch again, then submit the project request.');
       this.saveDraft();
     } else if (oauthResult && oauthResult !== 'success') {
       this.oauthResumePending.set(false);
-      this.oauthState.set(undefined);
+      this.oauthStateHash.set(undefined);
       this.formError.set('GitHub authorization was canceled or did not grant the required repository and workflow access. Review the repository and try again.');
       this.saveDraft();
     }
@@ -681,7 +685,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const intent = {
       title: this.title(),
       spaceID: this.spaceID(),
-      billingIntent: this.billingIntent(),
+      billingIntent: (this.billingIntent() === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
       github: {
         owner: address.owner,
         name: address.name,
@@ -980,6 +984,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.queryApi.reportGithubReauthorizationRequired(
             this.pendingSetupProjectRef(setup),
             githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+            githubReauthorizationReason(githubProjectErrorCode(error)),
           );
           return;
         }
@@ -1009,7 +1014,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const request: CreateGithubProject = {
       title: setup.title,
       spaceID: setup.spaceID,
-      billingIntent: setup.billingIntent,
+      billingIntent: (setup.billingIntent === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
       operationID: setup.operationID,
       ciEnabled: setup.ciEnabled,
       github: {
@@ -1043,6 +1048,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.queryApi.reportGithubReauthorizationRequired(
             this.pendingSetupProjectRef(setup),
             githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+            githubReauthorizationReason(githubProjectErrorCode(error)),
           );
           return;
         }
@@ -1152,6 +1158,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.selectionGeneration === generation &&
       this.operationID() === operationID &&
       this.operationPayload() === intentPayload;
+    const authorizationStartFailed = () => {
+      this.isCreating.set(false);
+      this.oauthResumePending.set(false);
+      this.saveDraft();
+      this.formError.set('GitHub authorization could not be started. Retry the same project request.');
+    };
     this.isCreating.set(true);
     if (!this.saveDraft()) {
       this.isCreating.set(false);
@@ -1167,20 +1179,25 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.pathname !== '/login/oauth/authorize' || url.username || url.password) throw new Error();
           const state = url.searchParams.get('state');
           if (!state || state.length > 512) throw new Error();
-          this.oauthState.set(state);
-          if (!this.saveDraft()) {
-            this.oauthState.set(undefined);
-            this.oauthResumePending.set(false);
-            this.isCreating.set(false);
-            this.formError.set('Project details could not be saved for the GitHub redirect. Keep this page open and retry after enabling browser session storage.');
-            return;
-          }
-          window.location.assign(url.href);
+          sha256Hex(state).then(
+            (stateHash) => {
+              if (!isCurrent()) return;
+              this.oauthStateHash.set(stateHash);
+              if (!this.saveDraft()) {
+                this.oauthStateHash.set(undefined);
+                this.oauthResumePending.set(false);
+                this.isCreating.set(false);
+                this.formError.set('Project details could not be saved for the GitHub redirect. Keep this page open and retry after enabling browser session storage.');
+                return;
+              }
+              window.location.assign(url.href);
+            },
+            () => {
+              if (isCurrent()) authorizationStartFailed();
+            },
+          );
         } catch {
-          this.isCreating.set(false);
-          this.oauthResumePending.set(false);
-          this.saveDraft();
-          this.formError.set('GitHub authorization could not be started. Retry the same project request.');
+          authorizationStartFailed();
         }
       },
       error: (error: unknown) => {
@@ -1231,7 +1248,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.setupPR.set({ url: created.setupPR.url, number: created.setupPR.number });
         this.projectCreateSubmitted.set(true);
         this.oauthResumePending.set(false);
-        this.oauthState.set(undefined);
+        this.oauthStateHash.set(undefined);
         this.formError.set(undefined);
         this.saveDraft();
       },
@@ -1331,7 +1348,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       }
       const draft: NewProjectDraft = {
         demoContinuation: this.demoContinuation,
-        billingIntent: this.billingIntent(),
+        billingIntent: (this.billingIntent() === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
         source: this.copySource(),
         returnUrl: this.returnUrl,
         actorID: this.userID(),
@@ -1351,10 +1368,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         recoveryBranch: this.recoveryBranch(),
         createNeedsSameOperationRetry: this.createNeedsSameOperationRetry(),
         createConflictNeedsStatusCheck: this.createConflictNeedsStatusCheck(),
-        oauthResumePending: this.oauthResumePending(),
+        oauthResumePending: this.oauthResumePending() === true,
         projectCreateSubmitted: this.projectCreateSubmitted(),
         setupPR: this.setupPR(),
-        oauthState: this.oauthState(),
+        oauthStateHash: this.oauthStateHash(),
         resolvedCreateRequest: this.resolvedCreateRequest(),
       };
       this.restoredDraft.set(draft);
@@ -1468,7 +1485,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.projectCreateSubmitted.set(draft.projectCreateSubmitted ?? false);
     this.setupPR.set(draft.setupPR);
     if (draft.projectCreateSubmitted) this.setupStatus.set('pending_merge');
-    this.oauthState.set(draft.oauthState);
+    this.oauthStateHash.set(draft.oauthStateHash);
     this.resolvedCreateRequest.set(draft.resolvedCreateRequest);
     this.branch.set(draft.branch ?? '');
     this.spaceTitle.set(draft.spaceTitle);
@@ -1554,7 +1571,7 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
       oauthResumePending: draft.oauthResumePending === true,
       projectCreateSubmitted: draft.projectCreateSubmitted === true,
       setupPR: isSafeSetupPR(draft.setupPR) ? draft.setupPR : undefined,
-      oauthState: typeof draft.oauthState === 'string' ? draft.oauthState.slice(0, 512) : undefined,
+      oauthStateHash: isSha256Hex(draft.oauthStateHash) ? draft.oauthStateHash : undefined,
       resolvedCreateRequest: isCreateGithubProject(draft.resolvedCreateRequest) ? draft.resolvedCreateRequest : undefined,
     };
   } catch {

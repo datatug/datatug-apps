@@ -1,3 +1,4 @@
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { CUSTOM_ELEMENTS_SCHEMA, Provider } from '@angular/core';
@@ -40,7 +41,12 @@ function baseProviders(
 ): Provider[] {
   const paramMap = convertToParamMap(routeParams);
   return [
-    { provide: QueriesService, useValue: { getQueriesFolder: vi.fn(() => of({ id: '~', items: [], folders: [] })) } },
+    {
+      provide: QueriesService,
+      useValue: {
+        getQueriesFolder: vi.fn(() => of({ id: '~', items: [], folders: [] })),
+      },
+    },
     {
       provide: ErrorLogger,
       useValue: {
@@ -70,7 +76,8 @@ function baseProviders(
       provide: Router,
       useValue: {
         parseUrl: (url: string) => new DefaultUrlSerializer().parse(url),
-        serializeUrl: (url: unknown) => new DefaultUrlSerializer().serialize(url as never),
+        serializeUrl: (url: unknown) =>
+          new DefaultUrlSerializer().serialize(url as never),
         navigateByUrl: vi.fn(() => Promise.resolve(true)),
       },
     },
@@ -160,21 +167,17 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
-  it('submits the overview query to Quick Search while preserving project qualifiers',()=>{
-    const page=component as unknown as {setProjRef(ref: {storeId:string;projectId:string;projectApi:'cloud';branch:string}):void};
-    page.setProjRef({storeId:'github.com',projectId:'repo@owner@',projectApi:'cloud',branch:'main'});
-    component.quickSearchQuery.set(' Customers ');
-    const event=new Event('submit',{cancelable:true});component.submitQuickSearch(event);
-    expect(event.defaultPrevented).toBe(true);
-    const router=TestBed.inject(Router),navigate=vi.mocked(router.navigateByUrl);
-    expect(navigate).toHaveBeenCalledOnce();
-    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe('/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers');
+  it('clears the overview Quick Search text when the project changes', () => {
+    const page = component as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    component.quickSearchQuery.set('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    expect(component.quickSearchQuery()).toBe('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'other@owner@' });
+    expect(component.quickSearchQuery()).toBe('');
   });
-  it('does not navigate with an empty overview query',()=>{
-    component.quickSearchQuery.set('  ');component.submitQuickSearch(new Event('submit'));
-    expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
-  });
-
 
   it('offers the private sandbox route only for the canonical DemoDB project', () => {
     const page = component as unknown as {
@@ -454,7 +457,20 @@ describe('ProjectPage rendering a local-agent store project', () => {
     },
   );
 
-  it('shows one set of five overview tabs and opens the selected content', async () => {
+  it('puts the instant Quick Search box on the overview, bound to the project', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const box = fixture.nativeElement.querySelector(
+      'sneat-datatug-project-quick-search-box.overview-quick-search',
+    );
+    expect(box).not.toBeNull();
+    // The old submit-only form is gone: suggestions come from the shared box.
+    expect(
+      fixture.nativeElement.querySelector('form.overview-quick-search'),
+    ).toBeNull();
+  });
+
+  it('shows one set of four overview tabs and opens the selected content', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
     const buttons = Array.from(
@@ -463,7 +479,6 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Boards',
       'Queries 0',
-      'Environments',
       'Entities',
       'Databases',
     ]);
@@ -481,23 +496,45 @@ describe('ProjectPage rendering a local-agent store project', () => {
   it('updates the query count on another tab and cancels stale project counts', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
-    const get = TestBed.inject(QueriesService).getQueriesFolder as ReturnType<typeof vi.fn>;
+    const get = TestBed.inject(QueriesService).getQueriesFolder as ReturnType<
+      typeof vi.fn
+    >;
     const first = new Subject<unknown>();
     const second = new Subject<unknown>();
     get.mockReturnValueOnce(first).mockReturnValueOnce(second);
-    const page = fixture.componentInstance as unknown as { setProjRef: (ref: { storeId: string; projectId: string }) => void };
+    const page = fixture.componentInstance as unknown as {
+      setProjRef: (ref: { storeId: string; projectId: string }) => void;
+    };
     page.setProjRef({ storeId: 'localhost:8989', projectId: 'first' });
-    first.next({ id: '~', items: [{ id: 'a' }], folders: [{ id: 'nested', items: [{ id: 'b' }] }] });
+    first.next({
+      id: '~',
+      items: [{ id: 'a' }],
+      folders: [{ id: 'nested', items: [{ id: 'b' }] }],
+    });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('2');
-    expect(fixture.nativeElement.querySelector('sneat-datatug-project-queries-preview')).toBeNull();
+    expect(
+      fixture.nativeElement
+        .querySelector('.overview-tabs ion-chip')
+        ?.textContent?.trim(),
+    ).toBe('2');
+    expect(
+      fixture.nativeElement.querySelector(
+        'sneat-datatug-project-queries-preview',
+      ),
+    ).toBeNull();
     page.setProjRef({ storeId: 'localhost:8989', projectId: 'second' });
     first.next({ id: '~', items: [{ id: 'stale' }] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.overview-tabs ion-chip'),
+    ).toBeNull();
     second.next({ id: '~', items: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('0');
+    expect(
+      fixture.nativeElement
+        .querySelector('.overview-tabs ion-chip')
+        ?.textContent?.trim(),
+    ).toBe('0');
   });
 
   it('uses sandbox setup copy for an existing signed-in session', async () => {
@@ -510,8 +547,12 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Create a private, writable clone',
     );
-    expect(fixture.nativeElement.textContent).not.toContain('Sign in to create');
-    expect(fixture.nativeElement.textContent).toContain('Set up private sandbox');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Sign in to create',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Set up private sandbox',
+    );
   });
 
   const expectSandboxSignInCopy = async (
@@ -545,6 +586,93 @@ describe('ProjectPage rendering a local-agent store project', () => {
     await expectSandboxSignInCopy(
       of({ status: 'authenticating', user: { uid: 'pending-user' } }),
     );
+  });
+
+  it('heads each overview card with a link to its full page and filters Boards and Entities client-side', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const assets = TestBed.inject(ProjectAssetsReadService);
+    vi.mocked(assets.boards).mockReturnValue(
+      of([
+        { id: 'sales', title: 'Sales board' },
+        { id: 'ops', title: 'Operations' },
+      ]) as never,
+    );
+    vi.mocked(assets.entities).mockReturnValue(
+      of([
+        { id: 'customer', title: 'Customer' },
+        { id: 'invoice', title: 'Invoice' },
+      ]) as never,
+    );
+    const page = fixture.componentInstance as unknown as {
+      retryMetadata(): void;
+      selectTab(tab: string): void;
+    };
+    page.retryMetadata();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const base = `/store/localhost:8989/project/${summary.id}`;
+    const card = () =>
+      el.querySelector('sneat-datatug-project-tab-panel') as HTMLElement & {
+        titleHref?: string;
+      };
+    // happy-dom can report a stale empty textContent for projected nodes, so
+    // read the rendered markup instead.
+    const rows = () =>
+      [...card().querySelectorAll('ion-list ion-label')].map((label) =>
+        (
+          new DOMParser().parseFromString(label.innerHTML, 'text/html').body
+            .textContent ?? ''
+        ).trim(),
+      );
+    expect(card().getAttribute('panelTitle')).toBe('Boards');
+    expect(card().titleHref).toBe(`${base}/boards`);
+    expect(rows()).toEqual(['Sales board', 'Operations']);
+    fixture.componentInstance.boardFilter.set('SALES');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Sales board']);
+    fixture.componentInstance.boardFilter.set('zzz');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['No boards match “zzz”.']);
+
+    page.selectTab('entities');
+    await fixture.whenStable();
+    expect(card().getAttribute('panelTitle')).toBe('Entities');
+    expect(card().titleHref).toBe(`${base}/entities`);
+    fixture.componentInstance.entityFilter.set('inv');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Invoice']);
+
+    page.selectTab('databases');
+    await fixture.whenStable();
+    const servers = el.querySelector(
+      'sneat-datatug-project-database-servers-preview',
+    );
+    expect(servers).not.toBeNull();
+  });
+
+  it('places the DemoDB sandbox card above the environments and the tabs', async () => {
+    const fixture = await createPage(
+      'github.com',
+      'datatug-demo-project@datatug@demo-project-1',
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const sandbox = el.querySelector('.sandbox-summary');
+    const environments = el.querySelector('.overview-environments');
+    const tabs = el.querySelector('.overview-tabs');
+    if (!sandbox || !environments || !tabs)
+      throw new Error('The sandbox card, environments and tabs must render.');
+    expect(sandbox.getAttribute('cardTitle')).toBe('Private DemoDB sandbox');
+    expect(
+      sandbox.compareDocumentPosition(environments) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sandbox.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('settles the Boards asset list out of its loading state for a local agent', async () => {
@@ -622,9 +750,8 @@ describe('ProjectPage rendering a local-agent store project', () => {
     });
 
     for (const [tab, label] of [
-      [2, 'Environments'],
-      [3, 'Entities'],
-      [4, 'Databases'],
+      [2, 'Entities'],
+      [3, 'Databases'],
     ] as const) {
       (
         fixture.nativeElement.querySelectorAll('.overview-tabs button')[
@@ -745,7 +872,10 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
         imports: [ProjectPageComponent],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
         providers: [
-          ...baseProviders({ logError: vi.fn(), watchProjectSummary }, routeRef),
+          ...baseProviders(
+            { logError: vi.fn(), watchProjectSummary },
+            routeRef,
+          ),
           { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
           { provide: Firestore, useValue: {} },
           { provide: DatatugBoardService, useValue: {} },
@@ -761,8 +891,9 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
         .compileComponents();
       fixture = TestBed.createComponent(ProjectPageComponent);
       fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-        .toContain('current-project');
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('current-project');
 
       summary$.next({
         id: 'current-project',
@@ -772,8 +903,9 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
       await fixture.whenStable();
 
       expect(watchProjectSummary).toHaveBeenCalledWith(routeRef);
-      expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-        .toContain('Current route project');
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('Current route project');
     } finally {
       fixture?.destroy();
       window.history.replaceState(savedState, '', savedUrl);
@@ -784,47 +916,52 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
     ['empty', () => of()],
     ['unavailable', () => of(undefined)],
     ['error', () => throwError(() => new Error('offline'))],
-  ])('shows the address identity when metadata is %s', async (_state, source) => {
-    const ref = {
-      storeId: 'github.com',
-      projectId: 'datatug-demo-project@datatug@demo-project-1',
-    };
-    await TestBed.configureTestingModule({
-      imports: [ProjectPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [
-        ...baseProviders(
-          { logError: vi.fn(), watchProjectSummary: vi.fn(source) },
-          ref,
-        ),
-        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
-        { provide: Firestore, useValue: {} },
-        { provide: DatatugBoardService, useValue: {} },
-      ],
-    })
-      .overrideComponent(ProjectPageComponent, {
-        set: {
-          imports: [RouterLink],
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
-        },
+  ])(
+    'shows the address identity when metadata is %s',
+    async (_state, source) => {
+      const ref = {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      };
+      await TestBed.configureTestingModule({
+        imports: [ProjectPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          ...baseProviders(
+            { logError: vi.fn(), watchProjectSummary: vi.fn(source) },
+            ref,
+          ),
+          { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+          { provide: Firestore, useValue: {} },
+          { provide: DatatugBoardService, useValue: {} },
+        ],
       })
-      .compileComponents();
-    const fixture = TestBed.createComponent(ProjectPageComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-      .toContain('demo-project-1');
-    expect(fixture.nativeElement.textContent).not.toContain('Loading...');
-    if (_state === 'empty' || _state === 'unavailable') {
-      expect(fixture.nativeElement.textContent).toContain(
-        'Project details are unavailable',
-      );
-    } else {
-      expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent)
-        .toContain('Project details could not be loaded');
-    }
-  });
+        .overrideComponent(ProjectPageComponent, {
+          set: {
+            imports: [RouterLink, ErrorStateComponent],
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
+      const fixture = TestBed.createComponent(ProjectPageComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('demo-project-1');
+      expect(fixture.nativeElement.textContent).not.toContain('Loading...');
+      if (_state === 'empty' || _state === 'unavailable') {
+        expect(fixture.nativeElement.textContent).toContain(
+          'Project details are unavailable',
+        );
+      } else {
+        expect(
+          fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+        ).toContain('Something went wrong');
+      }
+    },
+  );
 });
 
 describe('ProjectPage overview lists', () => {
@@ -870,8 +1007,64 @@ describe('ProjectPage overview lists', () => {
     expect(logError).toHaveBeenCalledWith(
       expect.any(Error),
       'Failed to load overview entities',
+      { show: false },
     );
   });
+
+  it.each([
+    ['a 401', { status: 401 }, 'Sign in to see environments.', false],
+    [
+      'a 403',
+      { status: 403 },
+      'Seeing environments needs access to this project in DataTug.',
+      true,
+    ],
+    ['an outage', { status: 503 }, undefined, true],
+  ])(
+    'words %s on the overview environments read before the shared mapping, and logs only real failures',
+    async (_name, error, hint, logged) => {
+      const logError = vi.fn();
+      await TestBed.configureTestingModule({
+        imports: [ProjectPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          ...baseProviders({
+            logError,
+            watchProjectSummary: vi.fn(() => of()),
+          }),
+          {
+            provide: ProjectAssetsReadService,
+            useValue: {
+              boards: vi.fn(() => of([])),
+              environments: vi.fn(() => throwError(() => error)),
+              entities: vi.fn(() => of([])),
+            },
+          },
+        ],
+      })
+        .overrideComponent(ProjectPageComponent, {
+          set: {
+            imports: [],
+            template: '',
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
+      const page = TestBed.createComponent(ProjectPageComponent)
+        .componentInstance as unknown as {
+        setProjRef(ref: { storeId: string; projectId: string }): void;
+        environmentErrorMessage: { (): string | undefined };
+      };
+      page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+      expect(page.environmentErrorMessage()).toBe(hint);
+      expect(
+        logError.mock.calls.some(
+          ([, what]) => what === 'Failed to load overview environments',
+        ),
+      ).toBe(logged);
+    },
+  );
 
   it('drops delayed data from the previous project and navigates using the current project', async () => {
     const oldEnvironments = new Subject<{ id: string; title: string }[]>();

@@ -17,7 +17,7 @@ for (const [name, viewport] of [
       const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
       test.skip(!source, 'paired candidate Demo checkout required');
       if (!source) return;
-      const { posts, downloads, mutations, executionSources } =
+      const { posts, answered, downloads, mutations, executionSources } =
         await installCountryComparisonFixture(
           context,
           source,
@@ -36,6 +36,9 @@ for (const [name, viewport] of [
         .locator('ion-card')
         .filter({ hasText: 'Where Northwind orders shipped' })
         .first();
+      await Promise.all(
+        ['comparison', 'orders', 'countries'].map((kind) => answered(kind)),
+      );
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
       await expect(race).toContainText('830 source orders');
       await expect(inspector).toContainText('830 rows · 14 columns');
@@ -205,7 +208,7 @@ for (const [name, viewport] of [
         race.getByRole('spinbutton', { name: 'Top', exact: true }),
       ).toHaveValue('5');
       const details = paired.locator('.source-details');
-      await details.locator('summary').click();
+      await details.locator(':scope > summary').click();
       await expect(details).toContainText(
         'https://cloud.openvaultdb.com/v1/dtql',
       );
@@ -251,6 +254,8 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
       .locator('ion-card')
       .filter({ hasText: 'Inspect saved query results' })
       .first();
+    // The board boot before the comparison POST is not what these cases assert; wait for the answer, then the render.
+    await Promise.all([ledger.answered('comparison'), ledger.answered('orders')]);
     if (scenario === 'retry') {
       await expect(paired.getByRole('alert').first()).toBeVisible();
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(0);
@@ -258,8 +263,9 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
         ledger.posts.filter((value) => value === 'comparison'),
       ).toHaveLength(1);
       await paired
-        .getByRole('button', { name: 'Retry chart', exact: true })
+        .getByRole('button', { name: /^Retry chart · / })
         .click();
+      await ledger.answered('comparison', 2);
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
       expect(
         ledger.posts.filter((value) => value === 'comparison'),
@@ -332,15 +338,17 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
     .locator('ion-card')
     .filter({ hasText: 'Inspect saved query results' })
     .first();
+  await ledger.answered('orders');
   await expect(inspector).toContainText('830 rows · 14 columns');
   expect(
     ledger.posts.filter((value) => value === 'inspector-counts'),
   ).toHaveLength(0);
   const tabs = inspector.locator('ion-segment-button');
   await tabs.nth(1).click();
+  await ledger.answered('inspector-counts');
   await expect(inspector).toContainText('21 rows · 2 columns');
   await expect(
-    inspector.getByRole('button', { name: 'Run on board', exact: true }),
+    inspector.getByRole('button', { name: /^Refresh on board · / }),
   ).toBeEnabled();
   expect(
     ledger.posts.filter((value) => value === 'inspector-counts'),
@@ -353,7 +361,7 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
     ledger.posts.filter((value) => value === 'inspector-counts'),
   ).toHaveLength(1);
   await inspector
-    .getByRole('button', { name: 'Run on board', exact: true })
+    .getByRole('button', { name: /^Refresh on board · / })
     .click();
   await expect
     .poll(
@@ -361,7 +369,7 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
     )
     .toBe(2);
   await expect(
-    inspector.getByRole('button', { name: 'Run on board', exact: true }),
+    inspector.getByRole('button', { name: /^Refresh on board · / }),
   ).toBeEnabled();
   expect(
     ledger.posts.filter((value) => value === 'inspector-counts'),

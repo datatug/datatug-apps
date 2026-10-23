@@ -79,6 +79,9 @@ test.describe('Epilogue A — close/reopen', () => {
     browser,
     request,
   }) => {
+    // Two pages, a fresh context and several 15 s waits do not fit the default 30 s budget on a loaded CI runner
+    // (it timed out at 30.9 s and 31.1 s in two main merge groups, at different steps).
+    test.setTimeout(90_000);
     const agentOrigin = `http://${agentServer.host}:${agentServer.port}`;
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
     const customerTableUrl =
@@ -170,7 +173,7 @@ test.describe('Epilogue A — close/reopen', () => {
     await expect(
       reopenedPage
         .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    ).toHaveText('DataTug Demo Project', { timeout: 15_000 });
     // The empty state must be the REAL empty-context rendering: the assertion
     // above already forced a wait for real content before this check runs, so
     // an absent chip here cannot be "still loading".
@@ -204,7 +207,7 @@ test.describe('Epilogue A — close/reopen', () => {
     await expect(
       freshPage
         .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    ).toHaveText('DataTug Demo Project', { timeout: 15_000 });
     await expect(
       freshPage.locator('sneat-datatug-investigation-context-bar'),
     ).not.toContainText('Customer.ID', { timeout: 5_000 });

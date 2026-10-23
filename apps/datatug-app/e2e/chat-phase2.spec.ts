@@ -1,4 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
+import { chatDemoAgentMetadata } from './helpers/chat-demo-agent';
+
+test.beforeEach(async ({ page }) => chatDemoAgentMetadata(page));
 
 const withoutOpaqueUuids = (content: string) => content.replace(
   /\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi,
@@ -48,9 +51,9 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
   await expect(page.getByText('Restoring chat session…')).toBeHidden();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
   const ask = async (question: string, rows: number) => {
-    await page.getByLabel('Ask about Chinook data').fill(question);
+    await page.getByLabel('Ask about project data').fill(question);
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: `Rows ${rows}` }).last()).toBeVisible();
   };
@@ -97,14 +100,14 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await expect(page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]')).toHaveText(firstCustomerId || '');
   expect(providerCalls).toBe(1);
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.locator('.turn')).toHaveCount(0);
   await ask('Show 5 genres', 5);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 2, ChatQueries: 2, ChatRecordSets: 2 });
-  await page.locator('.session-toolbar ion-select').click({ timeout: 5000 });
+  await page.locator('.chat-header-toolbar ion-select').click({ timeout: 5000 });
   await page.getByRole('radio', { name: 'Show last 20 invoices' }).click();
   await expect(page.locator('.question-bubble')).toHaveText('Show last 20 invoices');
-  await page.getByLabel('Ask about Chinook data').fill('Show the customers associated with those orders');
+  await page.getByLabel('Ask about project data').fill('Show the customers associated with those orders');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows \d+/ })).toBeVisible();
   await expect.poll(async () => (await databaseCounts())['ChatQueries']).toBe(3);
@@ -133,7 +136,8 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   expect(continuationHasMetadata).toBe(true);
   expect(providerCalls).toBe(3);
 
-  await page.getByRole('button', { name: 'Rename' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Rename' }).click();
   await page.getByLabel('Session name').fill('Invoice research');
   await page.getByRole('button', { name: 'Save name' }).click();
   await expect(page.getByRole('button', { name: /Chat session, Invoice research/ })).toBeVisible();
@@ -141,12 +145,14 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await expect(page.locator('.question-bubble')).toHaveCount(2);
   expect(providerCalls).toBe(3);
 
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(page.locator('.turn')).toHaveCount(0);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 1, ChatQueries: 1, ChatRecordSets: 1 });
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('button', { name: /Chat session, Show 5 genres/ })).toBeVisible();
   await expect(page.locator('.question-bubble')).toHaveText('Show 5 genres');
@@ -170,8 +176,8 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
     }) } }] } });
   });
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show one artist');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
+  await page.getByLabel('Ask about project data').fill('Show one artist');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('tab', { name: 'Rows 1' })).toBeVisible();
   await page.evaluate(async () => {
@@ -194,7 +200,8 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry loading chats' })).toBeVisible();
   expect(providerCalls).toBe(1);
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeHidden();
   await expect(page.getByRole('button', { name: /Chat session, New chat/ })).toBeVisible();

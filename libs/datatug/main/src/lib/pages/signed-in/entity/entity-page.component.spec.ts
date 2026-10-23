@@ -12,6 +12,26 @@ import { EntityService } from '../../../services/unsorted/entity.service';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { parseProjectUrl } from '../../../nav/nav-models';
 import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
+import { ProjectCardsService } from '../../../cards/project-cards.service';
+import { QueriesService } from '../../../queries/queries.service';
+
+/** Cards and saved queries for the Related list; empty unless a test sets them. */
+const related = {
+  cards: [] as unknown[],
+  folder: undefined as unknown,
+};
+function relatedProviders() {
+  return [
+    {
+      provide: ProjectCardsService,
+      useValue: { listCards: vi.fn(() => of(related.cards)) },
+    },
+    {
+      provide: QueriesService,
+      useValue: { getQueriesFolder: vi.fn(() => of(related.folder)) },
+    },
+  ];
+}
 
 describe('EntityPage', () => {
   let component: EntityPageComponent;
@@ -36,6 +56,7 @@ describe('EntityPage', () => {
           },
         },
         provideMockErrorLogger(),
+        ...relatedProviders(),
         {
           provide: EntityService,
           useValue: { getEntity: vi.fn(), getAllEntities: vi.fn() },
@@ -90,6 +111,7 @@ describe('EntityPage renders the real source grid', () => {
           },
         },
         provideMockErrorLogger(),
+        ...relatedProviders(),
         {
           provide: EntityService,
           useValue: {
@@ -213,6 +235,7 @@ describe('EntityPage source preview states (zoneless)', () => {
           },
         },
         provideMockErrorLogger(),
+        ...relatedProviders(),
         {
           provide: EntityService,
           useValue: {
@@ -361,6 +384,64 @@ describe('EntityPage source preview states (zoneless)', () => {
     expect(html).not.toContain('Loading source preview');
     expect(fixture.nativeElement.querySelector('ion-input')).toBeNull();
     expect(fixture.nativeElement.querySelector('ion-button')).toBeNull();
+  });
+
+  it('titles the page with the entity and lists the cards and saved queries that use it', async () => {
+    related.cards = [
+      {
+        id: 'album',
+        title: 'Album',
+        parameters: [{ id: 'a', meta: { entity: 'Album', field: 'ID' } }],
+      },
+      {
+        id: 'artist',
+        title: 'Artist',
+        parameters: [{ id: 'b', match: [{ entity: 'Artist', field: 'ID' }] }],
+      },
+    ];
+    related.folder = {
+      items: [
+        {
+          id: 'music/album-tracks',
+          title: 'Album tracks',
+          parameters: [{ id: 'AlbumId', meta: { entity: 'album' } }],
+        },
+        { id: 'music/top', title: 'Top', parameters: [] },
+      ],
+    };
+    try {
+      fixture.detectChanges();
+      paramMap$.next({
+        get: (key) =>
+          key === 'storeId'
+            ? 'github.com'
+            : key === 'projectId'
+              ? 'demo'
+              : 'Album',
+      });
+      getEntity$.next({
+        id: 'Album',
+        dbo: { id: 'Album', title: 'Album', fields: [] },
+      });
+      await fixture.whenStable();
+      expect(component.relatedState()).toBe('ready');
+      expect(component.relatedCards().map((c) => c.id)).toEqual(['album']);
+      expect(component.relatedQueries().map((q) => q.id)).toEqual([
+        'music/album-tracks',
+      ]);
+      const el: HTMLElement = fixture.nativeElement;
+      expect(
+        el.querySelectorAll('[data-testid="entity-related-card"]'),
+      ).toHaveLength(1);
+      // Saved queries render as the shared query row (its imports are stubbed out in this spec).
+      expect(el.querySelectorAll('sneat-datatug-query-list-item')).toHaveLength(
+        1,
+      );
+      expect(el.textContent).not.toContain('Name');
+    } finally {
+      related.cards = [];
+      related.folder = undefined;
+    }
   });
 
   it('admits the public HEAD demo route without mistaking HEAD for an explicit branch qualifier', async () => {

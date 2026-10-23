@@ -249,12 +249,19 @@ const syntaxTheme = EditorView.theme({
     minHeight: 'inherit',
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   },
+  // Horizontal padding lives on each line so the active-line highlight spans
+  // the editor from border to border; it shows only while focused.
   '.cm-content': {
     minHeight: 'inherit',
-    padding: '0.75rem',
+    padding: '0.75rem 0',
     caretColor: 'var(--ion-color-primary, #1d4ed8)',
   },
-  '.cm-line': { padding: '0' },
+  '.cm-line': { padding: '0 0.75rem' },
+  '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
+  '&.cm-focused .cm-activeLine, &.cm-focused .cm-activeLineGutter': {
+    // rgba, not color-mix(): contrast checks read the computed colour.
+    backgroundColor: 'var(--tugql-active-line, rgba(29, 78, 216, 0.05))',
+  },
   '.tugql-token-keyword': {
     color: 'var(--tugql-keyword, #174f91)',
     fontWeight: '700',

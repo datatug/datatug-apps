@@ -1,3 +1,4 @@
+import coreComparison from '../../../queries/testdata/core-v070-query-comparison.json';
 import { createSemanticModel } from '../../../queries/semantic-mapping';
 import { firstValueFrom } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
@@ -506,16 +507,18 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('getQueriesFolder', () => {
-    it('preserves MeaningGraph documents through nested query catalog and cold query reads', async () => {
+    it('preserves MeaningGraph documents and Core70 comparison through nested query catalog and cold query reads', async () => {
       const semanticModel = createSemanticModel({queryHash:'a'.repeat(64),resultIndex:0,columns:[{name:'ID',dataType:'integer'}]});
       semanticModel.meaning.concepts = [{id:'customer',kind:'entity',labels:{en:'Customer'},description:'A buyer'}];
       const {service} = setup({
-        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',createdAt:'2026-10-21T12:00:00Z',semanticModel}),
+        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',createdAt:'2026-10-21T12:00:00Z',semanticModel,comparison:coreComparison.comparison,parameters:coreComparison.parameters,recordsets:coreComparison.recordsets}),
         'demo-project-1/queries/sales/regional/customers.query.sql': 'SELECT 1 AS ID',
       });
       const folder = await first(service.getQueriesFolder(PROJECT_ID));
       expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].semanticModel).toEqual(semanticModel);
       expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].createdAt).toBe('2026-10-21T12:00:00Z');
+      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].comparison).toEqual(coreComparison.comparison);
+      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({comparison:coreComparison.comparison,parameters:coreComparison.parameters,recordsets:coreComparison.recordsets});
       expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID',createdAt:'2026-10-21T12:00:00Z'});
     });
 
@@ -777,7 +780,7 @@ describe('strict schema inventory completeness', () => {
       ),
     ).rejects.toThrow();
   });
-  it('does not reuse a permissive listing and reuses a proven strict tree across directories', async () => {
+  it('answers the permissive and the strict listing from one call, re-checking it for the strict one', async () => {
     const { service, gh } = strictSetup();
     await first(service.listDirectory(PROJECT_ID, 'dbmodels'));
     await first(
@@ -789,7 +792,7 @@ describe('strict schema inventory completeness', () => {
       }),
     );
     expect(gh.urls().filter((url) => url.includes('/git/trees/'))).toHaveLength(
-      2,
+      1,
     );
   });
   it('accepts an explicitly complete empty tree', async () => {
