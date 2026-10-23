@@ -3415,6 +3415,13 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       return {
         startRight: start?.right,
         titleLeft: title?.left,
+        // A title longer than its room must be clipped with an ellipsis, never run over the buttons or the page.
+        titleEllipsis: (() => {
+          const inner = mobileTitle?.shadowRoot?.querySelector('.toolbar-title');
+          if (!inner) return false;
+          const style = getComputedStyle(inner);
+          return style.textOverflow === 'ellipsis' && style.overflow === 'hidden';
+        })(),
         // The title text is clipped to its element (ellipsis); measure the part that is drawn.
         titleRight:
           title && mobileTitle
@@ -3428,6 +3435,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
     // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
     expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleEllipsis).toBe(true);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
@@ -3457,6 +3465,13 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       return {
         startRight: start?.right,
         titleLeft: title?.left,
+        // A title longer than its room must be clipped with an ellipsis, never run over the buttons or the page.
+        titleEllipsis: (() => {
+          const inner = mobileTitle?.shadowRoot?.querySelector('.toolbar-title');
+          if (!inner) return false;
+          const style = getComputedStyle(inner);
+          return style.textOverflow === 'ellipsis' && style.overflow === 'hidden';
+        })(),
         // The title text is clipped to its element (ellipsis); measure the part that is drawn.
         titleRight:
           title && mobileTitle
@@ -3470,6 +3485,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
     // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
     expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
+    expect(header.titleEllipsis).toBe(true);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 

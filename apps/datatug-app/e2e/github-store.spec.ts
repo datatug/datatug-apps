@@ -654,15 +654,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // The one page header (its h1) carries the selected query's title; the title input only appears for a new
     // query (one header, #513).
-    await expect
-      .poll(
-        () =>
-          activePage(page)
-            .getByRole('heading', { level: 1 })
-            .evaluateAll((els) => els.map((el) => el.textContent?.trim())),
-        { timeout: 20_000 },
-      )
-      .toContain('Customer invoices');
+    await expect(
+      activePage(page).getByRole('heading', { level: 1 }),
+    ).toHaveText('Customer invoices', { timeout: 20_000 });
     // The query BODY (from the .query.dtql sidecar file) — proves get_query's
     // GitHub equivalent actually read the file content, not just the
     // definition JSON (which never carries `text` for the folder-list view).
@@ -702,15 +696,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .click();
 
     // See the previous test's own doc comment: the title is the page header's h1.
-    await expect
-      .poll(
-        () =>
-          activePage(page)
-            .getByRole('heading', { level: 1 })
-            .evaluateAll((els) => els.map((el) => el.textContent?.trim())),
-        { timeout: 20_000 },
-      )
-      .toContain('Albums by title');
+    await expect(
+      activePage(page).getByRole('heading', { level: 1 }),
+    ).toHaveText('Albums by title', { timeout: 20_000 });
     // See `getQueryBodyText()`'s own doc comment: this query type has no
     // body editor UI at all currently, so read component state instead.
     await expect

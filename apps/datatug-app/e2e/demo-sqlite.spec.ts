@@ -93,7 +93,7 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
     await page.reload();
     await expect.poll(selectedRuntime, { timeout: 20_000 }).toBe(selectionId);
-    await expect(page.getByText(/selected working copy is unavailable/i).first()).toBeVisible();
+    await expect(page.getByRole('alert').filter({ hasText: /selected working copy is unavailable/i })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
