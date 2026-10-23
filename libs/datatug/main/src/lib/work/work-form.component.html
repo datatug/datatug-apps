@@ -1,0 +1,177 @@
+<form [formGroup]="form" (ngSubmit)="submit()">
+  <ion-item
+    ><ion-select label="Work type" interface="popover" formControlName="type"
+      ><ion-select-option value="incident">Incident</ion-select-option
+      ><ion-select-option value="case">Detective Case</ion-select-option
+      ><ion-select-option value="task">Task</ion-select-option></ion-select
+    ></ion-item
+  >
+  <ion-item
+    ><ion-input
+      label="Title"
+      labelPlacement="stacked"
+      formControlName="title"
+      maxlength="256"
+      required
+  /></ion-item>
+  @if (
+    form.controls.title.touched &&
+    (!form.controls.title.valid || !form.controls.title.value.trim())
+  ) {
+    <ion-item
+      ><ion-label color="danger">Give this work a title.</ion-label></ion-item
+    >
+  }
+  <ion-item
+    ><ion-textarea
+      label="Description"
+      labelPlacement="stacked"
+      formControlName="description"
+      [autoGrow]="true"
+      maxlength="16384"
+      placeholder="What needs attention, and what evidence will help?"
+  /></ion-item>
+  <div class="paired">
+    <ion-item
+      ><ion-select
+        label="Accountable owner"
+        labelPlacement="stacked"
+        interface="popover"
+        formControlName="ownerId"
+      >
+        @for (member of members(); track member.id) {
+          <ion-select-option [value]="member.id">{{
+            member.title || member.id
+          }}</ion-select-option>
+        }
+      </ion-select></ion-item
+    >
+    <ion-item
+      ><ion-select
+        label="Assignees"
+        labelPlacement="stacked"
+        [multiple]="true"
+        formControlName="assigneeIds"
+        (ionChange)="selectionChanged()"
+      >
+        @for (member of members(); track member.id) {
+          <ion-select-option [value]="member.id">{{
+            member.title || member.id
+          }}</ion-select-option>
+        }
+      </ion-select></ion-item
+    >
+    <ion-item
+      ><ion-select
+        label="Primary responsible person"
+        labelPlacement="stacked"
+        interface="popover"
+        formControlName="primaryAssigneeId"
+      >
+        @for (id of form.controls.assigneeIds.value; track id) {
+          <ion-select-option [value]="id">{{ name(id) }}</ion-select-option>
+        }
+        <ion-select-option value="">Unassigned</ion-select-option></ion-select
+      ></ion-item
+    >
+    <ion-item
+      ><ion-select
+        label="Priority"
+        labelPlacement="stacked"
+        interface="popover"
+        formControlName="priority"
+        ><ion-select-option value="low">Low</ion-select-option
+        ><ion-select-option value="normal">Normal</ion-select-option
+        ><ion-select-option value="high">High</ion-select-option
+        ><ion-select-option value="urgent"
+          >Urgent</ion-select-option
+        ></ion-select
+      ></ion-item
+    >
+    <ion-item
+      ><ion-input
+        label="Due date and time (your local time)"
+        labelPlacement="stacked"
+        type="datetime-local"
+        formControlName="dueAt"
+    /></ion-item>
+    <ion-item
+      ><ion-select
+        label="Environment and data context"
+        labelPlacement="stacked"
+        interface="popover"
+        formControlName="environment"
+      >
+        @for (environment of environments(); track scopeKey(environment)) {
+          <ion-select-option [value]="scopeKey(environment)">{{
+            (environment.title || environment.identityDomain) +
+              ' · ' +
+              environment.environmentId
+          }}</ion-select-option>
+        }
+      </ion-select></ion-item
+    >
+  </div>
+  @if (!environments().length) {
+    <ion-item
+      ><ion-label color="warning"
+        >No environment is available for this project. Ask a project owner to
+        configure access.</ion-label
+      ></ion-item
+    >
+  }
+  @if (form.controls.type.value === 'incident') {
+    <ion-item
+      ><ion-select
+        label="Severity"
+        interface="popover"
+        formControlName="severity"
+        ><ion-select-option value="critical">Critical</ion-select-option
+        ><ion-select-option value="major">Major</ion-select-option
+        ><ion-select-option value="minor">Minor</ion-select-option
+        ><ion-select-option value="informational"
+          >Informational</ion-select-option
+        ></ion-select
+      ></ion-item
+    >
+    <ion-item
+      ><ion-textarea
+        label="Impact"
+        labelPlacement="stacked"
+        formControlName="impact"
+        [autoGrow]="true"
+        maxlength="4096"
+    /></ion-item>
+  }
+  <ion-item
+    ><ion-textarea
+      label="Closure criteria (optional)"
+      labelPlacement="stacked"
+      formControlName="criteria"
+      [autoGrow]="true"
+      maxlength="16384"
+      placeholder="What must be verified before this work is complete?"
+  /></ion-item>
+  <ion-item lines="none"
+    ><ion-label color="medium"
+      >Assignment does not grant project membership or data-source
+      access.</ion-label
+    ></ion-item
+  >
+  <ion-item lines="none"
+    ><ion-buttons slot="end"
+      ><ion-button (click)="cancelled.emit()" [disabled]="busy()"
+        >Cancel</ion-button
+      ><ion-button
+        type="submit"
+        fill="solid"
+        [disabled]="busy() || form.invalid || !form.controls.title.value.trim()"
+      >
+        @if (busy()) {
+          <ion-spinner name="dots" />
+        }
+        {{ editing() ? 'Save changes' : 'Create work' }}</ion-button
+      ></ion-buttons
+    ></ion-item
+  >
+</form>

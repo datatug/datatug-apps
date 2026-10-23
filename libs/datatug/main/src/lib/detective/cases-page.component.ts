@@ -24,6 +24,7 @@ import {
   IonHeader,
   IonInput,
   IonItem,
+  IonItemDivider,
   IonLabel,
   IonList,
   IonCheckbox,
@@ -123,6 +124,7 @@ const NEW_CASE = (): DetectiveCase => ({
     IonHeader,
     IonInput,
     IonItem,
+    IonItemDivider,
     IonLabel,
     IonList,
     IonCheckbox,
@@ -140,7 +142,9 @@ const NEW_CASE = (): DetectiveCase => ({
   ],
 })
 export class CasesPageComponent {
-  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, {
+    optional: true,
+  });
 
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -466,12 +470,22 @@ export class CasesPageComponent {
   protected casesUrl(): string {
     return this.sessionPageHref('detective');
   }
-  protected pageRoute(href: string, params: Record<string, string> = {}): UrlTree {
-    const tree = this.router.parseUrl(href); tree.queryParams = { ...tree.queryParams, ...params }; return tree;
+  protected pageRoute(
+    href: string,
+    params: Record<string, string> = {},
+  ): UrlTree {
+    const tree = this.router.parseUrl(href);
+    tree.queryParams = { ...tree.queryParams, ...params };
+    return tree;
   }
   private sessionPageHref(page: string | string[]): string {
     const id = this.sessionWorkspace?.focusedSessionId();
-    return projectPageHref(this.scope.ref(), id ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)] : page);
+    return projectPageHref(
+      this.scope.ref(),
+      id
+        ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)]
+        : page,
+    );
   }
   protected caseUrl(id: string): string {
     return this.sessionPageHref(['detective', id]);
@@ -528,6 +542,12 @@ export class CasesPageComponent {
   }
 
   protected startNew(): void {
+    if (this.scope.context()?.kind === 'cloud') {
+      void this.router.navigateByUrl(
+        projectPageHref(this.scope.ref(), ['work', 'new']) + '?type=case',
+      );
+      return;
+    }
     this.draftScopeIdentity = this.pageIdentity() || '';
     const incident = this.queryParams().get('incident');
     this.incidentRef.set(
@@ -674,8 +694,15 @@ export class CasesPageComponent {
       if (this.isCurrentScope(identity)) this.busy.set(false);
     }
   }
+  protected workHref(item: DetectiveCase): string {
+    return projectPageHref(this.scope.ref(), ['work', item.workItemId || '']);
+  }
   protected startEdit(): void {
     const item = this.current();
+    if (item?.workItemId) {
+      void this.router.navigateByUrl(this.workHref(item));
+      return;
+    }
     if (item) {
       this.draftScopeIdentity = this.pageIdentity() || '';
       this.draft.set(structuredClone(item));
@@ -901,6 +928,7 @@ export class CasesPageComponent {
     }
   }
   protected closeCase(): Promise<boolean> {
+    if (this.current()?.workItemId) return Promise.resolve(false);
     const reason = this.closureReason().trim();
     if (!reason) {
       this.error.set('A closure reason is required.');
@@ -912,9 +940,11 @@ export class CasesPageComponent {
     );
   }
   protected reopenCase(): Promise<boolean> {
+    if (this.current()?.workItemId) return Promise.resolve(false);
     return this.updateCase({ status: 'active' }, 'Case reopened.');
   }
   protected archiveCase(): Promise<boolean> {
+    if (this.current()?.workItemId) return Promise.resolve(false);
     return this.updateCase({ status: 'archived' }, 'Case archived.');
   }
   protected async linkIncident(refOverride?: string): Promise<boolean> {
@@ -979,6 +1009,15 @@ export class CasesPageComponent {
     return this.linkIncident(ref);
   }
   protected async createIncident(): Promise<void> {
+    const workItemId = this.current()?.workItemId;
+    if (workItemId) {
+      void this.router.navigateByUrl(
+        projectPageHref(this.scope.ref(), ['work', 'new']) +
+          '?type=incident&parent=' +
+          encodeURIComponent(workItemId),
+      );
+      return;
+    }
     const context = this.scope.context();
     const identity = this.pageIdentity();
     const item = this.current();

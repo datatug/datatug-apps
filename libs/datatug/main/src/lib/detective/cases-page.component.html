@@ -260,7 +260,7 @@
       } @else if (caseId()) {
         @if (current(); as item) {
           <ion-card>
-            <ion-item color="light" lines="full">
+            <ion-item-divider color="light">
               <ion-label class="ion-text-wrap">
                 <ion-button fill="clear" [routerLink]="casesUrl()"
                   >← All Cases</ion-button
@@ -276,49 +276,63 @@
                 [color]="item.status === 'active' ? 'primary' : 'medium'"
                 >{{ item.status }}</ion-badge
               >
-            </ion-item>
+            </ion-item-divider>
             <ion-card-content>
-              <div class="actions">
-                <ion-button
-                  fill="outline"
-                  [disabled]="
-                    item.status === 'archived' ||
-                    !state()?.capabilities?.canWrite
-                  "
-                  (click)="startEdit()"
-                  >Edit Case</ion-button
+              @if (item.workItemId) {
+                <p>
+                  Ownership, assignment, deadlines, status and Context Bags are
+                  managed in Work.
+                </p>
+                <ion-button [routerLink]="workHref(item)" fill="outline"
+                  >Open work item</ion-button
                 >
-              </div>
-              @if (item.status === 'active') {
-                <div class="edit-row">
-                  <ion-item
-                    ><ion-label position="stacked">Closure reason</ion-label
-                    ><ion-input
-                      aria-label="Closure reason"
-                      [value]="closureReason()"
-                      (ionInput)="closureReason.set($event.detail.value || '')"
-                      placeholder="What was established?" /></ion-item
-                  ><ion-button
-                    color="success"
-                    [disabled]="busy() || !state()?.capabilities?.canWrite"
-                    (click)="closeCase()"
-                    >Close Case</ion-button
+              } @else {
+                <div class="actions">
+                  <ion-button
+                    fill="outline"
+                    [disabled]="
+                      item.status === 'archived' ||
+                      !state()?.capabilities?.canWrite
+                    "
+                    (click)="startEdit()"
+                    >Edit Case</ion-button
                   >
                 </div>
-              } @else if (item.status === 'closed') {
-                <p>Closure: {{ item.closureReason || 'No reason recorded' }}</p>
-                <ion-button
-                  [disabled]="busy() || !state()?.capabilities?.canWrite"
-                  (click)="reopenCase()"
-                  >Reopen</ion-button
-                >
-                <ion-button
-                  fill="outline"
-                  color="medium"
-                  [disabled]="busy() || !state()?.capabilities?.canWrite"
-                  (click)="archiveCase()"
-                  >Archive</ion-button
-                >
+                @if (item.status === 'active') {
+                  <div class="edit-row">
+                    <ion-item
+                      ><ion-label position="stacked">Closure reason</ion-label
+                      ><ion-input
+                        aria-label="Closure reason"
+                        [value]="closureReason()"
+                        (ionInput)="
+                          closureReason.set($event.detail.value || '')
+                        "
+                        placeholder="What was established?" /></ion-item
+                    ><ion-button
+                      color="success"
+                      [disabled]="busy() || !state()?.capabilities?.canWrite"
+                      (click)="closeCase()"
+                      >Close Case</ion-button
+                    >
+                  </div>
+                } @else if (item.status === 'closed') {
+                  <p>
+                    Closure: {{ item.closureReason || 'No reason recorded' }}
+                  </p>
+                  <ion-button
+                    [disabled]="busy() || !state()?.capabilities?.canWrite"
+                    (click)="reopenCase()"
+                    >Reopen</ion-button
+                  >
+                  <ion-button
+                    fill="outline"
+                    color="medium"
+                    [disabled]="busy() || !state()?.capabilities?.canWrite"
+                    (click)="archiveCase()"
+                    >Archive</ion-button
+                  >
+                }
               }
             </ion-card-content></ion-card
           >
@@ -350,7 +364,9 @@
                 @for (check of relevantChecks(); track check.id) {
                   <ion-item
                     button
-                    [routerLink]="pageRoute(checkUrl(check.id), { caseId: item.id })"
+                    [routerLink]="
+                      pageRoute(checkUrl(check.id), { caseId: item.id })
+                    "
                     ><ion-label
                       ><h3>{{ check.title }}</h3>
                       <p>
@@ -439,7 +455,9 @@
                         <ion-button
                           slot="end"
                           fill="clear"
-                          [routerLink]="pageRoute(checkUrl(step.ref), { caseId: item.id })"
+                          [routerLink]="
+                            pageRoute(checkUrl(step.ref), { caseId: item.id })
+                          "
                           >Open Check</ion-button
                         >
                       } @else {
@@ -1245,8 +1263,8 @@
               <p>Follow the evidence. Keep the investigation resumable.</p>
               @if (queryParams().get('incident'); as incident) {
                 <p>
-                  Start a Case for Incident {{ incident }}. Review its
-                  context; the link is saved with the Case.
+                  Start a Case for Incident {{ incident }}. Review its context;
+                  the link is saved with the Case.
                 </p>
               }
             </ion-label>
@@ -1491,14 +1509,40 @@
                           ><ion-input
                             aria-label="Scenario query parameter"
                             [value]="binding.input"
-                            (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, input: $event.detail.value || '' } : item) })"
+                            (ionInput)="
+                              updateScenarioStep(i, {
+                                bindings: (step.bindings || []).map(
+                                  (item, n) =>
+                                    n === j
+                                      ? {
+                                          ...item,
+                                          input: $event.detail.value || '',
+                                        }
+                                      : item
+                                ),
+                              })
+                            "
                         /></ion-item>
                         <ion-item
                           ><ion-label position="stacked">Case input</ion-label
                           ><ion-input
                             aria-label="Scenario binding input"
                             [value]="binding.fromInput || ''"
-                            (ionInput)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, fromInput: $event.detail.value || undefined, fromColumn: undefined } : item) })"
+                            (ionInput)="
+                              updateScenarioStep(i, {
+                                bindings: (step.bindings || []).map(
+                                  (item, n) =>
+                                    n === j
+                                      ? {
+                                          ...item,
+                                          fromInput:
+                                            $event.detail.value || undefined,
+                                          fromColumn: undefined,
+                                        }
+                                      : item
+                                ),
+                              })
+                            "
                         /></ion-item>
                         <ion-item
                           ><ion-label position="stacked"
@@ -1506,7 +1550,20 @@
                           ><ion-select
                             aria-label="Scenario binding range endpoint"
                             [value]="binding.part || ''"
-                            (ionChange)="updateScenarioStep(i, { bindings: (step.bindings || []).map((item, n) => n === j ? { ...item, part: $event.detail.value || undefined } : item) })"
+                            (ionChange)="
+                              updateScenarioStep(i, {
+                                bindings: (step.bindings || []).map(
+                                  (item, n) =>
+                                    n === j
+                                      ? {
+                                          ...item,
+                                          part:
+                                            $event.detail.value || undefined,
+                                        }
+                                      : item
+                                ),
+                              })
+                            "
                             ><ion-select-option value=""
                               >Whole value</ion-select-option
                             ><ion-select-option value="start"
@@ -1519,7 +1576,13 @@
                         <ion-button
                           fill="clear"
                           color="medium"
-                          (click)="updateScenarioStep(i, { bindings: (step.bindings || []).filter((_, n) => n !== j) })"
+                          (click)="
+                            updateScenarioStep(i, {
+                              bindings: (step.bindings || []).filter(
+                                (_, n) => n !== j
+                              ),
+                            })
+                          "
                           >Remove binding</ion-button
                         >
                       </div>

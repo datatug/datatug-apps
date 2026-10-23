@@ -111,6 +111,8 @@ export interface CaseEvent {
 }
 
 export interface DetectiveCase {
+  /** Canonical shared metadata; evidence remains in the specialised Case. */
+  workItemId?: string;
   id: string;
   title: string;
   status: 'active' | 'closed' | 'archived';

@@ -88,7 +88,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
         <ion-title>Incidents<sneat-datatug-business-clock /></ion-title>
         @if (mode() === 'list' && canWrite() && incidents()?.length && !loading() && !loadError() && !scopeLoading() && !scopeError()) {
           <ion-buttons slot="end">
-            <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">Create Incident</ion-button>
+            <ion-button [routerLink]="newHref()" [queryParams]="{type: 'incident', environment: environment()}">Create Incident</ion-button>
           </ion-buttons>
         }
       </ion-toolbar>
@@ -136,7 +136,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                     }
                   </ion-list>
                 } @else {
-                  <sneat-datatug-incident-empty-state [createLink]="newHref()" [queryParams]="environmentQuery()" [canCreate]="canWrite()" />
+                  <sneat-datatug-incident-empty-state [createLink]="newHref()" [queryParams]="{type: 'incident', environment: environment()}" [canCreate]="canWrite()" />
                 }
               }
             } @else if (mode() === 'new') {
@@ -413,7 +413,7 @@ export class HostedIncidentsPageComponent {
   }
 
   protected listHref(): string { return projectPageHref(this.scope.ref(), 'incidents'); }
-  protected newHref(): string { return projectPageHref(this.scope.ref(), 'incidents/new'); }
+  protected newHref(): string { return projectPageHref(this.scope.ref(), 'work/new'); }
   protected detailHref(item: HostedIncidentView): string {
     return projectPageHref(this.scope.ref(), ['incidents', item.ref.storeId, item.ref.incidentId]);
   }
@@ -510,6 +510,10 @@ export class HostedIncidentsPageComponent {
   protected async startCase(): Promise<void> {
     const context = this.scope.context();
     const item = this.incident();
+    if (item?.workItemId && context?.kind === 'cloud') {
+      await this.router.navigate([projectPageHref(this.scope.ref(), ['work', 'new'])], {queryParams: {type: 'case', parent: item.workItemId}});
+      return;
+    }
     const environment = this.environment();
     if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.conversationBusy() || this.loading() || this.loadError() || this.savedCase()) return;
     if (`${item.ref.storeId}/${item.ref.incidentId}` !== `${this.routeParams().get('incidentStoreId')}/${this.routeParams().get('incidentId')}`) return;
