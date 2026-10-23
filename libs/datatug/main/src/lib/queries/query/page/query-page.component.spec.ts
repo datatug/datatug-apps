@@ -3032,21 +3032,28 @@ select (
   });
 
   describe('HTTP query bound from an Investigation Context selection', () => {
-    const countryBinding = (origin: 'selection' | 'context' | 'default', blocked?: 'ambiguous') =>
+    const countryBinding = (
+      origin: 'selection' | 'context' | 'default',
+      blocked?: 'ambiguous' | 'missing-required',
+    ) =>
       ({
         parameterId: 'name',
         meta: { entity: 'Country', field: 'Name' },
-        value: { type: 'string', value: 'Canada' },
+        ...(blocked === 'missing-required'
+          ? {}
+          : { value: { type: 'string', value: 'Canada' } }),
         origin,
         ...(blocked ? { blocked } : {}),
       }) as never;
+    const asType = (queryType: QueryType): void =>
+      component.queryDef.set({
+        ...queryDef,
+        request: { queryType, text: '' } as ISqlQueryRequest,
+      });
 
     it('offers the resolved selection and context bindings to the HTTP editor, and a single semantic Run', async () => {
       component = await createComponent();
-      (component as unknown as { queryState: { queryType: string } }).queryState = {
-        ...(component as unknown as { queryState: object }).queryState,
-        queryType: 'HTTP',
-      } as never;
+      asType(QueryType.HTTP);
       expect(component.httpSemanticRun()).toBe(false);
       component.bindings.set([countryBinding('selection')]);
       expect(component.httpBagEntries()).toEqual([
@@ -3057,20 +3064,33 @@ select (
 
     it('never offers a blocked or default-origin value, and a non-HTTP query keeps its own Run', async () => {
       component = await createComponent();
+      asType(QueryType.HTTP);
       component.bindings.set([countryBinding('selection', 'ambiguous'), countryBinding('default')]);
       expect(component.httpBagEntries()).toEqual([]);
-      (component as unknown as { queryState: { queryType: string } }).queryState = {
-        ...(component as unknown as { queryState: object }).queryState,
-        queryType: 'HTTP',
-      } as never;
       component.bindings.set([countryBinding('default')]);
       expect(component.httpSemanticRun()).toBe(false);
-      (component as unknown as { queryState: { queryType: string } }).queryState = {
-        ...(component as unknown as { queryState: object }).queryState,
-        queryType: 'SQL',
-      } as never;
+      component.bindings.set([countryBinding('selection')]);
+      asType(QueryType.SQL);
       expect(component.httpSemanticRun()).toBe(false);
     });
+
+    it.each(['ambiguous', 'missing-required'] as const)(
+      'keeps the semantic Run visible but off for a %s-only binding, with the reason shown by the binding row',
+      async (blocked) => {
+        component = await createComponent();
+        asType(QueryType.HTTP);
+        component.bindings.set([countryBinding('selection', blocked)]);
+        expect(component.httpSemanticRun()).toBe(true);
+        expect(component.hasBlockedBindings()).toBe(true);
+        expect(component.nativeRunDisabled()).toBe(true);
+        const html = readFileSync(
+          resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+          'utf8',
+        );
+        expect(html).toContain("binding.blocked === 'ambiguous'");
+        expect(html).toContain('required — no value supplied');
+      },
+    );
   });
 
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {

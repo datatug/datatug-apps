@@ -1522,7 +1522,7 @@
     </ion-card>
   } @else if (!demoDraftRecovery() && runError(); as error) {
     <ion-card color="danger">
-      <ion-card-content>
+      <ion-card-content role="alert">
         {{ error }}
         @if (sourceUnavailable() && availableSnapshot(); as snapshot) {
           <!-- api-contract.md "Bounded lookups and HTTP" — the user must explicitly

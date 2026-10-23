@@ -4523,17 +4523,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * the semantic path (result provenance, the explicit recorded-snapshot fallback): one primary Run action, the
    * Parameters card's. The HTTP editor stays for authoring, without its own Run.
    */
-  public httpSemanticRun(): boolean {
-    return (
-      this.queryState.queryType === QueryType.HTTP &&
+  public readonly httpSemanticRun = computed(
+    () =>
+      this.queryDef()?.request.queryType === QueryType.HTTP &&
       this.visibleBindings().some(
         (binding) =>
           binding.origin === 'selection' ||
           binding.origin === 'context' ||
           !!binding.blocked,
-      )
-    );
-  }
+      ),
+  );
 
   /** The result row an HTTP run was launched from (Run HTTP query action). */
   public readonly httpRowBinding = signal<HttpRowBinding | undefined>(undefined);
