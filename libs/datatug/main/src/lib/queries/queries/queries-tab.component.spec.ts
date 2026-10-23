@@ -10,6 +10,7 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
   GITHUB_PERSONAL_QUERIES_MESSAGE,
+  GITHUB_READ_ONLY_QUERIES_MESSAGE,
   QueriesService,
 } from '../queries.service';
 import { QueryType } from '../../models/definition/query-def';
@@ -216,6 +217,30 @@ describe('QueriesTabComponent — GitHub-store "Personal" tab empty state (S163)
     expect(page.querySelector('ion-button[title="New query"]')).not.toBeNull();
     expect(page.querySelector('ion-button[title="New folder"]')).toBeNull();
     expect(page.querySelector('ion-button[title="Delete folder"]')).toBeNull();
+    expect(fixture.componentInstance.supportsFolderMutations()).toBe(false);
+  });
+
+  it('replaces New query, New folder and Delete with a read-only hint for a project read straight from GitHub', () => {
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+    fixture.componentInstance.project.set(githubProject);
+    fixture.componentInstance.currentFolder = {
+      path: '~',
+      id: '',
+      folders: [{ id: 'existing' }],
+      items: [],
+    };
+    fixture.changeDetectorRef.markForCheck();
+    fixture.detectChanges();
+
+    const page = fixture.nativeElement as HTMLElement;
+    expect(page.querySelector('ion-button[title="New query"]')).toBeNull();
+    expect(page.querySelector('ion-button[title="New folder"]')).toBeNull();
+    expect(page.querySelector('ion-button[title="Delete folder"]')).toBeNull();
+    const hint = page.querySelector('[data-testid="queries-read-only"]');
+    expect(hint?.innerHTML).toContain('Read-only from GitHub');
+    expect(hint?.getAttribute('title')).toBe(GITHUB_READ_ONLY_QUERIES_MESSAGE);
+    expect(fixture.componentInstance.readOnlyProject()).toBe(true);
     expect(fixture.componentInstance.supportsFolderMutations()).toBe(false);
   });
 
