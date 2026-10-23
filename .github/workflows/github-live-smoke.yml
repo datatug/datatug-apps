@@ -41,15 +41,23 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/fetch-github-pins.mjs
-          jq -r '.pins[] | "\(.repo) \(.sha)"' apps/datatug-app/e2e/github-pins.json | while read -r repo sha; do
+          # No pipe into a reader that can stop early (grep -q/-m, head, cmp): under pipefail the writer's SIGPIPE fails
+          # the step. Every output is captured in full first, then inspected.
+          pins="$(jq -r '.pins[] | "\(.repo) \(.sha)"' apps/datatug-app/e2e/github-pins.json)"
+          while read -r repo sha; do
             dir="tmp/github-checkouts/$repo/$sha"
             test "$(gh api "repos/$repo/commits/$sha" --jq .sha)" = "$sha"
-            test "$(gh api "repos/$repo/git/trees/$sha?recursive=1" --jq '.truncated')" = false
-            test "$(gh api "repos/$repo/git/trees/$sha?recursive=1" --jq '[.tree[] | select(.type == "blob")] | length')" = "$(git -C "$dir" ls-tree -r "$sha" | grep -c ' blob ')"
-            file="$(git -C "$dir" ls-tree -r --name-only "$sha" | grep -E '\.(json|md|ya?ml)$' | head -1)"
-            curl -fsSL "https://raw.githubusercontent.com/$repo/$sha/$file" | cmp - <(git -C "$dir" show "$sha:$file")
+            tree="$(gh api "repos/$repo/git/trees/$sha?recursive=1")"
+            test "$(jq -r '.truncated' <<<"$tree")" = false
+            listing="$(git -C "$dir" ls-tree -r "$sha")"
+            test "$(jq '[.tree[] | select(.type == "blob")] | length' <<<"$tree")" = "$(awk '$2 == "blob"' <<<"$listing" | wc -l | tr -d ' ')"
+            file="$(awk -F '\t' '$2 ~ /\.(json|md|ya?ml)$/ { print $2; exit }' <<<"$listing")"
+            test -n "$file"
+            curl -fsSL -o "$RUNNER_TEMP/pin-live" "https://raw.githubusercontent.com/$repo/$sha/$file"
+            git -C "$dir" show "$sha:$file" > "$RUNNER_TEMP/pin-local"
+            cmp "$RUNNER_TEMP/pin-live" "$RUNNER_TEMP/pin-local"
             echo "pin ok: $repo@$sha ($file)"
-          done
+          done <<<"$pins"
 
       - name: Authenticate private Core artifact verification
         id: core-artifact-token
