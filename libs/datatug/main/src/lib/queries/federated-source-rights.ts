@@ -1,4 +1,4 @@
-import { ovdbNetworkFetch } from './native-query-failure';
+import { nativeQueryFetch } from './native-query-failure';
 import {
   decodeRightsInventory,
   decodeSourceRights,
@@ -209,7 +209,7 @@ export async function preflightSourceRights(
       ? AbortSignal.any([signal, timeout])
       : timeout;
     effectiveSignal.throwIfAborted();
-    const response = await ovdbNetworkFetch(
+    const response = await nativeQueryFetch(
       httpFetch,
       `${base}/v1/databases/${encodeURIComponent(database)}`,
       {
@@ -218,6 +218,7 @@ export async function preflightSourceRights(
         signal: effectiveSignal,
       },
       'capability_discovery',
+      true,
     );
     if (response.redirected || !response.ok)
       throw new Error('Source terms preflight unavailable.');

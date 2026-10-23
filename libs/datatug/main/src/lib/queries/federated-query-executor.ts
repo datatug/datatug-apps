@@ -1,4 +1,6 @@
-import { nativeHttpFailure, nativeQueryDiagnostic, nativeQueryFetch, ovdbNetworkFetch, withNativeQueryStage } from './native-query-failure';
+import { abortableWait } from '../ovdb/abortable-wait';
+import { isSelfRetryingFetch } from '../ovdb/ovdb-retrying-fetch';
+import { nativeHttpFailure, nativeQueryDiagnostic, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
 import { currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { IngitdbGithubSources } from './ingitdb-github-source';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
@@ -545,22 +547,7 @@ function admittedServerId(config: NonNullable<IQueryDef['federation']>, base: st
 }
 
 function retryDelay(attempt: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const timer = setTimeout(done, 200 * (attempt + 1));
-    function done(): void {
-      signal?.removeEventListener('abort', abort);
-      resolve();
-    }
-    function abort(): void {
-      clearTimeout(timer);
-      reject(signal?.reason);
-    }
-    signal?.addEventListener('abort', abort, { once: true });
-  });
+  return abortableWait(200 * (attempt + 1), signal);
 }
 
 /** Runs each leaf against OVDB directly and merges/aggregates in this runtime. */
@@ -951,22 +938,26 @@ async function runFederatedQueryInternal(
       value: string,
     ): Promise<Data> => {
       const url = `${baseUrl}/v1/databases/${lookup.database}/records/${lookup.collection}/${encodeURIComponent(value)}`;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      // A self-retrying fetch already waits out transient and pending-mount answers (about 110 s in total):
+      // one attempt here, so the waits are never multiplied by this loop.
+      const selfRetrying = isSelfRetryingFetch(httpFetch);
+      const attempts = selfRetrying ? 1 : 3;
+      for (let attempt = 0; attempt < attempts; attempt++) {
         signal?.throwIfAborted();
         const timeout = new AbortController();
-        const timer = setTimeout(() => timeout.abort(), 15000);
+        const timer = setTimeout(() => timeout.abort(), selfRetrying ? 120000 : 15000);
         try {
-          const response = await ovdbNetworkFetch(httpFetch, url, {
+          const response = await nativeQueryFetch(httpFetch, url, {
             headers: { Accept: 'application/json', ...authHeaders },
             redirect: 'error',
             signal: signal
               ? AbortSignal.any([signal, timeout.signal])
               : timeout.signal,
-          }, 'query_execution');
+          }, 'query_execution', true);
           if (!response.ok) {
             if (
               [408, 429, 502, 503, 504].includes(response.status) &&
-              attempt < 2
+              attempt < attempts - 1
             ) {
               await retryDelay(attempt, signal);
               continue;
@@ -986,7 +977,7 @@ async function runFederatedQueryInternal(
           return record.data;
         } catch (error) {
           signal?.throwIfAborted();
-          if (attempt === 2) throw error;
+          if (attempt === attempts - 1) throw error;
           if (
             !timeout.signal.aborted &&
             !(error instanceof TypeError) &&
@@ -1105,7 +1096,7 @@ async function runFederatedQueryInternal(
             stage = 'preparing';
             report();
           }
-          const response = await ovdbNetworkFetch(
+          const response = await nativeQueryFetch(
             httpFetch,
             `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`,
             {
@@ -1122,6 +1113,7 @@ async function runFederatedQueryInternal(
               signal,
             },
             'query_execution',
+            true,
           );
           if (response.status === 410)
             throw new Error(

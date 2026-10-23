@@ -222,8 +222,71 @@ describe('retryingOvdbFetch while a PostgreSQL edition is mounting', () => {
       .mockResolvedValueOnce(pending(null))
       .mockResolvedValueOnce(unavailable())
       .mockResolvedValueOnce(ok());
-    const response = await retryingOvdbFetch(base, { sleep, delaysMs: [5, 5] })(URL_);
+    const response = await retryingOvdbFetch(base, { sleep, delaysMs: [5, 5] })(
+      URL_,
+    );
     expect(response.status).toBe(200);
     expect(sleep.mock.calls).toEqual([[10_000], [5]]);
+  });
+
+  it('reads an HTTP-date Retry-After, ignores a malformed one, and caps a huge one', async () => {
+    const waits = async (retryAfter: string): Promise<number[]> => {
+      const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined);
+      const base = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(pending(retryAfter))
+        .mockResolvedValueOnce(ok());
+      await retryingOvdbFetch(base, { sleep })(URL_);
+      return sleep.mock.calls.map(([ms]) => ms);
+    };
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-10-23T10:00:00Z'));
+      expect(await waits('Fri, 23 Oct 2026 10:00:12 GMT')).toEqual([12_000]);
+      expect(await waits('Fri, 23 Oct 2026 09:00:00 GMT')).toEqual([2_000]);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await waits('soon-ish')).toEqual([10_000]);
+    expect(await waits('-5')).toEqual([10_000]);
+    expect(await waits('999999')).toEqual([30_000]);
+  });
+
+  it('ends a wait at once when the request is aborted, clearing the timer', async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const base = vi.fn<typeof fetch>(async () => pending());
+      const result = retryingOvdbFetch(base, { signal: controller.signal })(
+        URL_,
+      );
+      const settled = result.then(
+        () => 'resolved',
+        (error: unknown) => (error as Error).name,
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(vi.getTimerCount()).toBe(1);
+      controller.abort();
+      expect(await settled).toBe('AbortError');
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(base).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not retry a throw from onWaking or from the wait as a dropped connection', async () => {
+    const base = vi.fn<typeof fetch>(async () => pending());
+    const boom = new Error('onWaking failed');
+    await expect(
+      retryingOvdbFetch(base, {
+        onWaking: () => {
+          throw boom;
+        },
+        sleep: async () => undefined,
+      })(URL_),
+    ).rejects.toBe(boom);
+    expect(base).toHaveBeenCalledTimes(1);
   });
 });
