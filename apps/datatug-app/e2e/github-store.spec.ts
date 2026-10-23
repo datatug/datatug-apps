@@ -425,7 +425,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     );
     await expect(chinookSource).toContainText('sqlite3', { timeout: 15_000 });
     await chinookSource
-      .getByRole('button', { name: 'Registered catalog', exact: true })
+      .getByRole('button', { name: 'chinook (local)', exact: true })
       .click();
     await expect(page).toHaveURL(`${PAGES_URL}/env/local/db/chinook`);
     await expect(
