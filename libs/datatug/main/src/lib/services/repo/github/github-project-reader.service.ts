@@ -1,8 +1,3 @@
-import { LEGACY_DTQL_QUERY_TYPE } from './legacy-dtql-query';
-import {
-  selectTugqlBodyFile,
-  type IQueryBodyFile,
-} from './query-body-files';
 import { IEnvironmentPresentation } from '../../../models/definition/environments';
 import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
@@ -10,6 +5,12 @@ import { map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import type { IQueryDef } from '../../../models/definition/query-def';
 import { IRecordsetDef } from '../../../models/definition/recordset';
+import { LEGACY_DTQL_QUERY_TYPE } from './legacy-dtql-query';
+import {
+  IQueryBodyFile,
+  selectTugqlBodyFile,
+  TugqlBodyRepresentation,
+} from './query-body-files';
 import {
   GITHUB_DEFAULT_BRANCH_REF,
   GithubProjectIdError,
@@ -181,6 +182,8 @@ export interface IGithubWireQueryItem {
   text?: string;
   /** Set by the GitHub reader from the body file name; see ./query-body-files.ts. */
   representation?: 'text' | 'yaml';
+  /** See `IQueryDef.savedQueryType`. */
+  savedQueryType?: string;
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
@@ -1241,7 +1244,7 @@ export class GithubProjectReaderService {
     }
   }
 
-  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.http` sidecar). */
+  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.dtql`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
@@ -1519,12 +1522,12 @@ export class GithubProjectReaderService {
     return name.slice(0, -'.sql.json'.length);
   }
 
-  /** The sidecar BODY file for one definition file — `<id>.query.json` ->
-   * `<id>.query.<ext>` (ext from `type`: sql/http; a TugQL body is chosen
-   * from the sibling files by {@link selectTugqlBodyFile}); `<id>.sql.json` ->
-   * `<id>.sql` (the def filename itself, minus only the trailing `.json` —
-   * the legacy convention already spells the body's own extension into its
-   * "sql" segment). */
+  /** The sidecar BODY file for one definition file — `<id>.sql.json` ->
+   * `<id>.sql` (the legacy convention spells the body's own extension into
+   * its "sql" segment); a TugQL (or legacy DTQL) `<id>.query.json` -> the one
+   * body file {@link selectTugqlBodyFile} picks from the sibling file names;
+   * otherwise `<id>.query.http` for HTTP and `<id>.query.sql` for the rest.
+   */
   private static bodyFileFor(
     defFileName: string,
     type: string,
@@ -1760,23 +1763,39 @@ export class GithubProjectReaderService {
                 )
                 .map((entry) => entry.path.slice(siblingPrefix.length)),
             );
-            const body = GithubProjectReaderService.bodyFileFor(
-              fileName,
-              type,
-              siblings,
-            );
-            const bodyRelPath = folderName
-              ? `queries/${folderName}/${body.fileName}`
-              : `queries/${body.fileName}`;
-            return this.getRawText(projectId, bodyRelPath).pipe(
+            let body: IQueryBodyFile;
+            try {
+              body = GithubProjectReaderService.bodyFileFor(fileName, type, siblings);
+            } catch (err) {
+              return throwError(() => err);
+            }
+            const bodyDir = folderName ? `queries/${folderName}/` : 'queries/';
+            // The tree names the body file, so no request is wasted. Only when the tree lists no TugQL body at all (a
+            // truncated tree) is the YAML form probed after a 404 of the text form.
+            const stem = fileName.slice(0, -'.json'.length);
+            const probeYaml =
+              type === 'TugQL' &&
+              body.representation === 'text' &&
+              !siblings.has(`${stem}.tugql`);
+            return this.readQueryBody(
+              projectId,
+              bodyDir,
+              probeYaml
+                ? [body, { fileName: `${stem}.tugql.yaml`, representation: 'yaml' }]
+                : [body],
+            ).pipe(
               map(
-                (text): IGithubWireQueryItem => ({
+                (body): IGithubWireQueryItem => ({
                   id: def?.id || bareId,
                   title: def?.title,
                   createdAt: def?.createdAt,
-                  // The legacy DTQL type is TugQL (its body is the YAML form).
+                  // The legacy DTQL type is TugQL (its body is the YAML form). Hashes of saved
+                  // meaning uses keep the declared type (`savedQueryType`) until the demo project migrates.
                   type: type === LEGACY_DTQL_QUERY_TYPE ? 'TugQL' : type,
-                  text,
+                  ...(type === LEGACY_DTQL_QUERY_TYPE
+                    ? { savedQueryType: type }
+                    : {}),
+                  text: body.text,
                   ...(body.representation
                     ? { representation: body.representation }
                     : {}),
@@ -1801,6 +1820,23 @@ export class GithubProjectReaderService {
           }),
         );
       }),
+    );
+  }
+
+  /** The first candidate body that is not a 404 (`text` undefined when every one is). Any other failure fails the
+   * read: the next candidate is tried only when this one is absent. */
+  private readQueryBody(
+    projectId: string,
+    bodyDir: string,
+    candidates: readonly IQueryBodyFile[],
+  ): Observable<{ readonly text?: string; readonly representation?: TugqlBodyRepresentation }> {
+    const [candidate, ...rest] = candidates;
+    return this.getRawText(projectId, `${bodyDir}${candidate.fileName}`).pipe(
+      switchMap((text) =>
+        text === undefined && rest.length
+          ? this.readQueryBody(projectId, bodyDir, rest)
+          : of({ text, representation: candidate.representation }),
+      ),
     );
   }
 }

@@ -793,8 +793,9 @@ export class ServersPageComponent implements OnDestroy {
       catchError((error: unknown) => {
         if (isHostedReadRefused(error)) return this.readGithubConnections(target);
         // A signed-in visitor whose hosted API read fails for any other
-        // reason (e.g. 409 reauthorization_required when no GitHub credential
-        // is connected, 503 while GitHub is unavailable) still gets what the
+        // reason (e.g. 409 github_not_connected when no GitHub credential has
+        // ever been connected, 409 reauthorization_required when the grant
+        // expired or was revoked, 503 while GitHub is unavailable) still gets what the
         // repository itself publishes. If that read finds nothing, or fails
         // too, the original API error is what the page reports.
         return this.readGithubConnections(target).pipe(
