@@ -41,6 +41,10 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
       'chinook-demo@datatug@',
       '/chat',
     ],
+    ['Watch root', '/project/github.com/o/r/watch', 'r@o@', '/watch'],
+    ['Watch details', '/project/github.com/o/r/watch/w1', 'r@o@', '/watch/w1'],
+    ['nested Watch', '/project/github.com/o/r/nested/-/watch/w1', 'r@o@nested', '/watch/w1'],
+    ['pinned Watch', '/project/github.com/o/r/watch/w1?ref=release', 'r@o@@release', '/watch/w1'],
     [
       'a deep page',
       '/project/github.com/o/r/queries/folder/q1',
