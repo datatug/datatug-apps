@@ -391,7 +391,8 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
       await bag.getByRole('button', { name: 'Attach checked entries' }).click();
       await bag.getByRole('button', { name: 'Done' }).click();
 
-      await page.getByRole('button', { name: 'Composer' }).click();
+      await page.getByRole('button', { name: 'Session actions', exact: true }).click();
+      await page.getByRole('button', { name: 'Composer', exact: true }).click();
       await page.getByRole('button', { name: 'Configure' }).click();
       const providerDialog = page
         .locator('ion-modal')

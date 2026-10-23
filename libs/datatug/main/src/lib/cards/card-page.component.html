@@ -32,7 +32,10 @@
       }
     </ion-buttons>
   </ion-toolbar>
-  <ion-toolbar>
+
+</ion-header>
+
+<ion-content>
     <ion-segment
       [value]="tab()"
       aria-label="Card editor view"
@@ -48,10 +51,7 @@
         <ion-label>JSON</ion-label>
       </ion-segment-button>
     </ion-segment>
-  </ion-toolbar>
-</ion-header>
 
-<ion-content>
   @if (ctx.needsEnvironment()) {
     <div class="state" role="status">
       <h2>Choose an environment</h2>

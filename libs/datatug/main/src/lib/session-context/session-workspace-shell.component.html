@@ -5,6 +5,7 @@
 } @else {
 <ion-tabs #sessionTabs>
   <div slot="top" class="session-top">
+  <div class="session-header-row">
   <ion-tab-bar class="session-tabs" (ionTabButtonClick)="selectSession($event)">
     @for (session of workspace.openSessions(); track session.id) {
       <ion-tab-button [id]="'session-tab-' + session.id" [tab]="session.id" [href]="sessionHref(session.id)"
@@ -15,7 +16,7 @@
       <ion-button class="session-tab-close" fill="clear" size="small" [attr.aria-label]="'Close ' + session.title + ' tab'" (click)="closeSession(session.id)">×</ion-button>
     }
   </ion-tab-bar>
-  <ion-item lines="full" class="session-summary">
+  <div class="session-summary">
     <ion-buttons class="session-primary-actions">
       <ion-button (click)="chooserOpen.set(true)">{{ workspace.session() ? 'All sessions' : 'Open a session' }}</ion-button>
       <ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button>
@@ -26,10 +27,11 @@
       </ion-button>
       }
     </ion-buttons>
-  </ion-item>
+  </div>
   @if (workspace.session(); as session) {
-    <ion-item lines="full" class="session-summary session-secondary-row">
-      <ion-buttons class="session-secondary-actions">
+    <ion-button id="workspace-session-actions" aria-label="Session actions" title="Session actions" fill="clear">•••</ion-button>
+    <ion-popover trigger="workspace-session-actions" [dismissOnSelect]="true">
+      <ng-template><div class="session-secondary-actions">
         <ion-button (click)="beginRename()" [disabled]="!workspace.canExecute()">Rename</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
         <ion-button (click)="openWorkspacePage(invoiceOverviewAvailable() ? 'invoice-overview' : 'overview')">{{ invoiceOverviewAvailable() ? 'Invoice overview' : 'Project overview' }}</ion-button>
@@ -48,9 +50,10 @@
           <ion-button (click)="workspace.transition('restore')" [disabled]="workspace.busy()">Restore</ion-button>
         }
         <ion-button color="danger" (click)="deleteOpen.set(true)" [disabled]="workspace.busy() || (session.pendingRunCount || 0) > 0" [title]="(session.pendingRunCount || 0) > 0 ? 'Accepted work is unresolved; settle its receipt before deleting.' : 'Delete session'">Delete</ion-button>
-      </ion-buttons>
-    </ion-item>
+      </div></ng-template>
+    </ion-popover>
   }
+  </div>
   @if (workspace.agentReconnectRequired()) {
     <ion-item color="warning" role="status"><ion-label>Reconnect to the local agent to view saved sessions.</ion-label><ion-button slot="end" (click)="chooserOpen.set(true)">Reconnect</ion-button></ion-item>
   } @else if (workspace.authRequired()) {
