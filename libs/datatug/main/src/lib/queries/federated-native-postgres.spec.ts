@@ -399,4 +399,147 @@ describe('loopback OVDB servers', () => {
     );
     expect(result.recordset.rows).toHaveLength(1);
   });
+
+  it.each([
+    [
+      'an opaque origin',
+      { hostname: '', origin: 'null' },
+      'http://127.0.0.1:50501',
+    ],
+    [
+      'an https loopback base',
+      { hostname: 'datatug.app', origin: 'https://datatug.app' },
+      'https://localhost:50501',
+    ],
+    [
+      'a .localhost base',
+      { hostname: 'datatug.app', origin: 'https://datatug.app' },
+      'http://ovdb.localhost:50501',
+    ],
+  ])('refuses a loopback OVDB base from %s', async (_label, location, base) => {
+    vi.stubGlobal('location', location);
+    const fetcher = vi.fn<typeof fetch>();
+    const definition = {
+      ...local,
+      federation: { ...local.federation, ovdbBaseUrl: base },
+    } as IQueryDef;
+    await expect(
+      runFederatedQuery(
+        definition,
+        undefined,
+        '',
+        undefined,
+        undefined,
+        'full',
+        undefined,
+        undefined,
+        { fetch: fetcher },
+      ),
+    ).rejects.toThrow(LOCAL_OVDB_FROM_HOSTED_PAGE);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+});
+
+describe('native PostgreSQL whole reads are bounded', () => {
+  const yaml = (scan: string) => `from:
+  database: pg
+  schema: chinook
+  name: Track
+  alias: pg
+${scan}  joins:
+    - from: {database: lite, name: Genre, alias: sq}
+      on: [{left: {field: GenreId, source: pg}, op: '==', right: {field: GenreId, source: sq}}]
+columns:
+  - {field: GenreId, source: pg}`;
+  const definition = (scan: string) =>
+    ({
+      id: 'tracks',
+      title: 'Tracks',
+      request: { queryType: QueryType.TugQL, text: yaml(scan) },
+      federation: {
+        ovdbBaseUrl: 'https://ovdb.example.test',
+        tables: [
+          {
+            database: 'pg',
+            schema: 'chinook',
+            name: 'Track',
+            fields: ['GenreId'],
+          },
+          { database: 'lite', name: 'Genre', fields: ['GenreId'] },
+        ],
+      },
+      recordsets: [{ columns: [{ name: 'GenreId', type: 'integer' }] }],
+    }) as unknown as IQueryDef;
+  const run = (
+    def: IQueryDef,
+    pg: (body: Record<string, unknown>) => Response,
+  ) => {
+    const bodies: Record<string, unknown>[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      if (!String(input).includes('/pg/'))
+        return json({ records: [{ key: 'Genre/1', data: { GenreId: 1 } }] });
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      bodies.push(body);
+      return pg(body);
+    });
+    return {
+      bodies,
+      result: runFederatedQuery(
+        def,
+        undefined,
+        '',
+        undefined,
+        undefined,
+        'full',
+        undefined,
+        undefined,
+        { fetch: fetcher },
+      ),
+    };
+  };
+  const rows = (count: number) =>
+    Array.from({ length: count }, () => ({ data: { GenreId: 1 } }));
+
+  it('caps an unlimited leaf at the server read size and refuses a read that may be cut there', async () => {
+    const { bodies, result } = run(definition(''), () =>
+      json({ records: rows(1000), complete: true }),
+    );
+    await expect(result).rejects.toThrow(
+      'OVDB pg Track has more rows than one PostgreSQL read returns (1000). Add a scan limit to this source.',
+    );
+    expect(bodies[0]['limit']).toBe(1000);
+  });
+
+  it('accepts an unlimited leaf whose whole result fits in one read', async () => {
+    const { bodies, result } = run(definition(''), () =>
+      json({ records: rows(3), complete: true }),
+    );
+    expect((await result).recordset.rows).toHaveLength(3);
+    expect(bodies[0]['limit']).toBe(1000);
+  });
+
+  it('refuses a whole read that does not say it is complete', async () => {
+    const { result } = run(definition('  scan: {orderBy: [{field: GenreId}], limit: 5}\n'), () =>
+      json({ records: rows(1) }),
+    );
+    await expect(result).rejects.toThrow('OVDB pg returned an invalid result.');
+  });
+
+  it('refuses a truncated body with its own message', async () => {
+    const { result } = run(
+      definition('  scan: {orderBy: [{field: GenreId}], limit: 5}\n'),
+      () =>
+        new Response('{"records":[{"data":{"GenreId":1}}', {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    await expect(result).rejects.toThrow('OVDB pg returned an invalid result.');
+  });
+
+  it('reports a failed whole read by status', async () => {
+    const { result } = run(definition('  scan: {orderBy: [{field: GenreId}], limit: 5}\n'), () =>
+      json({ error: { code: 'invalid' } }, 400),
+    );
+    await expect(result).rejects.toThrow('OVDB pg query failed (400).');
+  });
 });

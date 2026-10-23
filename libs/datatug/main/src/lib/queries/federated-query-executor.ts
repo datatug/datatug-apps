@@ -268,19 +268,27 @@ function typed(value: unknown): TypedValue {
 
 const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
 
+/** The most rows a native PostgreSQL OVDB mount returns for one whole (unpaged) read. */
+const NATIVE_POSTGRES_WHOLE_READ_ROWS = 1000;
+
 /** Shown when a hosted page runs a query whose OVDB server is on the visitor's own computer. */
 export const LOCAL_OVDB_FROM_HOSTED_PAGE =
   'This query reads an OpenVaultDB server on your own computer, so it runs only in a DataTug app you run locally. The project README shows how to start both.';
 
 /** A page served from this computer may reach a loopback OVDB; a hosted page never tries (no local-network prompt, no request). */
 function pageMayReachLoopback(): boolean {
-  const host = (globalThis as { location?: { hostname?: string } }).location?.hostname;
-  return !host || LOOPBACK_HOSTS.includes(host) || host === '::1' || host.endsWith('.localhost');
+  const location = (globalThis as { location?: { hostname?: string } }).location;
+  // No page at all (a non-browser runtime) has no local-network boundary to cross.
+  if (!location) return true;
+  // An opaque or blob origin has no hostname: it is not known to be local.
+  const host = location.hostname ?? '';
+  return LOOPBACK_HOSTS.includes(host) || host === '::1' || host.endsWith('.localhost');
 }
 
 function ovdbBaseUrl(raw: string): string {
   const url = new URL(raw);
-  if (url.protocol === 'http:' && LOOPBACK_HOSTS.includes(url.hostname) && !pageMayReachLoopback())
+  if ((url.protocol === 'http:' || url.protocol === 'https:') &&
+    (LOOPBACK_HOSTS.includes(url.hostname) || url.hostname.endsWith('.localhost')) && !pageMayReachLoopback())
     throw new Error(LOCAL_OVDB_FROM_HOSTED_PAGE);
   if (
     url.username ||
@@ -1133,7 +1141,11 @@ async function runFederatedQueryInternal(
       if (relation.schema) {
         // A native PostgreSQL mount answers a schema-qualified read whole and refuses
         // the snapshot paging headers (422 snapshot_unsupported), so ask once for the
-        // bounded result instead of opening a paged snapshot.
+        // bounded result instead of opening a paged snapshot. The server returns at
+        // most NATIVE_POSTGRES_WHOLE_READ_ROWS rows; a read that could be cut there is
+        // refused rather than treated as the whole source.
+        const requested = Math.min(remaining ?? NATIVE_POSTGRES_WHOLE_READ_ROWS, NATIVE_POSTGRES_WHOLE_READ_ROWS);
+        const capped = remaining === undefined || remaining > NATIVE_POSTGRES_WHOLE_READ_ROWS;
         stage = 'preparing';
         report();
         const response = await nativeQueryFetch(
@@ -1148,7 +1160,7 @@ async function runFederatedQueryInternal(
             },
             body: JSON.stringify({
               ...(JSON.parse(body) as Record<string, unknown>),
-              ...(remaining === undefined ? {} : { limit: remaining }),
+              limit: requested,
             }),
             redirect: 'error',
             signal,
@@ -1164,18 +1176,26 @@ async function runFederatedQueryInternal(
           throw new Error(
             `OVDB ${relation.database} query failed (${response.status}).`,
           );
-        const whole = (await response.json()) as {
-          readonly records?: unknown;
-          readonly complete?: unknown;
-        };
+        let whole: { readonly records?: unknown; readonly complete?: unknown };
+        try {
+          whole = strictJson(await response.text()) as typeof whole;
+        } catch {
+          throw new Error(`OVDB ${relation.database} returned an invalid result.`);
+        }
+        if (!whole || typeof whole !== 'object' || Array.isArray(whole))
+          throw new Error(`OVDB ${relation.database} returned an invalid result.`);
         if (!rightsHandledByTransport) rights.accept({ database: relation.database as string, name: relation.name }, whole as unknown as Record<string, unknown>);
         if (
           !Array.isArray(whole.records) ||
-          whole.complete === false ||
-          (remaining !== undefined && whole.records.length > remaining)
+          whole.complete !== true ||
+          whole.records.length > requested
         )
           throw new Error(
             `OVDB ${relation.database} returned an invalid result.`,
+          );
+        if (capped && whole.records.length === requested)
+          throw new Error(
+            `OVDB ${relation.database} ${relation.name} has more rows than one PostgreSQL read returns (${NATIVE_POSTGRES_WHOLE_READ_ROWS}). Add a scan limit to this source.`,
           );
         // Relational rows carry no OVDB record key; their position keys them within this read.
         const records = (whole.records as readonly OvdbRecord[]).map(
