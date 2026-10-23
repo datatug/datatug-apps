@@ -4,7 +4,11 @@
       <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
       <div class="chat-header-title">
       <sneat-datatug-page-title pageTitle="Chat" [heading]="true" [compact]="true" />
-      @if (!narrow()) { <ng-container [ngTemplateOutlet]="sessionSelect" /> }
+      <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
+        @for (session of sessions(); track session.id) {
+          <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
+        }
+      </ion-select>
       </div>
       <ion-buttons slot="end">
         <ion-button aria-label="New chat" title="New chat" (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()"><ion-icon slot="icon-only" name="add-outline" /></ion-button>
@@ -18,21 +22,7 @@
         </div></ng-template>
       </ion-popover>
     </ion-toolbar>
-    <!-- Phones: the session picker gets its own row so the page title stays readable. -->
-    @if (narrow()) {
-      <ion-toolbar class="chat-session-toolbar">
-        <ng-container [ngTemplateOutlet]="sessionSelect" />
-      </ion-toolbar>
-    }
   </ion-header>
-
-  <ng-template #sessionSelect>
-    <ion-select class="chat-session-select" aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
-      @for (session of sessions(); track session.id) {
-        <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
-      }
-    </ion-select>
-  </ng-template>
 
   <ng-template #failureView let-failure>
     <div class="turn-error" role="alert">

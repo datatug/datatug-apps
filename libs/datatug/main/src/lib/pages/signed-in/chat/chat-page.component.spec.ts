@@ -197,22 +197,6 @@ describe('ChatPageComponent failed turns', () => {
     expect(component.projectTitle()).toBe('datatug-demo-project');
   });
 
-  it.each([
-    [false, 'chat-header-title'],
-    [true, 'chat-session-toolbar'],
-  ])('renders exactly one session picker (narrow=%s) inside .%s', async (narrow, container) => {
-    const matchMedia = vi.fn(() => ({ matches: narrow, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
-    vi.stubGlobal('matchMedia', matchMedia);
-    try {
-      await render([]);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-    const pickers = (fixture.nativeElement as HTMLElement).querySelectorAll('ion-select.chat-session-select');
-    expect(pickers.length).toBe(1);
-    expect(pickers[0].closest('.' + container)).not.toBeNull();
-  });
-
   it('asks a signed-out visitor to sign in for Managed AI instead of reporting the allowance as unavailable', async () => {
     await render([]);
     const component = fixture.componentInstance;

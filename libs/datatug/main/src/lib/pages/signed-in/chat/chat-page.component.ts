@@ -108,8 +108,6 @@ export class ChatPageComponent {
     const current = project?.ref?.projectId === id ? project : undefined;
     return current?.brief?.title || current?.summary?.title || id;
   });
-  /** Phones move the session picker to its own header row, so exactly one picker is rendered at a time. */
-  readonly narrow = signal(false);
   /** Managed AI needs a signed-in DataTug account; a signed-out visitor gets a sign-in prompt, not an allowance error. */
   readonly signedOut = computed(() => this.authInitialized() && !this.authIdentity());
   readonly seedState = signal<'loading' | 'ready' | 'error'>('loading');
@@ -188,13 +186,6 @@ export class ChatPageComponent {
       const runtime = params.get('aiRuntime') || '';
       if (environment !== this.environment() || connection !== this.connectionId() || runtime !== this.runtimeId()) { this.environment.set(environment); this.connectionId.set(connection); this.runtimeId.set(runtime); this.resetCurrentSession(true); }
     });
-    const narrowQuery = typeof window !== 'undefined' ? window.matchMedia?.('(max-width: 540px)') : undefined;
-    if (narrowQuery) {
-      this.narrow.set(narrowQuery.matches);
-      const onNarrowChange = (event: MediaQueryListEvent) => this.narrow.set(event.matches);
-      narrowQuery.addEventListener?.('change', onNarrowChange);
-      this.destroyRef.onDestroy(() => narrowQuery.removeEventListener?.('change', onNarrowChange));
-    }
     this.destroyRef.onDestroy(() => {
       this.requestController?.abort();
       this.contextController?.abort();
