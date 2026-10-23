@@ -7,6 +7,8 @@ import {
   findViolations,
   parseAllowlist,
   compare,
+  compareToBase,
+  inlineTemplates,
 } from '../check-card-headers.mjs';
 
 const n = (html) => findViolations(html).violations.length;
@@ -133,4 +135,63 @@ test('allowlist: a stale entry fails (fixed file, or lower count)', () => {
     compare(new Map([['libs/a.component.html', 1]]), allow)[0],
     /STALE/,
   );
+});
+
+test('ng-container first child is looked through', () => {
+  const d = `<ion-item-divider color="light"></ion-item-divider>`;
+  assert.equal(n(`<ion-card><ng-container>${d}</ng-container></ion-card>`), 0);
+  assert.equal(
+    n(`<ion-card><ng-container><p>x</p></ng-container></ion-card>`),
+    1,
+  );
+});
+
+test('ng-template first child does not pass', () => {
+  const d = `<ion-item-divider color="light"></ion-item-divider>`;
+  assert.equal(n(`<ion-card><ng-template>${d}</ng-template></ion-card>`), 1);
+});
+
+test('@if without @else needs a divider outside it', () => {
+  const d = `<ion-item-divider color="light"></ion-item-divider>`;
+  assert.equal(n(`<ion-card>@if (a) { ${d} }<p>x</p></ion-card>`), 1);
+  assert.equal(n(`<ion-card>${d}@if (a) { <p>x</p> }</ion-card>`), 0);
+  assert.equal(n(`<ion-card>@switch (k) { @case (1) { ${d} } }</ion-card>`), 1);
+});
+
+test('malformed allowlist counts fail', () => {
+  for (const bad of [
+    'libs/a.html: NaN',
+    'libs/a.html: x',
+    'libs/a.html',
+    'libs/a.html: 0',
+    'libs/a.html: 1.5',
+  ]) {
+    const problems = compare(new Map(), parseAllowlist(bad));
+    assert.ok(
+      problems.some((p) => /MALFORMED/.test(p)),
+      bad,
+    );
+  }
+});
+
+test('shrink-only against the base allowlist', () => {
+  const base = parseAllowlist('libs/a.html: 2\nlibs/b.html: 1\n');
+  assert.deepEqual(compareToBase(parseAllowlist('libs/a.html: 1\n'), base), []);
+  assert.match(
+    compareToBase(parseAllowlist('libs/a.html: 3\n'), base)[0],
+    /rose from 2 to 3/,
+  );
+  assert.match(
+    compareToBase(parseAllowlist('libs/c.html: 1\n'), base)[0],
+    /was added/,
+  );
+});
+
+test('inline templates in .ts are extracted with a line offset', () => {
+  const src =
+    "import {Component} from '@angular/core';\n@Component({\n  template: `\n<ion-card>x</ion-card>`,\n})\nclass A {}";
+  const [t] = inlineTemplates(src);
+  const { violations } = findViolations(t.text, 'a.ts', t.lineOffset);
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 4);
 });

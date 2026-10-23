@@ -59,7 +59,7 @@ The fix, worked out in `libs/datatug/main/src/lib/pages/signed-in/project/projec
 
 # Card headers
 
-Every `<ion-card>` starts with exactly one header row: `<ion-item-divider color="light">`, the title in an `ion-label`, any actions in `slot="end"`. Never a bare `ion-card-header` (with or without `ion-card-title`), and never a header-less card. This is the single pattern; do not pick another from the UI bible.
+Every `<ion-card>` starts with exactly one header row: `<ion-item-divider color="light">`, the title in an `ion-label`, any actions in `slot="end"`. Never a bare `ion-card-header` (with or without `ion-card-title`), and never a header-less card. This is the single pattern; do not pick another from the UI bible. (Founder 2026-10-23: sneat-specs `standards/frontend-ux/cards.md` is being updated to make this divider header the single required pattern, so this rule and the UI bible will match; it is not a local narrowing.)
 
 ```html
 <ion-card>
@@ -73,7 +73,7 @@ Every `<ion-card>` starts with exactly one header row: `<ion-item-divider color=
 
 Only exception: an error card, `<ion-card color="danger">`, whose divider is `color="danger"`. Nothing else.
 
-`tools/check-card-headers.mjs` (`pnpm run check:card-headers`, wired into CI's `build` job next to `check:zoneless`) parses every `*.component.html` under `libs/` and `apps/` and fails when a card's first child is not that divider (it understands `@if`/`@for`/`@switch`). `tools/card-header-allowlist.txt` lists the cards that still violate, as `path: count`. It may only shrink: a new violation fails, and so does a stale entry (convert the card, then lower or delete the line). Never add to it. Briefs for any lane that touches a template with a card must cite this section.
+`tools/check-card-headers.mjs` (`pnpm run check:card-headers`, wired into CI's `build` job next to `check:zoneless`) parses every `*.html` under `libs/` and `apps/`, plus inline `template:` literals in non-spec `.ts` files, and fails when a card's first child is not that divider (it understands `@if`/`@for`/`@switch`; a block with a missing `@else`/`@default`/`@empty` counts as no header, `ng-container` is looked through, `ng-template` never passes). `tools/card-header-allowlist.txt` lists the cards that still violate, as `path: count`. It may only shrink: a new violation fails, and so does a stale entry (convert the card, then lower or delete the line). Never add to it: CI also compares the list with the base branch's copy on pull requests and merge groups and fails if a count rose or a file was added. Briefs for any lane that touches a template with a card must cite this section.
 
 # Product architecture
 
