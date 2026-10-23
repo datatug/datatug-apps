@@ -1,6 +1,7 @@
 import { Component, ViewChild, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { SubscriptionRecoveryComponent } from '@sneat/components';
+import { UserAuthAccountsComponent } from '@sneat/auth-ui';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink, ActivatedRoute } from '@angular/router';
 import {
@@ -30,6 +31,7 @@ import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-ac
     RouterLink,
     SubscriptionRecoveryComponent,
     ThemeSwitcherComponent,
+    UserAuthAccountsComponent,
     DatatugServicesStoreModule,
     IonHeader,
     IonToolbar,
