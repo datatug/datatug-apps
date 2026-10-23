@@ -433,9 +433,10 @@ describe('EntityPage source preview states (zoneless)', () => {
       expect(
         el.querySelectorAll('[data-testid="entity-related-card"]'),
       ).toHaveLength(1);
-      expect(
-        el.querySelectorAll('[data-testid="entity-related-query"]'),
-      ).toHaveLength(1);
+      // Saved queries render as the shared query row (its imports are stubbed out in this spec).
+      expect(el.querySelectorAll('sneat-datatug-query-list-item')).toHaveLength(
+        1,
+      );
       expect(el.textContent).not.toContain('Name');
     } finally {
       related.cards = [];

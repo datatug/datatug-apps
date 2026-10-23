@@ -367,3 +367,9 @@
     --padding-start: 0;
   }
 }
+
+.query-read-only-note-link {
+  margin-left: 0.25rem;
+  color: var(--ion-color-primary);
+  text-decoration: underline;
+}

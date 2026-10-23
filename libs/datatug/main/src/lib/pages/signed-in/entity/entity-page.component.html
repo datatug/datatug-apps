@@ -90,18 +90,15 @@
             </ion-item>
           }
           @for (query of relatedQueries(); track query.id) {
-            <ion-item
-              button
-              detail
-              [routerLink]="queryLink(query.id)"
+            <sneat-datatug-query-list-item
+              [queryTitle]="query.title || query.id"
+              [type]="query.request?.queryType"
+              [createdAt]="query.createdAt"
+              [href]="queryLink(query.id)"
               [queryParams]="{ id: query.id }"
-              data-testid="entity-related-query"
-            >
-              <ion-label>
-                <h3>{{ query.title || query.id }}</h3>
-                <p>Saved query</p>
-              </ion-label>
-            </ion-item>
+              itemTestId="entity-related-query"
+              [loadText]="queryTextLoader(query.id)"
+            />
           }
         </ion-list>
       }

@@ -2,10 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
+  ElementRef,
   input,
   inject,
   signal,
   Type,
+  viewChild,
   WritableSignal,
 } from '@angular/core';
 import { SegmentPanelDirective } from './segment-panel.directive';
@@ -23,6 +26,7 @@ import {
   tabKey,
 } from '../../board-widget/nested-tab-path';
 import type { BoardQueryResults } from '../../../../core/board-query-results.service';
+import { revealSegmentButton } from '../../../../../components/segment-reveal/reveal-segment-button';
 
 @Component({
   selector: 'sneat-datatug-tabs-widget',
@@ -113,6 +117,28 @@ export class TabsWidgetComponent {
   });
   /** One tab needs no strip. */
   readonly showStrip = computed(() => this.tabs().length > 1);
+  private readonly strip = viewChild<string, ElementRef<HTMLElement>>('strip', {
+    read: ElementRef,
+  });
+
+  constructor() {
+    // Keep the selected tab fully in view on a narrow screen once Ionic and the new panel have rendered.
+    effect((onCleanup) => {
+      const segment = this.strip()?.nativeElement;
+      const key = this.active()?.key;
+      if (!segment || key === undefined) return;
+      let frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          const buttons: (HTMLElement & { value?: unknown })[] = Array.from(
+            segment.querySelectorAll('ion-segment-button'),
+          );
+          const button = buttons.find((candidate) => candidate.value === key);
+          if (button) revealSegmentButton(segment, button);
+        });
+      });
+      onCleanup(() => cancelAnimationFrame(frame));
+    });
+  }
 
   select(key: string): void {
     if (!this.tabs().some((tab) => tab.key === key)) return;

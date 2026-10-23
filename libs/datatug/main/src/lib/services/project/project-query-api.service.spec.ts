@@ -519,7 +519,9 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+  expect(reconnect).toEqual([
+    { ref, requiredScopes: ['repo'], reason: 'expired' },
+  ]);
 
   get.mockImplementation(() =>
     throwError(() => ({
@@ -531,7 +533,36 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+  expect(reconnect).toEqual([
+    { ref, requiredScopes: ['repo'], reason: 'expired' },
+  ]);
+
+  // A missing credential has its own code and is not reported as expired.
+  get.mockImplementation(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'github_not_connected' } },
+    })),
+  );
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(reconnect.at(-1)).toEqual({
+    ref,
+    requiredScopes: ['repo'],
+    reason: 'not_connected',
+  });
+
+  // A bare 403 carries no evidence of expiry.
+  get.mockImplementation(() => throwError(() => ({ status: 403 })));
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 403,
+  });
+  expect(reconnect.at(-1)).toEqual({
+    ref,
+    requiredScopes: ['repo'],
+    reason: 'access_denied',
+  });
 });
 
 it('discovers pending GitHub setup operations through the authenticated common API', async () => {

@@ -790,6 +790,114 @@ describe('navigating to a short address', () => {
     });
   });
 
+  // Back, Forward and the first navigation of the page: the browser, not the router, put the address there, question
+  // and all. The router writes the address only when the navigation it redirects to commits (after the project
+  // check, the lazy pages and their guards), so the question must be taken out of the address bar and the history
+  // entry when the guard sees it, not then. On a slow machine the commit came after the e2e spec's 1.5 s window.
+  describe('a question the browser put in the address leaves it at once, not when the redirect commits', () => {
+    /** The page's guard waits for `open`; `asked` resolves when the router has reached it. */
+    let gate: { asked: Promise<void>; open: (ok: boolean) => void };
+
+    function newGate() {
+      let open!: (ok: boolean) => void;
+      let asked!: () => void;
+      const opened = new Promise<boolean>((resolve) => (open = resolve));
+      gate = { asked: new Promise<void>((resolve) => (asked = resolve)), open };
+      return () => {
+        asked();
+        return opened;
+      };
+    }
+
+    async function openAt(typed: string) {
+      summary = vi.fn(() => of({ id: 'x' }));
+      branch = vi.fn(async () => ({ kind: 'found', branch: 'main' }));
+      const slowPage = newGate();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES.datatug },
+          { provide: GithubDefaultBranchLookup, useValue: { lookup: branch } },
+          { provide: GithubAddressNotices, useValue: { defaultBranchUnknown: vi.fn() } },
+          { provide: DatatugStoreGithubService, useValue: { getProjectSummary: summary } },
+          provideLocationMocks(),
+          provideRouter([
+            ...githubProjectRoutes.map((r, i) =>
+              i === 0
+                ? { ...r, loadComponent: () => ProblemStub }
+                : {
+                    ...r,
+                    loadChildren: () =>
+                      [
+                        { path: 'chat', component: PageStub },
+                        // the time the real page takes to load and to be allowed: until the test opens the gate
+                        { path: 'queries', component: PageStub, canActivate: [slowPage] },
+                      ] as Routes,
+                  },
+            ),
+            { path: '**', component: OtherStub },
+          ]),
+        ],
+      });
+      const location = TestBed.inject(Location) as unknown as SpyLocation;
+      location.setInitialPath(typed);
+      const router = TestBed.inject(Router);
+      router.initialNavigation();
+      await firstValueFrom(router.events.pipe(filter((e) => e instanceof NavigationEnd)));
+      return { location, router };
+    }
+
+    const ended = (router: Router) =>
+      firstValueFrom(
+        router.events.pipe(filter((e) => e instanceof NavigationEnd || e instanceof NavigationError)),
+      );
+
+    beforeEach(() => TestBed.resetTestingModule());
+
+    it('Back or Forward to a short address with a question', async () => {
+      const { location, router } = await openAt('/project/github.com/acme/demo/chat');
+      // what the e2e spec does: the browser goes to an entry with a question, and tells the router so
+      location.go('/project/github.com/acme/demo/queries?msg=Q&x=1');
+      const done = ended(router);
+      location.simulateUrlPop(location.path());
+      await gate.asked;
+      // the navigation the guard redirected to is still under way, and the question is already out
+      expect(location.path()).toBe('/project/github.com/acme/demo/queries?x=1');
+      gate.open(true);
+      await done;
+      expect(router.url).toBe('/project/github.com/acme/demo/queries?x=1');
+      expect(location.path()).toBe('/project/github.com/acme/demo/queries?x=1');
+      // the entry was replaced, not followed by another one: Back leads to the page before
+      location.back();
+      expect(location.path()).toBe('/project/github.com/acme/demo/chat');
+    });
+
+    it('the first navigation of the page, fragment and other parameters kept', async () => {
+      const typed = '/project/github.com/acme/demo/queries?x=1&msg=Q&q=R#f';
+      const opened = openAt(typed);
+      await gate.asked;
+      const location = TestBed.inject(Location) as unknown as SpyLocation;
+      expect(location.path()).toBe('/project/github.com/acme/demo/queries?x=1#f');
+      gate.open(true);
+      const { router } = await opened;
+      expect(router.url).toBe('/project/github.com/acme/demo/queries?x=1#f');
+      expect(location.path()).toBe('/project/github.com/acme/demo/queries?x=1#f');
+    });
+
+    it('an in-app navigation leaves the entry of the page it starts from alone', async () => {
+      const { location, router } = await openAt('/project/github.com/acme/demo/chat');
+      const changes = location.urlChanges.length;
+      const done = ended(router);
+      void router.navigateByUrl('/project/github.com/acme/demo/queries?msg=Q&x=1');
+      await gate.asked;
+      expect(location.path()).toBe('/project/github.com/acme/demo/chat');
+      gate.open(true);
+      await done;
+      expect(location.urlChanges.slice(changes)).toEqual(['/project/github.com/acme/demo/queries?x=1']);
+      location.back();
+      expect(location.path()).toBe('/project/github.com/acme/demo/chat');
+    });
+  });
+
   // review r2, minor 3: the router reads `(b)` in `a(b)` as an outlet group and drops it, and what follows, so the
   // address would open folder `a`, silently. It is not an address of a project; say so.
   describe('an address with an outlet group shows the unsupported-address page (review r2, minor 3)', () => {

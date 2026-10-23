@@ -53,7 +53,7 @@ export function agentBaseUrl(storeId: string): string {
  * | `/projects/projects_summary`         | `GET /projects/projects_summary`        | `datatug-store.service.ts` (`DatatugStoreService.getProjects`) |
  * | `/projects/project_summary`          | `GET /projects/project_summary`         | `project.service.ts` (`ProjectService.getProjectSummaryRequest`) |
  * | `/projects/project_full`             | `GET /projects/project_full`            | `project.service.ts` (`ProjectService.getFull`) |
- * | `/projects/create_project`           | `POST /projects/create_project`         | not called directly — `ProjectService.createNewProject` posts to the Firestore-backed `sneat-go` path instead (separate, pre-existing bug; out of this fix's scope) |
+ * | `/projects/create_project`           | `POST /projects/create_project`         | not called directly — `ProjectService.createNewProject` posts to the Firestore-backed Sneat API path instead (`/v0/datatug/...`, served by `datatug/datatug-cloud`, not `sneat-go`) (separate, pre-existing bug; out of this fix's scope) |
  * | `/projects/delete_project`           | `DELETE /projects/delete_project`       | not currently called by the client |
  * | `/folders/create_folder`             | `PUT /folders/create_folder`            | not currently called by the client |
  * | `/folders/delete_folder`             | `DELETE /folders/delete_folder`         | not currently called by the client |
@@ -63,7 +63,7 @@ export function agentBaseUrl(storeId: string): string {
  * | `/queries/delete_query`              | `DELETE /queries/delete_query`          | `project-item-service.ts` (`ProjectItemService.deleteProjItem`) |
  * | `/queries/all_queries`               | commented out server-side (`register.go`), route does not exist | `project-item-service.ts` (`ProjectItemService.getProjItems`/`getFolder`, itemsPath="queries") — pre-existing gap, flagged here rather than "fixed" since there is no server route to fix it against |
  * | `/boards/board`                      | `GET /boards/board`                     | `datatug-board.service.ts` (`DatatugBoardService.getBoard` — currently dead code, throws "not implemented" before making the call) |
- * | `/boards/create_board`               | `POST /boards/create_board`             | `datatug-board.service.ts` (`DatatugBoardService.createNewBoard` — routes through `SneatApiService`, i.e. the Firestore-backed `sneat-go` path, not this agent builder; separate pre-existing bug, out of scope) |
+ * | `/boards/create_board`               | `POST /boards/create_board`             | `datatug-board.service.ts` (`DatatugBoardService.createNewBoard` — routes through `SneatApiService`, i.e. the Firestore-backed Sneat API path (`/v0/datatug/...` is served by `datatug/datatug-cloud`, not `sneat-go`), not this agent builder; separate pre-existing bug, out of scope) |
  * | `/boards/save_board`                 | `PUT /boards/save_board`                | not currently called by the client |
  * | `/boards/delete_board`               | `DELETE /boards/delete_board`           | not currently called by the client |
  * | `/environment-summary`               | `GET /environment-summary`              | `environment.service.ts` (`EnvironmentService.getEnvSummary`) |
