@@ -798,9 +798,24 @@ test.describe('GitHub-store project — every side-menu page loads without error
       }
     });
 
+    const projectManifest = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        response.ok() &&
+        ['raw.githubusercontent.com', 'cdn.jsdelivr.net'].includes(url.hostname) &&
+        url.pathname.endsWith('/demo-project-1/datatug-project.json')
+      );
+    });
     await page.goto(
       `${PAGES_URL}/query/artists/artists_with_albums?id=artists%2Fartists_with_albums&editor=text&env=local`,
     );
+    const project = (await (await projectManifest).json()) as {
+      id: string;
+      title: string;
+    };
+    expect(project.id).toBe('datatug-demo-project');
+    expect(project.title).toEqual(expect.any(String));
+    expect(project.title.trim()).not.toBe('');
 
     // The page-title component's own "{Page title} @ {Project title}"
     // header (sneat-datatug-page-title.component.ts) — proves the route
@@ -810,7 +825,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(pageTitle).toContainText('Artists with albums', {
       timeout: 20_000,
     });
-    await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
+    await expect(pageTitle).toContainText(project.title);
 
     const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
