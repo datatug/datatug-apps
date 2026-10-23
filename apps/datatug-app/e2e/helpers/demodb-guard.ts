@@ -287,11 +287,11 @@ async function installRoute(context: BrowserContext): Promise<void> {
       } else counter.bump(url.hostname, 'fixture');
       return;
     }
-    if (request.method() === 'OPTIONS') return route.continue();
-    // Only the API has a quota (60 an hour per address, anonymous): raw files and the mirror go to the network unbudgeted.
-    if (url.hostname !== 'api.github.com') {
+    // Only the API has a quota (60 an hour per address, anonymous): raw files, the mirror and preflights go to the network
+    // unbudgeted. Fetched and fulfilled here (never `continue`d), so a live answer is the guard's, not an escape.
+    if (url.hostname !== 'api.github.com' || request.method() === 'OPTIONS') {
       counter.bump(url.hostname, 'live');
-      return route.continue();
+      return route.fulfill({ response: await route.fetch() });
     }
     const apiOnly = { bump: (host: string, kind: Kind) => counter.bump(host, kind), sum: (kind: Kind) => counter.counts.get('api.github.com')?.[kind] ?? 0 } as Counter;
     const result = await resolveRequest(githubLiveRules, url, request.method(), 'range' in request.headers(), apiOnly, async () => {
