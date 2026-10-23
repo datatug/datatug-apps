@@ -151,3 +151,79 @@ describe('retryingOvdbFetch', () => {
     }
   });
 });
+
+describe('retryingOvdbFetch while a PostgreSQL edition is mounting', () => {
+  const pending = (retryAfter: string | null = '30') =>
+    new Response(
+      '{"error":{"code":"database_unavailable","message":"This PostgreSQL edition is not available right now (pending)."}}',
+      {
+        status: 503,
+        headers: retryAfter === null ? {} : { 'Retry-After': retryAfter },
+      },
+    );
+  const URL_ = 'https://x.test/v1/databases/a';
+
+  it('honours Retry-After on a pending 503 and succeeds once mounted, using fake timers', async () => {
+    vi.useFakeTimers();
+    try {
+      const base = vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(pending())
+        .mockResolvedValueOnce(pending())
+        .mockResolvedValueOnce(pending())
+        .mockResolvedValueOnce(ok());
+      const waking = vi.fn();
+      const result = retryingOvdbFetch(base, { onWaking: waking })(URL_);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(base).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(base).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect((await result).status).toBe(200);
+      expect(base).toHaveBeenCalledTimes(4);
+      expect(waking.mock.calls.map(([info]) => info)).toEqual([
+        { attempt: 1, waitMs: 30_000 },
+        { attempt: 2, waitMs: 30_000 },
+        { attempt: 3, waitMs: 30_000 },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stops within the total budget and returns the 503 so Try again is shown', async () => {
+    vi.useFakeTimers();
+    try {
+      const base = vi.fn<typeof fetch>(async () => pending());
+      const result = retryingOvdbFetch(base)(URL_);
+      await vi.advanceTimersByTimeAsync(110_000);
+      const response = await result;
+      expect(response.status).toBe(503);
+      // 110 s budget / 30 s waits: 3 waits, 4 requests. Never a hammering loop.
+      expect(base).toHaveBeenCalledTimes(4);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a floor between retries and bounds the request count when Retry-After is tiny', async () => {
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined);
+    const base = vi.fn<typeof fetch>(async () => pending('0'));
+    const response = await retryingOvdbFetch(base, { sleep })(URL_);
+    expect(response.status).toBe(503);
+    expect(sleep.mock.calls.every(([ms]) => ms >= 2_000)).toBe(true);
+    expect(base.mock.calls.length).toBeLessThanOrEqual(13);
+  });
+
+  it('uses a default wait without Retry-After and leaves other 503s on the short back-off', async () => {
+    const sleep = vi.fn(async () => undefined);
+    const base = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(pending(null))
+      .mockResolvedValueOnce(unavailable())
+      .mockResolvedValueOnce(ok());
+    const response = await retryingOvdbFetch(base, { sleep, delaysMs: [5, 5] })(URL_);
+    expect(response.status).toBe(200);
+    expect(sleep.mock.calls).toEqual([[10_000], [5]]);
+  });
+});

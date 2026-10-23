@@ -1,4 +1,4 @@
-import { nativeHttpFailure, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
+import { nativeHttpFailure, nativeQueryDiagnostic, nativeQueryFetch, ovdbNetworkFetch, withNativeQueryStage } from './native-query-failure';
 import { currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { IngitdbGithubSources } from './ingitdb-github-source';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
@@ -956,13 +956,13 @@ async function runFederatedQueryInternal(
         const timeout = new AbortController();
         const timer = setTimeout(() => timeout.abort(), 15000);
         try {
-          const response = await httpFetch(url, {
+          const response = await ovdbNetworkFetch(httpFetch, url, {
             headers: { Accept: 'application/json', ...authHeaders },
             redirect: 'error',
             signal: signal
               ? AbortSignal.any([signal, timeout.signal])
               : timeout.signal,
-          });
+          }, 'query_execution');
           if (!response.ok) {
             if (
               [408, 429, 502, 503, 504].includes(response.status) &&
@@ -987,7 +987,11 @@ async function runFederatedQueryInternal(
         } catch (error) {
           signal?.throwIfAborted();
           if (attempt === 2) throw error;
-          if (!timeout.signal.aborted && !(error instanceof TypeError))
+          if (
+            !timeout.signal.aborted &&
+            !(error instanceof TypeError) &&
+            nativeQueryDiagnostic(error)?.reason !== 'network'
+          )
             throw error;
           await retryDelay(attempt, signal);
         } finally {
@@ -1101,7 +1105,8 @@ async function runFederatedQueryInternal(
             stage = 'preparing';
             report();
           }
-          const response = await httpFetch(
+          const response = await ovdbNetworkFetch(
+            httpFetch,
             `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/dtql`,
             {
               method: 'POST',
@@ -1116,6 +1121,7 @@ async function runFederatedQueryInternal(
               redirect: 'error',
               signal,
             },
+            'query_execution',
           );
           if (response.status === 410)
             throw new Error(

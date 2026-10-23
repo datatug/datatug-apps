@@ -149,4 +149,44 @@ describe('visible browser query execution', () => {
     }
   });
 
+
+  describe('unreachable OVDB server (TypeError: Failed to fetch)', () => {
+    const noFetch = (): typeof fetch => vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch;
+    const discoveryOkThenNoFetch = vi.fn(async (url: RequestInfo | URL) => {
+      if (/\/v1\/databases\/[^/]+$/.test(String(url))) return response({});
+      throw new TypeError('Failed to fetch');
+    }) as unknown as typeof fetch;
+    const message = (promise: Promise<unknown>) => promise.then(() => '', (error: Error) => error.message);
+    const reached = 'OVDB query could not be reached. Retry or open the saved query to inspect it.';
+    const noIndexedDb = () => vi.stubGlobal('indexedDB', { deleteDatabase: () => { const request: { onsuccess?: () => void } = {}; queueMicrotask(() => request.onsuccess?.()); return request; } });
+
+    it('maps a failed page read', async () => {
+      noIndexedDb();
+      const text = await message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: discoveryOkThenNoFetch }));
+      expect(text).toBe(reached);
+    });
+
+    it('maps a failed cross-db detail lookup after retries', async () => {
+      noIndexedDb();
+      vi.useFakeTimers();
+      try {
+        const http = vi.fn(async (url: RequestInfo | URL) => {
+          if (String(url).endsWith('/dtql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
+          throw new TypeError('Failed to fetch');
+        }) as unknown as typeof fetch;
+        const pending = message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: http }));
+        await vi.runAllTimersAsync();
+        expect(await pending).toBe(reached);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('maps a failed source-terms discovery request', async () => {
+      noIndexedDb();
+      const definition = { ...query, federation: { ...query.federation, expectedServerIdentity: { baseUrl: 'https://ovdb.example.test', serverId: 'fixture-server' } } } as unknown as IQueryDef;
+      const text = await message(runFederatedQuery(definition, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: noFetch() }));
+      expect(text).toBe('OVDB metadata could not be reached. Retry or open the saved query to inspect it.');
+    });
+  });
 });

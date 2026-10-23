@@ -7,6 +7,7 @@ import {
   nativeQueryDiagnostic,
   nativeQueryDiagnosticMessage,
   nativeQueryFetch,
+  ovdbNetworkFetch,
   NativeQueryFailure,
   withNativeQueryStage,
 } from './native-query-failure';
@@ -163,5 +164,15 @@ describe('finite native query failure', () => {
         },
       ),
     ).rejects.toBe(cause);
+  });
+
+  it('ovdbNetworkFetch maps only the browser network failure', async () => {
+    const network = ovdbNetworkFetch(vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch, 'https://ovdb.example.test/x?t=1', {}, 'query_execution');
+    await expect(network).rejects.toMatchObject({
+      message: 'OVDB query could not be reached. Retry or open the saved query to inspect it.',
+      diagnostic: { stage: 'query_execution', reason: 'network' },
+    });
+    const budget = new Error('Run exceeded its byte bound.');
+    await expect(ovdbNetworkFetch(vi.fn(async () => { throw budget; }) as unknown as typeof fetch, 'x', {}, 'query_execution')).rejects.toBe(budget);
   });
 });

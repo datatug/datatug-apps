@@ -186,9 +186,14 @@ addIcons({ arrowBackOutline });
               <ion-item lines="none">
                 <ion-spinner slot="start" />
                 <ion-label class="ion-text-wrap" role="status">
-                  Connecting to {{ entry()!.title }} through OpenVaultDB… A
-                  hosted database that has been idle can take a few seconds to
-                  wake up.
+                  @if (waking()) {
+                    The hosted demo database is waking up. This can take up to
+                    about 90 seconds; {{ entry()!.title }} will open by itself.
+                  } @else {
+                    Connecting to {{ entry()!.title }} through OpenVaultDB… A
+                    hosted database that has been idle can take a few seconds
+                    to wake up.
+                  }
                 </ion-label>
               </ion-item>
             </ion-card>
@@ -221,6 +226,7 @@ export class DemoOvdbPageComponent {
     () => findDemoPostgresqlEdition(this.databaseParam()),
   );
   protected readonly state = signal<OpenState>({ kind: 'idle' });
+  protected readonly waking = signal(false);
   protected readonly connection = computed(() => {
     const state = this.state();
     return state.kind === 'ready' ? state.connection : undefined;
@@ -259,8 +265,13 @@ export class DemoOvdbPageComponent {
       return;
     }
     this.state.set({ kind: 'connecting' });
+    this.waking.set(false);
     try {
-      const connection = await openDemoPostgresql(entry);
+      const connection = await openDemoPostgresql(entry, {
+        onWaking: () => {
+          if (epoch === this.#epoch) this.waking.set(true);
+        },
+      });
       if (epoch === this.#epoch) this.state.set({ kind: 'ready', connection });
     } catch (error) {
       if (epoch === this.#epoch)
