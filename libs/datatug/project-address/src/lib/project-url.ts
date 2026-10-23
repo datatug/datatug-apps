@@ -77,6 +77,8 @@ function sharedQueryPage(rest: string): boolean {
     rest === '/cards/new' ||
     /^\/card\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     rest === '/checks' ||
+    rest === '/watch' ||
+    /^\/watch\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     rest === '/detective' ||
     rest === '/incidents' ||
     rest === '/incidents/new' ||
@@ -272,13 +274,15 @@ export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
   'start-chat',
   'tags',
   'variables',
+  'watch',
   'widgets',
 ]);
 
 /** Whether a (raw or decoded, ASCII) segment names a project page. */
 function isPageName(segment: string | undefined): boolean {
   return (
-    segment !== undefined && GITHUB_PROJECT_PAGE_NAMES.has(asciiLowerCase(segment))
+    segment !== undefined &&
+    GITHUB_PROJECT_PAGE_NAMES.has(asciiLowerCase(segment))
   );
 }
 

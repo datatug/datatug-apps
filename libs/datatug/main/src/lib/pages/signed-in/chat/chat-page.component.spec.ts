@@ -160,6 +160,36 @@ describe('ChatPageComponent failed turns', () => {
     }));
   });
 
+  it.each(['rename', 'clear', 'delete'] as const)('waits for the session menu dismissal before %s', async (kind) => {
+    await render([]);
+    const component = fixture.componentInstance;
+    let resolve!: (dismissed: boolean) => void;
+    const popover = { dismiss: vi.fn(() => new Promise<boolean>((done) => { resolve = done; })) };
+    const pending = component.selectSessionAction(popover, kind);
+    expect(popover.dismiss).toHaveBeenCalledOnce();
+    expect(component.renameModalOpen()).toBe(false);
+    expect(component.sessionAction()).toBeUndefined();
+    resolve(true);
+    await pending;
+    if (kind === 'rename') expect(component.renameModalOpen()).toBe(true);
+    else expect(component.sessionAction()).toEqual({ kind, id: 's1' });
+  });
+
+  it.each(['cancelled', 'identity changed', 'session changed', 'busy', 'destroyed'] as const)('does not open a session action after menu dismissal when %s', async (change) => {
+    await render([]);
+    const component = fixture.componentInstance;
+    let resolve!: (dismissed: boolean) => void;
+    const pending = component.selectSessionAction({ dismiss: () => new Promise<boolean>((done) => { resolve = done; }) }, 'delete');
+    if (change === 'identity changed') authState.next({ status: 'authenticated', user: { uid: 'other-actor' } });
+    if (change === 'session changed') component.activeSessionId.set('other-session');
+    if (change === 'busy') component.sessionBusy.set(true);
+    if (change === 'destroyed') fixture.destroy();
+    resolve(change !== 'cancelled');
+    await pending;
+    expect(component.sessionAction()).toBeUndefined();
+    expect(component.renameModalOpen()).toBe(false);
+  });
+
   it.each(['auth', 'environment', 'connection'])('cancels generic AI and prevents stale result persistence when %s changes', async (change) => {
     await render([], { storeId: 'local', projectId: 'equipment-project' }, { env: 'prod', aiConnection: 'factory' });
     const component = fixture.componentInstance;
