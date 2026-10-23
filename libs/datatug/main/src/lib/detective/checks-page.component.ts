@@ -3,6 +3,7 @@ import type { EvidenceLink } from '../evidence/evidence-link';
 import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
+import { WatchClientService } from '../watch/watch-client.service';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
 import {
   EvidenceSharePanelComponent,
@@ -1311,6 +1312,39 @@ export class ChecksPageComponent {
         `${added} matching Case inputs copied for review. Run uses the values shown below.`,
       );
   }
+  protected createWatch(): void {
+    const check = this.current(),
+      ref = this.scope.ref();
+    if (!check || !ref) return;
+    const inputs: Record<string, DetectiveInputValue> = {};
+    try {
+      for (const input of check.inputs) {
+        const text = this.runInputText()[input.name];
+        if (text?.value.trim())
+          inputs[input.name] = parseInputValue(
+            text.value,
+            input.type,
+            input.cardinality,
+            text.end,
+          );
+      }
+      this.evidenceInjector.get(WatchClientService).seed = {
+        project: ref.projectId,
+        check,
+        environment: this.environment(),
+        inputs,
+      };
+      const url = this.router.parseUrl(projectPageHref(ref, ['watch', 'new']));
+      url.queryParams = { ...url.queryParams, checkId: check.id };
+      void this.router.navigateByUrl(url);
+    } catch (error) {
+      this.error.set(
+        error instanceof Error
+          ? error.message
+          : 'Review the Check inputs before creating a Watch.',
+      );
+    }
+  }
   protected async run(): Promise<void> {
     const context = this.scope.context();
     const identity = this.pageIdentity();
@@ -1387,11 +1421,9 @@ export class ChecksPageComponent {
         if (!ref) return;
         signal = AbortSignal.any([
           signal,
-          this.nativeRunLifetime.capture(
-            ref,
-            context.principal,
-            { environment },
-          ).signal,
+          this.nativeRunLifetime.capture(ref, context.principal, {
+            environment,
+          }).signal,
         ]);
       } catch (error) {
         this.error.set(

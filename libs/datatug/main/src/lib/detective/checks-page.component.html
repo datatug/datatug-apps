@@ -3,9 +3,7 @@
     <ion-buttons slot="start"
       ><ion-menu-button /><ion-back-button [defaultHref]="checksUrl()"
     /></ion-buttons>
-    <ion-title
-      >Checks & Validators<sneat-datatug-business-clock /></ion-title
-    >
+    <ion-title>Checks & Validators<sneat-datatug-business-clock /></ion-title>
   </ion-toolbar>
 </ion-header>
 
@@ -1176,6 +1174,12 @@
                 </p>
               </ion-label>
               <ion-buttons slot="end">
+                <ion-button
+                  color="medium"
+                  (click)="createWatch()"
+                  [disabled]="!state()?.capabilities?.canRead"
+                  >Create Watch</ion-button
+                >
                 <ion-button
                   class="check-detail-edit-action check-detail-compact-action"
                   color="medium"
