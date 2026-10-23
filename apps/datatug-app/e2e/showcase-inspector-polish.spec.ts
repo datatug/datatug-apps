@@ -12,6 +12,11 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
       test.skip(!source, 'requires the paired committed demo checkout');
       if (!source) return;
+      // The captured metadata predates server identities; answer with the identity the saved query selects
+      // (expectedServerIdentity, the same contract helpers/country-comparison-fixture.ts follows).
+      const definition = JSON.parse(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.json'), 'utf8'));
+      const serverId: string | undefined = definition.federation?.expectedServerIdentity?.serverId;
+      const metadata = (database: 'northwind' | 'chinook') => (serverId ? { ...snapshot[database], serverId } : snapshot[database]);
       let posts = 0;
       const cloudPrefix = '/__datatug_public_ovdb/cloud';
       const localOrigin = new URL(testInfo.project.use.baseURL ?? 'http://localhost').origin;
@@ -24,8 +29,8 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
           posts++;
           expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.dtql'), 'utf8'));
           await route.fulfill({ json: snapshot.comparison });
-        } else if (path === '/v1/databases/northwind') await route.fulfill({ json: snapshot.northwind });
-        else if (path === '/v1/databases/chinook') await route.fulfill({ json: snapshot.chinook });
+        } else if (path === '/v1/databases/northwind') await route.fulfill({ json: metadata('northwind') });
+        else if (path === '/v1/databases/chinook') await route.fulfill({ json: metadata('chinook') });
         else await route.abort();
       });
       // Unrelated auto charts may show their normal network error; this is a held-result layout check.
