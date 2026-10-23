@@ -12,6 +12,7 @@ import {
   readPendingGithubReconnect,
   safeGitHubReconnectReturnUrl,
 } from './github-reauthorization-banner.component';
+import { digestOAuthState } from './oauth-state-digest';
 
 describe('GitHub reauthorization handoff', () => {
   afterEach(() => sessionStorage.removeItem(GITHUB_RECONNECT_SESSION_KEY));
@@ -37,26 +38,28 @@ describe('GitHub reauthorization handoff', () => {
     expect(safeGitHubReconnectReturnUrl('/new-project?store=github&returnUrl=https://evil.example')).toBe('/');
   });
 
-  it('accepts only the stored OAuth state and a valid operation envelope', () => {
+  it('accepts only the stored OAuth state digest and a valid operation envelope', async () => {
     sessionStorage.setItem(
       GITHUB_RECONNECT_SESSION_KEY,
       JSON.stringify({
         operationID: '11111111-1111-4111-8111-111111111111',
         firebaseUID: 'firebase-actor',
-        oauthState: 'state-expected',
+        oauthStateDigest: await digestOAuthState('state-expected'),
         returnUrl: '/projects/repo?branch=work',
         requiredScopes: ['repo'],
       }),
     );
-    expect(readPendingGithubReconnect('different-state')).toBeUndefined();
-    expect(readPendingGithubReconnect('state-expected')).toMatchObject({
+    expect(readPendingGithubReconnect(await digestOAuthState('different-state'))).toBeUndefined();
+    expect(readPendingGithubReconnect(undefined)).toBeUndefined();
+    expect(readPendingGithubReconnect('state-expected')).toBeUndefined();
+    expect(readPendingGithubReconnect(await digestOAuthState('state-expected'))).toMatchObject({
       firebaseUID: 'firebase-actor',
       returnUrl: '/projects/repo?branch=work',
       requiredScopes: ['repo'],
     });
   });
 
-  it('offers reconnect for the matching private project and stores a state-bound internal return before redirecting', () => {
+  it('offers reconnect for the matching private project and stores a state-bound internal return before redirecting', async () => {
     TestBed.resetTestingModule();
     const ref: IProjectRef = {
       storeId: 'github.com',
@@ -97,10 +100,12 @@ describe('GitHub reauthorization handoff', () => {
       repository: 'repo',
       requiredScopes: ['repo', 'workflow'],
     });
-    expect(assign).toHaveBeenCalledWith(authorizationURL);
-    expect(JSON.parse(sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY) ?? 'null')).toMatchObject({
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith(authorizationURL));
+    const stored = sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY) ?? 'null';
+    expect(stored).not.toContain('expected-state');
+    expect(JSON.parse(stored)).toMatchObject({
       firebaseUID: 'firebase-actor',
-      oauthState: 'expected-state',
+      oauthStateDigest: await digestOAuthState('expected-state'),
       returnUrl: '/new-project?store=github',
       requiredScopes: ['repo', 'workflow'],
     });
