@@ -137,6 +137,7 @@ import {
   ellipsisHorizontal,
   globeOutline,
   informationCircleOutline,
+  openOutline,
   saveOutline,
   searchOutline,
   shieldCheckmarkOutline,
@@ -567,6 +568,7 @@ import {
   type FederatedQueryResult,
 } from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
+import { federationReadsOvdb } from '../../ingitdb-github-source';
 import type {
   LocalResultDescriptor,
   LocalResultRef,
@@ -2631,6 +2633,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.localOvdbCopyStatus.set('Clipboard access is unavailable; select the command to copy it.');
     }
   }
+  /** Only a query that sends something to its OVDB server asks for an OVDB token. */
+  public readonly readsOvdb = computed(() => federationReadsOvdb(this.queryDef()?.federation));
   public readonly ovdbDestination = computed(() => {
     try {
       return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;
@@ -6879,6 +6883,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ellipsisHorizontal,
       globeOutline,
       informationCircleOutline,
+      openOutline,
       saveOutline,
       searchOutline,
       shieldCheckmarkOutline,
