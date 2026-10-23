@@ -2668,7 +2668,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return this.runResult()?.provenance.mode === 'snapshot' &&
       this.savedResultBanner()?.kind === 'shown'
       ? 'Full-result chart preview is available after running the query.'
-      : `Full-result chart preview unavailable: ${reason} Loaded rows remain available in the grid.`;
+      : `No chart for this result. ${reason}`;
   });
   public readonly resultChartHeld = computed(() => {
     const result = this.runResult();

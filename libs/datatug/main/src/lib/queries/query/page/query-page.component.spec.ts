@@ -7425,7 +7425,7 @@ select (
       opener.openFromResult('rid-23');
       expect(created.resultChartUnavailableText()).toBe('Full-result chart preview is available after running the query.');
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
-      expect(created.resultChartUnavailableText()).toMatch(/^Full-result chart preview unavailable: /);
+      expect(created.resultChartUnavailableText()).toMatch(/^No chart for this result\. /);
     });
 
     it('starts the Current row pane closed for a wide result, one click to open', async () => {
