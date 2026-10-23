@@ -41,6 +41,21 @@ p.firebase-emulator-warning {
   // Secondary text. Ionic's `--ion-color-medium` is ~3:1 on white and ~5:1 on
   // the dark surfaces; this one is >= 6:1 on both. Use it for any muted text.
   --dt-text-muted: #5b5e66;
+  // Query type badges: one muted hue per type, validated as a categorical set
+  // (dataviz validate_palette.js, light and dark), dark enough that white badge
+  // text keeps >= 4.5:1. TugQL, DataTug's native format, is the muted brand
+  // primary; SQL is a neighbouring teal-blue, still well apart (normal-vision
+  // dE >= 15.5, CVD dE >= 9.7). Chroma sits just under the chart floor on
+  // purpose: badges are muted and always carry their text. Unknown: grey.
+  --datatug-query-type-tugql: color-mix(
+    in srgb,
+    var(--ion-color-primary) 75%,
+    #3a3f4a
+  );
+  --datatug-query-type-sql: #007480;
+  --datatug-query-type-http: #a8461c;
+  --datatug-query-type-other: #5f6368;
+  --datatug-query-type-text: #ffffff;
   --fb-ok-bg: #e9f5ed;
   --fb-err-bg: #fff0ee;
   --fb-err-fg: #932d24;
@@ -95,6 +110,14 @@ ion-split-pane {
 .ion-palette-dark {
   color-scheme: dark;
   --dt-text-muted: #b8bac2;
+  --datatug-query-type-tugql: color-mix(
+    in srgb,
+    var(--ion-color-primary) 65%,
+    #1e2230
+  );
+  --datatug-query-type-sql: #008170;
+  --datatug-query-type-http: #a95632;
+  --datatug-query-type-other: #62666b;
   --fb-ok-bg: #14301f;
   --fb-err-bg: #3d1a17;
   --fb-err-fg: #ffb4ab;

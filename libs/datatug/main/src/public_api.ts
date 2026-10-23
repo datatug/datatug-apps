@@ -71,3 +71,21 @@ export {
   canonicalJson,
 } from './lib/board/core/board-query-results.service';
 export * from './lib/analytics/usage-analytics';
+export {
+  QUERY_TYPE_DISPLAY_NAMES,
+  QueryTypeIconComponent,
+  queryTypeKey,
+  queryTypeLabel,
+} from './lib/components/query-type-icon/query-type-icon.component';
+export {
+  QUERY_PREVIEW_HOVER_DELAY_MS,
+  QUERY_PREVIEW_LINES,
+  QueryListItemComponent,
+  queryPreviewText,
+} from './lib/components/query-list-item/query-list-item.component';
+export { QueryTextPreviewService } from './lib/components/query-list-item/query-text-preview.service';
+export {
+  QueryItemHeadingComponent,
+  formatQueryTimestamp,
+  type QueryTimestamp,
+} from './lib/components/query-list-item/query-item-heading';

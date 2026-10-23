@@ -595,6 +595,90 @@ describe('ProjectPage rendering a local-agent store project', () => {
     );
   });
 
+  it('heads each overview card with a link to its full page and filters Boards and Entities client-side', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const assets = TestBed.inject(ProjectAssetsReadService);
+    vi.mocked(assets.boards).mockReturnValue(
+      of([
+        { id: 'sales', title: 'Sales board' },
+        { id: 'ops', title: 'Operations' },
+      ]) as never,
+    );
+    vi.mocked(assets.entities).mockReturnValue(
+      of([
+        { id: 'customer', title: 'Customer' },
+        { id: 'invoice', title: 'Invoice' },
+      ]) as never,
+    );
+    const page = fixture.componentInstance as unknown as {
+      retryMetadata(): void;
+      selectTab(tab: string): void;
+    };
+    page.retryMetadata();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const base = `/store/localhost:8989/project/${summary.id}`;
+    const card = () =>
+      el.querySelector('sneat-datatug-project-tab-panel') as HTMLElement & {
+        titleHref?: string;
+      };
+    // happy-dom can report a stale empty textContent for projected nodes, so
+    // read the rendered markup instead.
+    const rows = () =>
+      [...card().querySelectorAll('ion-list ion-label')].map((label) =>
+        label.innerHTML.replace(/<[^>]*>/g, '').trim(),
+      );
+    expect(card().getAttribute('panelTitle')).toBe('Boards');
+    expect(card().titleHref).toBe(`${base}/boards`);
+    expect(rows()).toEqual(['Sales board', 'Operations']);
+    fixture.componentInstance.boardFilter.set('SALES');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Sales board']);
+    fixture.componentInstance.boardFilter.set('zzz');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['No boards match “zzz”.']);
+
+    page.selectTab('entities');
+    await fixture.whenStable();
+    expect(card().getAttribute('panelTitle')).toBe('Entities');
+    expect(card().titleHref).toBe(`${base}/entities`);
+    fixture.componentInstance.entityFilter.set('inv');
+    await fixture.whenStable();
+    expect(rows()).toEqual(['Invoice']);
+
+    page.selectTab('databases');
+    await fixture.whenStable();
+    const servers = el.querySelector(
+      'sneat-datatug-project-database-servers-preview',
+    );
+    expect(servers).not.toBeNull();
+  });
+
+  it('places the DemoDB sandbox card above the environments and the tabs', async () => {
+    const fixture = await createPage(
+      'github.com',
+      'datatug-demo-project@datatug@demo-project-1',
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    const sandbox = el.querySelector('.sandbox-summary');
+    const environments = el.querySelector('.overview-environments');
+    const tabs = el.querySelector('.overview-tabs');
+    if (!sandbox || !environments || !tabs)
+      throw new Error('The sandbox card, environments and tabs must render.');
+    expect(sandbox.getAttribute('cardTitle')).toBe('Private DemoDB sandbox');
+    expect(
+      sandbox.compareDocumentPosition(environments) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      sandbox.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('settles the Boards asset list out of its loading state for a local agent', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();

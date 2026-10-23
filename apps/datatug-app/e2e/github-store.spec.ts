@@ -1073,13 +1073,13 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
       .toBe(PROJECT_URL);
     await projectOverviewButton(page, 'Databases').click();
     const connections = activePage(page).locator(
-      'sneat-datatug-demodb-connections ion-card',
+      'sneat-datatug-demodb-connections section.overview-tab-panel',
       { hasText: 'Demo databases' },
     );
     await expect(connections.getByText('Demo databases')).toBeVisible({
       timeout: 15_000,
     });
-    await expect(connections.locator('ion-item')).toHaveCount(6);
+    await expect(connections.locator('[data-testid^="dataset-"]')).toHaveCount(6);
     const chinook = connections.getByTestId('dataset-chinook');
     await expect(chinook).toContainText('SQLite');
     await expect(chinook).toContainText('PostgreSQL');
