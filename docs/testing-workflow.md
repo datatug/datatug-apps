@@ -6,7 +6,7 @@ When changing visible copy or selectors, search all browser and unit specs for t
 
 Run lint through the owning Nx project target, such as `pnpm nx lint datatug-main` for library UI and `pnpm nx lint datatug-app` for app/E2E code. A direct ESLint command from the workspace root does not load every project's Angular rules and cannot substitute for these checks. For a file-only command, explicitly select that project's ESLint configuration.
 
-For a group of related changes, keep them on one integration branch and PR. Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
+For a group of related changes, keep them on one integration branch; lane branches merge into it locally without PRs, and only the one integration-to-main PR runs full CI (`rule:integration-branch-default-flow` in `sneat-co/backstage`). Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
 
 There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the offline browser and real-agent lanes and their deploy gate requires them together with build and unit tests; the one live-API test is `e2e-postgres-ovdb.yml` (below). Focused tests still run during development. Do not skip the required build, test, or coverage gates.
 
