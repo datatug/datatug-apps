@@ -386,7 +386,8 @@
                           labelPlacement="end"
                           justify="start"
                           [disabled]="
-                            !user.channels.telegram || !telegramConnected()
+                            (!user.channels.telegram || !telegramConnected()) &&
+                            !channels().includes('telegram')
                           "
                           [checked]="channels().includes('telegram')"
                           (ionChange)="
@@ -412,7 +413,11 @@
                       fill="outline"
                       [disabled]="busy()"
                       (click)="connectTelegram()"
-                      >Connect Telegram</ion-button
+                      >{{
+                        telegramReconnectRequired()
+                          ? 'Reconnect Telegram'
+                          : 'Connect Telegram'
+                      }}</ion-button
                     ><ion-button
                       fill="clear"
                       [disabled]="busy()"
@@ -633,6 +638,19 @@
                 >
                 <ion-card-content
                   ><p>Choose how you receive updates for this Watch.</p>
+                  @if (telegramReconnectRequired()) {
+                    <ion-item color="warning" lines="none"
+                      ><ion-label class="ion-text-wrap"
+                        ><h3>Telegram: Needs reconnection</h3>
+                        <p>
+                          The bot can no longer message your Telegram account.
+                          Reconnect to resume Telegram notifications. This Watch
+                          stays active and your other selected channels keep
+                          working.
+                        </p></ion-label
+                      ></ion-item
+                    >
+                  }
                   <ion-list>
                     <ion-item
                       ><ion-checkbox
@@ -693,7 +711,8 @@
                           labelPlacement="end"
                           justify="start"
                           [disabled]="
-                            !user.channels.telegram || !telegramConnected()
+                            (!user.channels.telegram || !telegramConnected()) &&
+                            !channels().includes('telegram')
                           "
                           [checked]="channels().includes('telegram')"
                           (ionChange)="
@@ -724,7 +743,11 @@
                           fill="outline"
                           [disabled]="busy()"
                           (click)="connectTelegram()"
-                          >Connect Telegram</ion-button
+                          >{{
+                            telegramReconnectRequired()
+                              ? 'Reconnect Telegram'
+                              : 'Connect Telegram'
+                          }}</ion-button
                         >
                       } @else {
                         <ion-button
@@ -780,9 +803,13 @@
                         ><ion-label class="ion-text-wrap"
                           ><h3>
                             {{ label(delivery.channel) }} ·
-                            {{ label(delivery.state) }}
+                            {{ deliveryState(delivery) }}
                           </h3>
-                          @if (delivery.state === 'failed') {
+                          @if (
+                            delivery.state === 'failed' &&
+                            delivery.failureCode !==
+                              'TELEGRAM_RECIPIENT_UNAVAILABLE'
+                          ) {
                             <ion-button
                               fill="outline"
                               [disabled]="busy()"
@@ -799,7 +826,8 @@
                             !delivery.retryAt.startsWith('0001-')
                           ) {
                             <p>
-                              Retry: {{ delivery.retryAt | date: 'medium' }}
+                              Next attempt:
+                              {{ delivery.retryAt | date: 'medium' }}
                             </p>
                           }
                         </ion-label></ion-item

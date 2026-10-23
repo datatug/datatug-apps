@@ -192,9 +192,13 @@ export class WatchClientService {
     });
   }
   telegramStatus() {
-    return this.get<{ connected: boolean; botUsername: string }>(
-      'telegram/status',
-    );
+    return this.get<{
+      connected: boolean;
+      botUsername: string;
+      botId?: string;
+      reconnectRequired?: boolean;
+      connectionError?: string;
+    }>('telegram/status');
   }
   telegramConnect() {
     return this.post<{ url: string; expiresAt: string }>(

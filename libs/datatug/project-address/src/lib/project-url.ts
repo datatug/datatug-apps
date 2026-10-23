@@ -274,6 +274,7 @@ export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
   'start-chat',
   'tags',
   'variables',
+  'watch',
   'widgets',
 ]);
 

@@ -1,3 +1,4 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import {
@@ -311,6 +312,156 @@ describe('Project Watch flow', () => {
     expect(navigate).toHaveBeenCalledWith(
       '/space/s/store/firestore/project/p/watch/watch-one',
       { replaceUrl: true },
+    );
+  });
+
+  it.each(['disconnect', 'switch identity', 'destroy'])(
+    'does not enable or navigate after %s while subscription is pending',
+    async (action) => {
+      const fixture = await mount('watch/new');
+      const navigate = vi
+        .spyOn(TestBed.inject(Router), 'navigateByUrl')
+        .mockResolvedValue(true);
+      let finish: (value: { ok: boolean }) => void = () => undefined;
+      client.subscribe.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const instance = fixture.componentInstance as unknown as {
+        input: (name: string, part: 'value', value: string) => void;
+        save: () => Promise<void>;
+        disconnect: () => void;
+        current: () => WatchDefinition | undefined;
+        busy: () => boolean;
+      };
+      instance.input('order_id', 'value', '11045');
+      const pending = instance.save();
+      await vi.waitFor(() => expect(client.subscribe).toHaveBeenCalled());
+      if (action === 'destroy') fixture.destroy();
+      else if (action === 'disconnect') {
+        client.identity.set(undefined);
+        instance.disconnect();
+        expect(instance.busy()).toBe(false);
+      } else client.identity.set({ ...user, id: 'bob' });
+      finish({ ok: true });
+      await pending;
+      expect(client.lifecycle).not.toHaveBeenCalled();
+      expect(navigate).not.toHaveBeenCalled();
+      expect(instance.current()).toBeUndefined();
+    },
+  );
+
+  it('lets an existing shared owner save without promoting a personal Watch', async () => {
+    client.identity.set({ ...user, sharedEditor: false });
+    client.definition.mockResolvedValue({
+      definition: { ...watch, visibility: 'shared' },
+    });
+    const fixture = await mount();
+    const navigate = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
+    const instance = fixture.componentInstance as unknown as {
+      edit: () => Promise<void>;
+      save: () => Promise<void>;
+    };
+    await instance.edit();
+    await instance.save();
+    expect(client.save).toHaveBeenCalled();
+    expect(client.save.mock.calls[0][0].visibility).toBe('shared');
+    expect(navigate).toHaveBeenCalled();
+  });
+
+  it.each([403, 404])(
+    'clears private details and actions after access is withdrawn (%s)',
+    async (status) => {
+      const fixture = await mount();
+      client.definition.mockRejectedValueOnce(
+        new HttpErrorResponse({ status }),
+      );
+      await (
+        fixture.componentInstance as unknown as { refresh: () => Promise<void> }
+      ).refresh();
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).not.toContain(
+        'Carrier assignment',
+      );
+      expect(fixture.nativeElement.textContent).not.toContain(
+        'Save preferences',
+      );
+      expect(fixture.nativeElement.textContent).toContain(
+        'No accessible Watch',
+      );
+    },
+  );
+
+  it('renders a private blocked Telegram connection without changing selected channels or Watch status', async () => {
+    client.telegramStatus.mockResolvedValue({
+      connected: false,
+      botUsername: 'ShippingWatchBot',
+      reconnectRequired: true,
+      connectionError: 'TELEGRAM_RECIPIENT_UNAVAILABLE',
+    });
+    client.subscription.mockResolvedValue({
+      subscription: {
+        watchId: watch.id,
+        channels: ['in_app', 'email', 'telegram'],
+      },
+    });
+    client.deliveries.mockResolvedValue({
+      deliveries: [
+        {
+          id: 'blocked',
+          watchId: watch.id,
+          channel: 'telegram',
+          state: 'failed',
+          failureCode: 'TELEGRAM_RECIPIENT_UNAVAILABLE',
+          attempts: 1,
+        },
+        {
+          id: 'email',
+          watchId: watch.id,
+          channel: 'email',
+          state: 'delivered',
+          attempts: 1,
+        },
+      ],
+    });
+    const fixture = await mount();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Telegram: Needs reconnection');
+    expect(text).toContain('Reconnect Telegram');
+    expect(text).toContain('Not delivered');
+    expect(text).not.toContain('Retry delivery');
+    expect(text).toContain('Email · Delivered');
+    expect(text).toContain('This Watch stays active');
+    const checkbox = [
+      ...fixture.nativeElement.querySelectorAll('ion-checkbox'),
+    ].find((element: Element) => element.textContent?.includes('Telegram'));
+    expect(checkbox.checked).toBe(true);
+    expect(client.subscribe).not.toHaveBeenCalled();
+  });
+
+  it('shows a temporary Telegram retry and next attempt without asking for reconnection', async () => {
+    client.deliveries.mockResolvedValue({
+      deliveries: [
+        {
+          id: 'retry',
+          watchId: watch.id,
+          channel: 'telegram',
+          state: 'retry',
+          failureCode: 'TELEGRAM_RATE_LIMITED',
+          attempts: 1,
+          retryAt: '2030-01-02T10:00:00Z',
+        },
+      ],
+    });
+    const fixture = await mount();
+    expect(fixture.nativeElement.textContent).toContain('Telegram · Retrying');
+    expect(fixture.nativeElement.textContent).toContain('Next attempt:');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Needs reconnection',
     );
   });
 

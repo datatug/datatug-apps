@@ -168,6 +168,8 @@ export class WatchPageComponent {
   protected readonly subscribed = signal(false);
   protected readonly deleteReview = signal(false);
   protected readonly telegramConnected = signal(false);
+  protected readonly telegramReconnectRequired = signal(false);
+  protected readonly telegramConnectionError = signal('');
   protected readonly telegramLink = signal('');
   protected readonly telegramBotUsername = signal('');
   private saveOperation?: {
@@ -290,6 +292,11 @@ export class WatchPageComponent {
       email: 'Email',
       sms: 'SMS',
       telegram: 'Telegram',
+      retry: 'Retrying',
+      rate_limited: 'Waiting for delivery limit',
+      TELEGRAM_RECIPIENT_UNAVAILABLE: 'Reconnect Telegram to receive updates',
+      TELEGRAM_RATE_LIMITED: 'Telegram is temporarily limiting messages',
+      PROVIDER_UNAVAILABLE: 'Delivery provider is temporarily unavailable',
       SOURCE_CHANGED: 'Source changed — review and reset the baseline',
       QUOTA_EXCEEDED: 'Delivery limit reached — waiting to retry',
       UNAVAILABLE: 'Temporarily unavailable',
@@ -389,6 +396,11 @@ export class WatchPageComponent {
     }
   }
   private resetView() {
+    this.telegramConnected.set(false);
+    this.telegramReconnectRequired.set(false);
+    this.telegramConnectionError.set('');
+    this.telegramBotUsername.set('');
+    this.telegramLink.set('');
     this.submitted.set(false);
     this.touched.set([]);
     this.viewGeneration++;
@@ -411,6 +423,7 @@ export class WatchPageComponent {
     this.status.set(undefined);
     this.runs.set([]);
     this.resetView();
+    this.busy.set(false);
     this.message.set('Disconnected.');
   }
   protected async refresh() {
@@ -461,6 +474,8 @@ export class WatchPageComponent {
         const linked = await this.client.telegramStatus();
         if (active()) {
           this.telegramConnected.set(linked.connected);
+          this.telegramReconnectRequired.set(linked.reconnectRequired === true);
+          this.telegramConnectionError.set(linked.connectionError || '');
           this.telegramBotUsername.set(
             /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(linked.botUsername || '')
               ? linked.botUsername
@@ -479,7 +494,17 @@ export class WatchPageComponent {
       }
     } catch (e) {
       if (active()) this.error.set(watchError(e));
-      if (active()) this.status.set(undefined);
+      if (active()) {
+        this.status.set(undefined);
+        this.current.set(undefined);
+        this.runs.set([]);
+        this.deliveries.set([]);
+        this.channels.set(['in_app']);
+        this.subscribed.set(false);
+        this.notifications.set([]);
+        this.definitions.set([]);
+        this.editing.set(false);
+      }
     } finally {
       if (active()) this.busy.set(false);
     }
@@ -592,6 +617,14 @@ export class WatchPageComponent {
       f = this.form(),
       ref = this.scope.ref();
     if (!user || !ref || this.busy()) return;
+    const generation = this.viewGeneration,
+      watchId = this.watchId(),
+      channels = [...this.channels()];
+    const active = () =>
+      this.alive &&
+      this.client.identity() === user &&
+      this.viewGeneration === generation &&
+      this.watchId() === watchId;
     this.error.set('');
     this.submitted.set(true);
     try {
@@ -601,10 +634,15 @@ export class WatchPageComponent {
         );
       if (!f.title.trim() || !check)
         throw new Error('Enter a title and choose a saved Check.');
-      if (f.visibility === 'shared' && !user.sharedEditor)
-        throw new Error(
-          'Your coordinator role cannot create or edit shared Watches.',
-        );
+      if (
+        f.visibility === 'shared' &&
+        !user.sharedEditor &&
+        !(
+          this.current()?.visibility === 'shared' &&
+          this.current()?.owner === user.id
+        )
+      )
+        throw new Error('Your coordinator role cannot publish a shared Watch.');
       if (f.environment !== user.environment)
         throw new Error(
           'Choose the environment authorised by this credential.',
@@ -678,37 +716,40 @@ export class WatchPageComponent {
       this.saveOperation = operation;
       this.busy.set(true);
       let result = await this.client.save(operation.definition, operation.id);
-      if (!this.alive || this.client.identity() !== user) return;
+      if (!active()) return;
       this.saveOperation = undefined;
       if (!old) {
         this.client.setupNotice.set('');
         try {
           await this.client.subscribe({
             watchId: result.definition.id,
-            channels: this.channels(),
+            channels,
             unsubscribed: false,
           });
+          if (!active()) return;
           result = await this.client.lifecycle(result.definition, 'enabled');
         } catch (setupError) {
+          if (!active()) return;
           this.client.setupNotice.set(
             `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError)} Review its current subscription and lifecycle before resuming.`,
           );
         }
       }
+      if (!active()) return;
       this.editing.set(false);
       await this.router.navigateByUrl(
         this.pageHref(['watch', result.definition.id]),
         { replaceUrl: true },
       );
+      if (!active()) return;
       this.current.set(result.definition);
       this.watchId.set(result.definition.id);
       await this.refresh();
-      this.message.set('Watch saved.');
+      if (active()) this.message.set('Watch saved.');
     } catch (e) {
-      if (this.alive && this.client.identity() === user)
-        this.error.set(watchError(e));
+      if (active()) this.error.set(watchError(e));
     } finally {
-      if (this.alive) this.busy.set(false);
+      if (active()) this.busy.set(false);
     }
   }
   protected async lifecycle(next: 'enabled' | 'paused') {
@@ -808,6 +849,12 @@ export class WatchPageComponent {
         'Current source acknowledged. The next evaluation establishes a fresh baseline.',
       );
     });
+  }
+  protected deliveryState(delivery: WatchDelivery): string {
+    return delivery.failureCode === 'TELEGRAM_RECIPIENT_UNAVAILABLE' &&
+      ['failed', 'cancelled'].includes(delivery.state)
+      ? 'Not delivered'
+      : this.label(delivery.state);
   }
   protected async connectTelegram() {
     await this.mutate(async (active) => {
