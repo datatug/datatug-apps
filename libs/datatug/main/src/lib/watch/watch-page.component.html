@@ -794,7 +794,10 @@
                           @if (delivery.failureCode) {
                             <p>{{ label(delivery.failureCode) }}</p>
                           }
-                          @if (delivery.retryAt) {
+                          @if (
+                            delivery.retryAt &&
+                            !delivery.retryAt.startsWith('0001-')
+                          ) {
                             <p>
                               Retry: {{ delivery.retryAt | date: 'medium' }}
                             </p>

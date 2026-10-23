@@ -80,8 +80,11 @@ test('real coordinator: existing Check creates a Watch with consent, observes an
     page.getByRole('heading', { name: 'Inbox', exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText('Order 11045 · carrier assignment failure', { exact: true }),
-  ).toHaveCount(2);
+    page.getByRole('heading', {
+      level: 3,
+      name: /^Order 11045 · carrier assignment failure/,
+    }),
+  ).toBeVisible();
   await page.reload();
   await page.getByLabel('Coordinator user credential').fill(token);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
@@ -108,8 +111,10 @@ test('real coordinator: existing Check creates a Watch with consent, observes an
     path: testInfo.outputPath('watch-inbox-real-narrow.png'),
   });
   await page
-    .getByText('Order 11045 · carrier assignment failure', { exact: true })
-    .last()
+    .getByRole('heading', {
+      level: 3,
+      name: /^Order 11045 · carrier assignment failure/,
+    })
     .click();
   await expect(page).toHaveURL(detailURL);
   expect(errors).toEqual([]);
