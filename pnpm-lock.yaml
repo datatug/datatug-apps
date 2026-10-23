@@ -67,8 +67,8 @@ importers:
         specifier: 22.2.3
         version: 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@capacitor-firebase/authentication':
-        specifier: 8.1.0
-        version: 8.1.0(@capacitor/core@8.5.3)(firebase@12.10.0)
+        specifier: 8.5.2
+        version: 8.5.2(@capacitor/core@8.5.3)(firebase@13.1.0)
       '@capacitor/core':
         specifier: 8.5.3
         version: 8.5.3
@@ -106,14 +106,14 @@ importers:
         specifier: github:dal-go/dalgo-http-adapters#ab42235a0e125139ebd4eea904c9ffca6aba7c42&path:/packages/sqlite-wasm
         version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)
       '@firebase/auth':
-        specifier: 1.12.1
-        version: 1.12.1(@firebase/app@0.14.9)
+        specifier: 1.13.8
+        version: 1.13.8(@firebase/app@0.16.4)
       '@firebase/firestore':
-        specifier: 4.12.0
-        version: 4.12.0(@firebase/app@0.14.9)
+        specifier: 4.19.0
+        version: 4.19.0(@firebase/app@0.16.4)
       '@firebase/firestore-types':
         specifier: 3.0.5
-        version: 3.0.5(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
+        version: 3.0.5(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)
       '@ingitdb/client':
         specifier: 0.1.0
         version: 0.1.0
@@ -152,25 +152,25 @@ importers:
         version: 10.70.0
       '@sneat/api':
         specifier: 0.27.41
-        version: 0.27.41(feeb35d658401fdb750904bc73f2934d)
+        version: 0.27.41(d891fd3f2861e06e9e66780f6a9ca82e)
       '@sneat/app-auth':
         specifier: 0.27.41
-        version: 0.27.41(dcec74fc09005185436ff8fdc544c7a0)
+        version: 0.27.41(175424b5f280594cf26c4c136e9bcbf6)
       '@sneat/auth-core':
         specifier: 0.27.41
-        version: 0.27.41(8e357e0b4d4ea506c9434c4b10f4e5a6)
+        version: 0.27.41(895d3955a1dc2ab7371751dac8366069)
       '@sneat/auth-models':
         specifier: 0.27.41
         version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/auth-ui':
         specifier: 0.27.41
-        version: 0.27.41(ed43bc05364967996ba523543a0041e3)
+        version: 0.27.41(f1b7fb074acaf44461c2db49e05c2252)
       '@sneat/components':
         specifier: 0.27.41
         version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))
       '@sneat/core':
         specifier: 0.27.41
-        version: 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
+        version: 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
       '@sneat/core-public':
         specifier: 0.27.41
         version: 0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
@@ -185,13 +185,13 @@ importers:
         version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/extension-contactus-contract':
         specifier: 0.12.11
-        version: 0.12.11(bb94c9da89fbfac3d3da753a7e631423)
+        version: 0.12.11(b2910492438f94ad6df1386e7b4de4c5)
       '@sneat/grid':
         specifier: 0.27.41
         version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/logging':
         specifier: 0.27.41
-        version: 0.27.41(06f3a4a8840ccd074e17401b5feb45a4)
+        version: 0.27.41(c495a0e44d4329590448d365c52d244c)
       '@sneat/random':
         specifier: 0.0.4
         version: 0.0.4(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
@@ -200,10 +200,10 @@ importers:
         version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/space-services':
         specifier: 0.27.41
-        version: 0.27.41(521d19cf441980fc35fde6da3432bdfc)
+        version: 0.27.41(cea581b0415a9d7c0b451e9af82f9351)
       '@sneat/ui':
         specifier: 0.27.41
-        version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/logging@0.27.41(06f3a4a8840ccd074e17401b5feb45a4))
+        version: 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/logging@0.27.41(c495a0e44d4329590448d365c52d244c))
       '@sneat/wormhole':
         specifier: ^0.0.6
         version: 0.0.6(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -235,8 +235,8 @@ importers:
         specifier: 6.1.0
         version: 6.1.0
       firebase:
-        specifier: 12.10.0
-        version: 12.10.0
+        specifier: 13.1.0
+        version: 13.1.0
       idb:
         specifier: ^8.0.3
         version: 8.0.4
@@ -1994,8 +1994,8 @@ packages:
   '@bufbuild/protobuf@2.12.1':
     resolution: {integrity: sha512-BvAMfS6LrgZiryOAZ4pBYucu4wG/Ei/9o9DZ9akbREnMLbPJiom2i8b9C8IsKErQoiKqVhrerzt3kOT/RrzLHg==}
 
-  '@capacitor-firebase/authentication@8.1.0':
-    resolution: {integrity: sha512-Vo4Yp2Ttk+rqGjs8e/wNr1MiLr3czLCrKPcUIZMAG15QsvjEWw24CYeYx/wjeagB2tkcDUbBoaH8itCxJ39pww==}
+  '@capacitor-firebase/authentication@8.5.2':
+    resolution: {integrity: sha512-URpL6nxrCS9E/3OfpJDUJx5Kxbhi1KqnzY5bvpt1B3va48o7aaksz7RTggjNGW5J4EsG+Q5U2vSZ/ycJkcODQw==}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
       firebase: ^12.6.0
@@ -2418,111 +2418,117 @@ packages:
     resolution: {integrity: sha512-43/qtrDUokr7LJqoF2c3+RInu/t4zfrpYdoSDfYyhg52rwLV6TnOvdG4fXm7IkSB3wErkcmJS9iEhjVtOSEjjA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@firebase/ai@2.9.0':
-    resolution: {integrity: sha512-NPvBBuvdGo9x3esnABAucFYmqbBmXvyTMimBq2PCuLZbdANZoHzGlx7vfzbwNDaEtCBq4RGGNMliLIv6bZ+PtA==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/ai@3.0.0':
+    resolution: {integrity: sha512-66jJAi6JUmyXna89xaDONmfvupO1wNc3f2BegPwUImagbbpKdVeycE3kMqbU4jiDLL14N5PHzadovvxpaqD2hw==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
       '@firebase/app': 0.x
       '@firebase/app-types': 0.x
 
-  '@firebase/analytics-compat@0.2.26':
-    resolution: {integrity: sha512-0j2ruLOoVSwwcXAF53AMoniJKnkwiTjGVfic5LDzqiRkR13vb5j6TXMeix787zbLeQtN/m1883Yv1TxI0gItbA==}
+  '@firebase/analytics-compat@0.2.31':
+    resolution: {integrity: sha512-msTlG9REujk5rjtOHNLngiuPmvaWGQte8ugL4/F6ZCMb+92Ue7SgjSEpNxINkM8ZtTrbGS83j5SZkt0r+M1Tjw==}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/analytics-types@0.8.3':
-    resolution: {integrity: sha512-VrIp/d8iq2g501qO46uGz3hjbDb8xzYMrbu8Tp0ovzIzrvJZ2fvmj649gTjge/b7cCCcjT0H37g1gVtlNhnkbg==}
+  '@firebase/analytics-types@0.8.5':
+    resolution: {integrity: sha512-kdnooE7Bis2jEnsqcerRwn/UQpH5D3uvHpku7OdUM9TJN3omlu6iYtbyAQ6XkAJRgJtO0aNf9OOkW8J6D59oCA==}
 
-  '@firebase/analytics@0.10.20':
-    resolution: {integrity: sha512-adGTNVUWH5q66tI/OQuKLSN6mamPpfYhj0radlH2xt+3eL6NFPtXoOs+ulvs+UsmK27vNFx5FjRDfWk+TyduHg==}
+  '@firebase/analytics@0.10.25':
+    resolution: {integrity: sha512-oDagV3PHeNXBdxemksZCdj+GmUT19eCnTOcLdQePIIovFXlm3zWy3Gjeaokt9Nqx24kc4ljK8lU0XGcGmmKZ1A==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/app-check-compat@0.4.1':
-    resolution: {integrity: sha512-yjSvSl5B1u4CirnxhzirN1uiTRCRfx+/qtfbyeyI+8Cx8Cw1RWAIO/OqytPSVwLYbJJ1vEC3EHfxazRaMoWKaA==}
+  '@firebase/app-check-compat@0.4.7':
+    resolution: {integrity: sha512-fBb/xSMyIKv1nDmccfzz3IAGBzx/cQOxmZai66rJzifb1hMMkztf824Xx7LhpTUe7HNUbXwY90IvJ66fi8q6yg==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/app-check-interop-types@0.3.3':
-    resolution: {integrity: sha512-gAlxfPLT2j8bTI/qfe3ahl2I2YcBQ8cFIBdhAQA4I2f3TndcO+22YizyGYuttLHPQEpWkhmpFW60VCFEPg4g5A==}
+  '@firebase/app-check-interop-types@0.3.5':
+    resolution: {integrity: sha512-qId34pVZ2CXTmtu4ofW5leiI93DvnOvIcr/5GT7MZPw5WXAi6nZoU+g9cNRgl7K90UJSbK0cXxten4meYMPyZg==}
 
-  '@firebase/app-check-types@0.5.3':
-    resolution: {integrity: sha512-hyl5rKSj0QmwPdsAxrI5x1otDlByQ7bvNvVt8G/XPO2CSwE++rmSVf3VEhaeOR4J8ZFaF0Z0NDSmLejPweZ3ng==}
+  '@firebase/app-check-types@0.5.5':
+    resolution: {integrity: sha512-+DF4gzFrlwGFyky38o4T/YN/r51l70yCtJ2HTkwmRj8FCMwPjm4hLH4fQbj6BUvzkiFqliBkitFsRpf1/YZkWA==}
 
-  '@firebase/app-check@0.11.1':
-    resolution: {integrity: sha512-gmKfwQ2k8aUQlOyRshc+fOQLq0OwUmibIZvpuY1RDNu2ho0aTMlwxOuEiJeYOs7AxzhSx7gnXPFNsXCFbnvXUQ==}
+  '@firebase/app-check@0.13.1':
+    resolution: {integrity: sha512-l8y3dmnhodXks/APAwx4tWqRl3tk8b9874KF1FJyKg1DIU+kMD0l52iz7S9/MW+eK8k6cjJg0G0iJ5KQAsQpow==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/app-compat@0.5.9':
-    resolution: {integrity: sha512-e5LzqjO69/N2z7XcJeuMzIp4wWnW696dQeaHAUpQvGk89gIWHAIvG6W+mA3UotGW6jBoqdppEJ9DnuwbcBByug==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/app-compat@0.5.20':
+    resolution: {integrity: sha512-LHB8/Vuviximj7SxERlr58AhbKM7DVnFFg0DCOjETJREUDx84wOjdPkPPcpsG2/KlXUN6m+EKtKwIr2/gD/7lw==}
+    engines: {node: '>=24.12.0'}
 
-  '@firebase/app-types@0.9.3':
-    resolution: {integrity: sha512-kRVpIl4vVGJ4baogMDINbyrIOtOxqhkZQg4jTq3l8Lw6WSk0xfpEYzezFu+Kl4ve4fbPl79dvwRtaFqAC/ucCw==}
+  '@firebase/app-types@0.9.6':
+    resolution: {integrity: sha512-yPLahy7Esfu2w/yme3msVK4xTkDXQqq6szfQn8yVOQpCKiT5GVFjqNpLbuz6NkX0WuTwUidkmPewW3r4xkvpeg==}
 
-  '@firebase/app@0.14.9':
-    resolution: {integrity: sha512-3gtUX0e584MYkKBQMgSECMvE1Dwzg+eONefDQ0wxVSe5YMBsZwdN5pL7UapwWBlV8+i8QCztF9TP947tEjZAGA==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/app@0.16.4':
+    resolution: {integrity: sha512-eW9MgxKQFNif18lOGor/dqVm4tb5lySwxkid1nbU6ymS6hSVh7r/MREf9zmnGhHQ6ZGC4KJye6PCT+C//9R+hQ==}
+    engines: {node: '>=24.12.0'}
 
-  '@firebase/auth-compat@0.6.3':
-    resolution: {integrity: sha512-nHOkupcYuGVxI1AJJ/OBhLPaRokbP14Gq4nkkoVvf1yvuREEWqdnrYB/CdsSnPxHMAnn5wJIKngxBF9jNX7s/Q==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/auth-compat@0.6.13':
+    resolution: {integrity: sha512-LqX9fIm3ToeSVbjoGn0jOy2j0M8J8IV20qEVksaqnAejERxgKXeUWHG/xUDa58gqC/2lClZav/9MYLj1VQiZ8w==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/auth-interop-types@0.2.4':
-    resolution: {integrity: sha512-JPgcXKCuO+CWqGDnigBtvo09HeBs5u/Ktc2GaFj2m01hLarbxthLNm7Fk8iOP1aqAtXV+fnnGj7U28xmk7IwVA==}
+  '@firebase/auth-interop-types@0.2.6':
+    resolution: {integrity: sha512-FgwZqDrBqgK0BHI70QTv1v/5wmuDF9f8fsJFvKSxoRlK2PPfSQtZAk2jhXu4pe9BZzFi/e4UYusU/bEQHdf6Qg==}
 
-  '@firebase/auth-types@0.13.0':
-    resolution: {integrity: sha512-S/PuIjni0AQRLF+l9ck0YpsMOdE8GO2KU6ubmBB7P+7TJUCQDa3R1dlgYm9UzGbbePMZsp0xzB93f2b/CgxMOg==}
+  '@firebase/auth-types@0.13.2':
+    resolution: {integrity: sha512-OU+miuoSxIWYN7GT291d2ylVJBL3k/OePo7/JDSoQtkFQoEiGBc4AHuMjj/seqFIsHrqnjrAfRCk4pfufoJolQ==}
     peerDependencies:
       '@firebase/app-types': 0.x
       '@firebase/util': 1.x
 
-  '@firebase/auth@1.12.1':
-    resolution: {integrity: sha512-nXKj7d5bMBlnq6XpcQQpmnSVwEeHBkoVbY/+Wk0P1ebLSICoH4XPtvKOFlXKfIHmcS84mLQ99fk3njlDGKSDtw==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/auth@1.13.8':
+    resolution: {integrity: sha512-JPW7S7Hwp5qhn8VwEEHWfI1P2kqCqpKbJVTWlKT5UWl1NNbVjrYOGKTZHCVqUeVhLs7BjMWWkCnkoa8tzUjSjQ==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
       '@firebase/app': 0.x
-      '@react-native-async-storage/async-storage': ^2.2.0
+      '@react-native-async-storage/async-storage': ^2.2.0 || ^3.0.0
     peerDependenciesMeta:
       '@react-native-async-storage/async-storage':
         optional: true
 
-  '@firebase/component@0.7.1':
-    resolution: {integrity: sha512-mFzsm7CLHR60o08S23iLUY8m/i6kLpOK87wdEFPLhdlCahaxKmWOwSVGiWoENYSmFJJoDhrR3gKSCxz7ENdIww==}
+  '@firebase/component@0.7.5':
+    resolution: {integrity: sha512-vuFDcL91Q+2ZuBJkyOh86T4q0B4ffNTDjc/A38tybO56odQABxRTFLTIowCWqAKeIcgo37GowWMVgFF73gD8Qw==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/data-connect@0.4.0':
-    resolution: {integrity: sha512-vLXM6WHNIR3VtEeYNUb/5GTsUOyl3Of4iWNZHBe1i9f88sYFnxybJNWVBjvJ7flhCyF8UdxGpzWcUnv6F5vGfg==}
+  '@firebase/data-connect@0.7.4':
+    resolution: {integrity: sha512-su1aGWlzhxb+xtggCUSsufJn1FDa06SBDK71y+fpQ+g2zMhMExik6FUv/odkKzOF/xfWVjabCbWBcjJY3MceDA==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/database-compat@2.1.1':
-    resolution: {integrity: sha512-heAEVZ9Z8c8PnBUcmGh91JHX0cXcVa1yESW/xkLuwaX7idRFyLiN8sl73KXpR8ZArGoPXVQDanBnk6SQiekRCQ==}
-    engines: {node: '>=20.0.0'}
-
-  '@firebase/database-types@1.0.17':
-    resolution: {integrity: sha512-4eWaM5fW3qEIHjGzfi3cf0Jpqi1xQsAdT6rSDE1RZPrWu8oGjgrq6ybMjobtyHQFgwGCykBm4YM89qDzc+uG/w==}
-
-  '@firebase/database@1.1.1':
-    resolution: {integrity: sha512-LwIXe8+mVHY5LBPulWECOOIEXDiatyECp/BOlu0gOhe+WOcKjWHROaCbLlkFTgHMY7RHr5MOxkLP/tltWAH3dA==}
-    engines: {node: '>=20.0.0'}
-
-  '@firebase/firestore-compat@0.4.6':
-    resolution: {integrity: sha512-NgVyR4hHHN2FvSNQOtbgBOuVsEdD/in30d9FKbEvvITiAChrBN2nBstmhfjI4EOTnHaP8zigwvkNYFI9yKGAkQ==}
+  '@firebase/database-compat@2.1.7':
+    resolution: {integrity: sha512-lBq9sJm8MnJINKJnkAKSOj2MbC66xGoSVCcGkPtstl+lkoKEBtD46qHLbuDgW/WbLPoKVm17RIN8BxHj+Z2F2w==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
+    peerDependenciesMeta:
+      '@firebase/app':
+        optional: true
+      '@firebase/app-compat':
+        optional: true
 
-  '@firebase/firestore-types@3.0.3':
-    resolution: {integrity: sha512-hD2jGdiWRxB/eZWF89xcK9gF8wvENDJkzpVFb4aGkzfEaKxVRD1kjz1t1Wj8VZEp2LCB53Yx1zD8mrhQu87R6Q==}
+  '@firebase/database-types@1.0.22':
+    resolution: {integrity: sha512-YAZNXsjY9EQQ+pKw/3ax8n5FgolHC7Qew7EY5RceYdl0R2ZP+kCv1O0DkKlcceue8uQCOreHCNN7PWVFpY1Nug==}
+
+  '@firebase/database@1.1.5':
+    resolution: {integrity: sha512-/JGpvszLoNXNgzilRXocigGfFF4hbcPA9wN1i1kjJx6oKkXgkHteZYl3lQs1lJX3ETDf6bv7zI15lPMVUp4sAQ==}
+    engines: {node: '>=20.0.0'}
+
+  '@firebase/firestore-compat@0.4.16':
+    resolution: {integrity: sha512-ffI0xU10be9ykgzU4OsCH5uarMfB1gR3HuNYRiQgNAs8NGcPObh/YMeuQne4zbA9gZakppGwQz3smyra8ZFnDA==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
-      '@firebase/app-types': 0.x
-      '@firebase/util': 1.x
+      '@firebase/app': 0.x
+      '@firebase/app-compat': 0.x
 
   '@firebase/firestore-types@3.0.5':
     resolution: {integrity: sha512-dbdMAQkMd5dwWc48eupz/Y6/E9ruat3+gY5lhVKscvvT/HnDBEEMzJW38zdKhgdnglZHGk2vUsJMOHAphMHGMA==}
@@ -2530,109 +2536,115 @@ packages:
       '@firebase/app-types': 0.x
       '@firebase/util': 1.x
 
-  '@firebase/firestore@4.12.0':
-    resolution: {integrity: sha512-PM47OyiiAAoAMB8kkq4Je14mTciaRoAPDd3ng3Ckqz9i2TX9D9LfxIRcNzP/OxzNV4uBKRq6lXoOggkJBQR3Gw==}
+  '@firebase/firestore@4.19.0':
+    resolution: {integrity: sha512-PH+lpkZldrNd1XLypP/xq0SS/CCKuCVykvWdbFpR8euwJnysE7vMlYMhtRckizrwCsshUyEPP5cel7McHFfJ6w==}
+    engines: {node: '>=24.12.0'}
+    peerDependencies:
+      '@firebase/app': 0.x
+
+  '@firebase/functions-compat@0.5.0':
+    resolution: {integrity: sha512-T3BDIToESZUHt7438wyKYMkRjKg3m1xAIux5fVpNvTRQlDOFLukWniQWBDhJ2znpU9kxMTR6+e31TVo8P15PZw==}
+    engines: {node: '>=20.0.0'}
+    peerDependencies:
+      '@firebase/app': 0.x
+      '@firebase/app-compat': 0.x
+
+  '@firebase/functions-types@0.6.5':
+    resolution: {integrity: sha512-Zc0pURjthHXzSj54ZivCkzKDSV1r/wIpnmHdhq82q2yFFPVoncG/ZJjnVMiANvQfeww/QnElhzODpfwUucVwdA==}
+
+  '@firebase/functions@0.14.0':
+    resolution: {integrity: sha512-DhuYFr0eMhp+s/PNEk6SiMsYkc00+XVOUeKbrl8MOzQNZI3SKQpqoDR1d+keNDAutwmHRWTUAdXBoVPD+xxVUw==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/functions-compat@0.4.2':
-    resolution: {integrity: sha512-YNxgnezvZDkqxqXa6cT7/oTeD4WXbxgIP7qZp4LFnathQv5o2omM6EoIhXiT9Ie5AoQDcIhG9Y3/dj+DFJGaGQ==}
-    engines: {node: '>=20.0.0'}
-    peerDependencies:
-      '@firebase/app-compat': 0.x
-
-  '@firebase/functions-types@0.6.3':
-    resolution: {integrity: sha512-EZoDKQLUHFKNx6VLipQwrSMh01A1SaL3Wg6Hpi//x6/fJ6Ee4hrAeswK99I5Ht8roiniKHw4iO0B1Oxj5I4plg==}
-
-  '@firebase/functions@0.13.2':
-    resolution: {integrity: sha512-tHduUD+DeokM3NB1QbHCvEMoL16e8Z8JSkmuVA4ROoJKPxHn8ibnecHPO2e3nVCJR1D9OjuKvxz4gksfq92/ZQ==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/installations-compat@0.2.24':
+    resolution: {integrity: sha512-8M5nlcWwYt881x83COP2odq5vgf+NgwJh+RMd4LRSv8JI1pxwDfgrDJOERrjTgfC9J5Z0vnQX4b1pdN914e0Zw==}
     peerDependencies:
       '@firebase/app': 0.x
-
-  '@firebase/installations-compat@0.2.20':
-    resolution: {integrity: sha512-9C9pL/DIEGucmoPj8PlZTnztbX3nhNj5RTYVpUM7wQq/UlHywaYv99969JU/WHLvi9ptzIogXYS9d1eZ6XFe9g==}
-    peerDependencies:
       '@firebase/app-compat': 0.x
 
-  '@firebase/installations-types@0.5.3':
-    resolution: {integrity: sha512-2FJI7gkLqIE0iYsNQ1P751lO3hER+Umykel+TkLwHj6plzWVxqvfclPUZhcKFVQObqloEBTmpi2Ozn7EkCABAA==}
+  '@firebase/installations-types@0.5.5':
+    resolution: {integrity: sha512-e9UYcju3puDl1vdrcKIi5dExzHLameOT/Tc61Q48PYwxtsM1NzZh/ikGbdBQTsbRgg0EMZqdPr0/m5ODUBobrg==}
     peerDependencies:
       '@firebase/app-types': 0.x
 
-  '@firebase/installations@0.6.20':
-    resolution: {integrity: sha512-LOzvR7XHPbhS0YB5ANXhqXB5qZlntPpwU/4KFwhSNpXNsGk/sBQ9g5hepi0y0/MfenJLe2v7t644iGOOElQaHQ==}
+  '@firebase/installations@0.6.24':
+    resolution: {integrity: sha512-Ui52ey8wHoWqkBbXRKJEKYWylI0JZogZmoLS+o8Anh1bxWtK27ZYjLla1UJAAdC5DCKLJ2qAp0VpJOjg8VOX1g==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/logger@0.5.0':
-    resolution: {integrity: sha512-cGskaAvkrnh42b3BA3doDWeBmuHFO/Mx5A83rbRDYakPjO9bJtRL3dX7javzc2Rr/JHZf4HlterTW2lUkfeN4g==}
+  '@firebase/logger@0.5.2':
+    resolution: {integrity: sha512-J2VO4NFTc0xQFrxV1B/lm5balicm9cwuX2acR9Yn41fN8KgUeQFo+VJV222IqW2FPSXKDu9uo5WdQFWf9TPbYg==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/messaging-compat@0.2.24':
-    resolution: {integrity: sha512-wXH8FrKbJvFuFe6v98TBhAtvgknxKIZtGM/wCVsfpOGmaAE80bD8tBxztl+uochjnFb9plihkd6mC4y7sZXSpA==}
+  '@firebase/messaging-compat@0.2.30':
+    resolution: {integrity: sha512-m1DPT2ET5x0qYqXLoHwKMAyf1mgZZOhuoE6H6/H4OPsp8zSxMIDEFPaW7MaffPJsCA5J7kHzo+BHVNXK4ZoV+w==}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/messaging-interop-types@0.2.3':
-    resolution: {integrity: sha512-xfzFaJpzcmtDjycpDeCUj0Ge10ATFi/VHVIvEEjDNc3hodVBQADZ7BWQU7CuFpjSHE+eLuBI13z5F/9xOoGX8Q==}
+  '@firebase/messaging-interop-types@0.2.6':
+    resolution: {integrity: sha512-MVzvkKe2V4H2dHu5oOxRfeKQcfTwWmCgnzsC4V1q3ixun5iiL8riCZ2qI35rDhCL4glPGiu0jHxDbpVNuTKfow==}
 
-  '@firebase/messaging@0.12.24':
-    resolution: {integrity: sha512-UtKoubegAhHyehcB7iQjvQ8OVITThPbbWk3g2/2ze42PrQr6oe6OmCElYQkBrE5RDCeMTNucXejbdulrQ2XwVg==}
+  '@firebase/messaging@0.13.3':
+    resolution: {integrity: sha512-nRXPAp+z0kA3KziJtRY9kktHECvRwaaONzHvislFgllhCwJMscW7icWNQA5IjyP8Uc2+GS/4px8Uz6rx6ftTag==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/performance-compat@0.2.23':
-    resolution: {integrity: sha512-c7qOAGBUAOpIuUlHu1axWcrCVtIYKPMhH0lMnoCDWnPwn1HcPuPUBVTWETbC7UWw71RMJF8DpirfWXzMWJQfgA==}
+  '@firebase/performance-compat@0.2.27':
+    resolution: {integrity: sha512-O/ozTf/EbChN94Pk7bd1eUC0PAC36726AwsaiJyC0bZzSBWfLGSWASGPH5pebUWXQPJtGxIJYRkkbX5l0Qa+Hw==}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/performance-types@0.2.3':
-    resolution: {integrity: sha512-IgkyTz6QZVPAq8GSkLYJvwSLr3LS9+V6vNPQr0x4YozZJiLF5jYixj0amDtATf1X0EtYHqoPO48a9ija8GocxQ==}
+  '@firebase/performance-types@0.2.5':
+    resolution: {integrity: sha512-PRzOgB+/M+6AKlEkY8a9xy5Ff5SfZPIh4iShXhn2WAcL/euSbK7bdLqWysHduunNJhGFsXa22Ag3ixqL6rQtYg==}
 
-  '@firebase/performance@0.7.10':
-    resolution: {integrity: sha512-8nRFld+Ntzp5cLKzZuG9g+kBaSn8Ks9dmn87UQGNFDygbmR6ebd8WawauEXiJjMj1n70ypkvAOdE+lzeyfXtGA==}
+  '@firebase/performance@0.7.14':
+    resolution: {integrity: sha512-9PH1XEZVHErxGdbXluvGz4Uyjw4W955H8v7Mv9rHIybRrg5F2Ac2tvf5+mSf5EtnxWNmxrD2WLnvMFaZP4sMrQ==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/remote-config-compat@0.2.22':
-    resolution: {integrity: sha512-uW/eNKKtRBot2gnCC5mnoy5Voo2wMzZuQ7dwqqGHU176fO9zFgMwKiRzk+aaC99NLrFk1KOmr0ZVheD+zdJmjQ==}
+  '@firebase/remote-config-compat@0.2.30':
+    resolution: {integrity: sha512-Q4sQKhQ8TPEMOcCUvUBfGeAP1DfcG7FGBfA9yFUn/XRr4vSToY0DTmK28Nh7lgLQYzs6D5Ng6knSoXH+aGn1Tg==}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/remote-config-types@0.5.0':
-    resolution: {integrity: sha512-vI3bqLoF14L/GchtgayMiFpZJF+Ao3uR8WCde0XpYNkSokDpAKca2DxvcfeZv7lZUqkUwQPL2wD83d3vQ4vvrg==}
+  '@firebase/remote-config-types@0.5.2':
+    resolution: {integrity: sha512-i8k1omVfoAnaT1ZPv2FFjxMZrATYsO/GnFgHEj5+7fAJLzi8wLnGGv1WK06oEAD6ltrWXSO1HzeNyajn/NjMWw==}
 
-  '@firebase/remote-config@0.8.1':
-    resolution: {integrity: sha512-L86TReBnPiiJOWd7k9iaiE9f7rHtMpjAoYN0fH2ey2ZRzsOChHV0s5sYf1+IIUYzplzsE46pjlmAUNkRRKwHSQ==}
+  '@firebase/remote-config@0.9.3':
+    resolution: {integrity: sha512-9DbuFNAFeUbVJQZmwLZfdoLRNFWV43V4UqaRpDkaSIdTmVWhzctPeISGkWe4sKTsqpoyldRumquS0gqWZg05fQ==}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/storage-compat@0.4.1':
-    resolution: {integrity: sha512-bgl3FHHfXAmBgzIK/Fps6Xyv2HiAQlSTov07CBL+RGGhrC5YIk4lruS8JVIC+UkujRdYvnf8cpQFGn2RCilJ/A==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/storage-compat@0.4.6':
+    resolution: {integrity: sha512-te0IsqX1bM+OZCJF7jNSKXcMqCA2yYmpshRHjX4axy0lI/P9ZP9GLjEZMVL8wrjUWF4e3cZxMZTbck3Zd5E1hA==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
+      '@firebase/app': 0.x
       '@firebase/app-compat': 0.x
 
-  '@firebase/storage-types@0.8.3':
-    resolution: {integrity: sha512-+Muk7g9uwngTpd8xn9OdF/D48uiQ7I1Fae7ULsWPuKoCH3HU7bfFPhxtJYzyhjdniowhuDpQcfPmuNRAqZEfvg==}
+  '@firebase/storage-types@0.8.5':
+    resolution: {integrity: sha512-GEDs5P+rNUfNcS+wxIdOLAHficife2YXtvTJnyi3ssrX11AAtBg+nDUdbYh8vuBzWehVQZPmztGUUnud4L+4yg==}
     peerDependencies:
       '@firebase/app-types': 0.x
       '@firebase/util': 1.x
 
-  '@firebase/storage@0.14.1':
-    resolution: {integrity: sha512-uIpYgBBsv1vIET+5xV20XT7wwqV+H4GFp6PBzfmLUcEgguS4SWNFof56Z3uOC2lNDh0KDda1UflYq2VwD9Nefw==}
-    engines: {node: '>=20.0.0'}
+  '@firebase/storage@0.14.6':
+    resolution: {integrity: sha512-9WjohxpjbfcySjCp8kIbd1ZhtmCQFQLqPtDQ+wmZ5PVXimTDjDsSx/RZjwwK89MjCTXB9fCdmvZkJxplZn4W1A==}
+    engines: {node: '>=24.12.0'}
     peerDependencies:
       '@firebase/app': 0.x
 
-  '@firebase/util@1.14.0':
-    resolution: {integrity: sha512-/gnejm7MKkVIXnSJGpc9L2CvvvzJvtDPeAEq5jAwgVlf/PeNxot+THx/bpD20wQ8uL5sz0xqgXy1nisOYMU+mw==}
+  '@firebase/util@1.15.3':
+    resolution: {integrity: sha512-c/z/gaIlaaLZEuGbE6sLUuJ61tskg1JghvhcNQzW948ASBinbVBBRnZTC4b4yt4LaEtJQkYlyzqLHcutFwEIvA==}
     engines: {node: '>=20.0.0'}
 
-  '@firebase/webchannel-wrapper@1.0.5':
-    resolution: {integrity: sha512-+uGNN7rkfn41HLO0vekTFhTxk61eKa8mTpRGLO0QSqlQdKvIoGAvLp3ppdVIWbTGYJWM6Kp0iN+PjMIOcnVqTw==}
+  '@firebase/webchannel-wrapper@1.0.7':
+    resolution: {integrity: sha512-phBFwieDLvkZGYN9CE9ZFNEIoBVksprzsnCzQejCmCHtgwCXReeuRpoEGN9C4EbhONztv8NRV1tau6Rb9pONwQ==}
 
   '@google-cloud/cloud-sql-connector@1.11.3':
     resolution: {integrity: sha512-dPnHkcabbH5LAksAQl99SJpC0HuG3YZwjcdcOxdz2QW58vOnGdfQ96d/Hpzl22h3eA03rKG0kMpEplC40xWtTQ==}
@@ -7239,9 +7251,6 @@ packages:
     resolution: {integrity: sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==}
     engines: {node: '>= 0.4'}
 
-  es-module-lexer@2.3.0:
-    resolution: {integrity: sha512-KLdwQm2NvGLDkQDCGvmiQrhkd0JbMzXthwQAUgWjQuQdBLFa3eiBP5arXZyA+f8x+x7OXgud6bq2rxjGtHV2tw==}
-
   es-module-lexer@2.3.2:
     resolution: {integrity: sha512-poHGpORABojJJucnV9KbOavETW8lBVnphkW77ER5/BQ5Fz7oXSoCNek7IH3vR5nRjdsEz926ibFYX8KtLQmdyw==}
 
@@ -7516,8 +7525,8 @@ packages:
     engines: {node: '>=20.0.0 || >=22.0.0 || >=24.0.0'}
     hasBin: true
 
-  firebase@12.10.0:
-    resolution: {integrity: sha512-tAjHnEirksqWpa+NKDUSUMjulOnsTcsPC1X1rQ+gwPtjlhJS572na91CwaBXQJHXharIrfj7sw/okDkXOsphjA==}
+  firebase@13.1.0:
+    resolution: {integrity: sha512-II/6P63vYzWdS6gTM9+OaMZD6XaCHJdI/9OVa8Z+bEs18t3CR2JlSwCI12KYMramNqTkywJocjSpGePaVPng+A==}
 
   flat-cache@4.0.1:
     resolution: {integrity: sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw==}
@@ -9571,6 +9580,10 @@ packages:
   re2@1.26.1:
     resolution: {integrity: sha512-oi79a4h6EO3PAwNsDMWgeCcsRGQEUa52DIgOiFTZGDEZocEXG9h+oXy0qZqndo47huUeJuVWSoOJIEhOupqOcg==}
     engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
+
+  re2js@2.9.0:
+    resolution: {integrity: sha512-rZpqkd4ETP3GrQ5mDLzADr14OleeKdb/40lG84WE8absRfsVLJpWt2ifjtYYeoPqeouIkcxhTlurxIXfR5kR5Q==}
+    engines: {node: '>=20.0.0'}
 
   readable-stream@2.3.8:
     resolution: {integrity: sha512-8p0AUk4XODgIewSi0l8Epjs+EVnWiK7NoDIEGU0HhE7+ZyY8D1IMY7odu5lRrFXGg71L15KG8QrPmum45RTtdA==}
@@ -13403,11 +13416,11 @@ snapshots:
 
   '@bufbuild/protobuf@2.12.1': {}
 
-  '@capacitor-firebase/authentication@8.1.0(@capacitor/core@8.5.3)(firebase@12.10.0)':
+  '@capacitor-firebase/authentication@8.5.2(@capacitor/core@8.5.3)(firebase@13.1.0)':
     dependencies:
       '@capacitor/core': 8.5.3
     optionalDependencies:
-      firebase: 12.10.0
+      firebase: 13.1.0
 
   '@capacitor/core@8.5.3':
     dependencies:
@@ -13787,328 +13800,323 @@ snapshots:
       '@eslint/core': 0.17.0
       levn: 0.4.1
 
-  '@firebase/ai@2.9.0(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)':
+  '@firebase/ai@3.0.0(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/app-check-interop-types': 0.3.3
-      '@firebase/app-types': 0.9.3
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-check-interop-types': 0.3.5
+      '@firebase/app-types': 0.9.6
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/analytics-compat@0.2.26(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/analytics-compat@0.2.31(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/analytics': 0.10.20(@firebase/app@0.14.9)
-      '@firebase/analytics-types': 0.8.3
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
-
-  '@firebase/analytics-types@0.8.3': {}
-
-  '@firebase/analytics@0.10.20(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/analytics': 0.10.25(@firebase/app@0.16.4)
+      '@firebase/analytics-types': 0.8.5
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/app-check-compat@0.4.1(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/analytics-types@0.8.5': {}
+
+  '@firebase/analytics@0.10.25(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-check': 0.11.1(@firebase/app@0.14.9)
-      '@firebase/app-check-types': 0.5.3
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
-
-  '@firebase/app-check-interop-types@0.3.3': {}
-
-  '@firebase/app-check-types@0.5.3': {}
-
-  '@firebase/app-check@0.11.1(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/app-compat@0.5.9':
+  '@firebase/app-check-compat@0.4.7(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-check': 0.13.1(@firebase/app@0.16.4)
+      '@firebase/app-check-types': 0.5.5
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/app-types@0.9.3': {}
+  '@firebase/app-check-interop-types@0.3.5': {}
 
-  '@firebase/app@0.14.9':
+  '@firebase/app-check-types@0.5.5': {}
+
+  '@firebase/app-check@0.13.1(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/app-compat@0.5.20':
+    dependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/app-types@0.9.6':
+    dependencies:
+      '@firebase/logger': 0.5.2
+
+  '@firebase/app@0.16.4':
+    dependencies:
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       idb: 7.1.1
       tslib: 2.8.1
 
-  '@firebase/auth-compat@0.6.3(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)':
+  '@firebase/auth-compat@0.6.13(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/auth': 1.12.1(@firebase/app@0.14.9)
-      '@firebase/auth-types': 0.13.0(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
-      '@firebase/component': 0.7.1
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/auth': 1.13.8(@firebase/app@0.16.4)
+      '@firebase/auth-types': 0.13.2(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)
+      '@firebase/component': 0.7.5
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
     transitivePeerDependencies:
-      - '@firebase/app'
       - '@firebase/app-types'
       - '@react-native-async-storage/async-storage'
 
-  '@firebase/auth-interop-types@0.2.4': {}
+  '@firebase/auth-interop-types@0.2.6': {}
 
-  '@firebase/auth-types@0.13.0(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+  '@firebase/auth-types@0.13.2(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)':
     dependencies:
-      '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.14.0
+      '@firebase/app-types': 0.9.6
+      '@firebase/util': 1.15.3
 
-  '@firebase/auth@1.12.1(@firebase/app@0.14.9)':
+  '@firebase/auth@1.13.8(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/component@0.7.1':
+  '@firebase/component@0.7.5':
     dependencies:
-      '@firebase/util': 1.14.0
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/data-connect@0.4.0(@firebase/app@0.14.9)':
+  '@firebase/data-connect@0.7.4(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/auth-interop-types': 0.2.4
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/auth-interop-types': 0.2.6
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/database-compat@2.1.1':
+  '@firebase/database-compat@2.1.7(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/component': 0.7.1
-      '@firebase/database': 1.1.1
-      '@firebase/database-types': 1.0.17
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/component': 0.7.5
+      '@firebase/database': 1.1.5
+      '@firebase/database-types': 1.0.22
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
+    optionalDependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
 
-  '@firebase/database-types@1.0.17':
+  '@firebase/database-types@1.0.22':
     dependencies:
-      '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.14.0
+      '@firebase/app-types': 0.9.6
+      '@firebase/util': 1.15.3
 
-  '@firebase/database@1.1.1':
+  '@firebase/database@1.1.5':
     dependencies:
-      '@firebase/app-check-interop-types': 0.3.3
-      '@firebase/auth-interop-types': 0.2.4
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app-check-interop-types': 0.3.5
+      '@firebase/auth-interop-types': 0.2.6
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       faye-websocket: 0.11.4
       tslib: 2.8.1
 
-  '@firebase/firestore-compat@0.4.6(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)':
+  '@firebase/firestore-compat@0.4.16(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/firestore': 4.12.0(@firebase/app@0.14.9)
-      '@firebase/firestore-types': 3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/firestore': 4.19.0(@firebase/app@0.16.4)
+      '@firebase/firestore-types': 3.0.5(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
     transitivePeerDependencies:
-      - '@firebase/app'
       - '@firebase/app-types'
 
-  '@firebase/firestore-types@3.0.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+  '@firebase/firestore-types@3.0.5(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)':
     dependencies:
-      '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.14.0
+      '@firebase/app-types': 0.9.6
+      '@firebase/util': 1.15.3
 
-  '@firebase/firestore-types@3.0.5(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+  '@firebase/firestore@4.19.0(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.14.0
-
-  '@firebase/firestore@4.12.0(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
-      '@firebase/webchannel-wrapper': 1.0.5
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
+      '@firebase/webchannel-wrapper': 1.0.7
       '@grpc/grpc-js': 1.14.6
       '@grpc/proto-loader': 0.7.15
+      re2js: 2.9.0
       tslib: 2.8.1
 
-  '@firebase/functions-compat@0.4.2(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/functions-compat@0.5.0(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/functions': 0.13.2(@firebase/app@0.14.9)
-      '@firebase/functions-types': 0.6.3
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/functions': 0.14.0(@firebase/app@0.16.4)
+      '@firebase/functions-types': 0.6.5
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/functions-types@0.6.5': {}
+
+  '@firebase/functions@0.14.0(@firebase/app@0.16.4)':
+    dependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/app-check-interop-types': 0.3.5
+      '@firebase/auth-interop-types': 0.2.6
+      '@firebase/component': 0.7.5
+      '@firebase/messaging-interop-types': 0.2.6
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/installations-compat@0.2.24(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)':
+    dependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/installations-types': 0.5.5(@firebase/app-types@0.9.6)
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
     transitivePeerDependencies:
-      - '@firebase/app'
-
-  '@firebase/functions-types@0.6.3': {}
-
-  '@firebase/functions@0.13.2(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/app-check-interop-types': 0.3.3
-      '@firebase/auth-interop-types': 0.2.4
-      '@firebase/component': 0.7.1
-      '@firebase/messaging-interop-types': 0.2.3
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-
-  '@firebase/installations-compat@0.2.20(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/installations-types': 0.5.3(@firebase/app-types@0.9.3)
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
       - '@firebase/app-types'
 
-  '@firebase/installations-types@0.5.3(@firebase/app-types@0.9.3)':
+  '@firebase/installations-types@0.5.5(@firebase/app-types@0.9.6)':
     dependencies:
-      '@firebase/app-types': 0.9.3
+      '@firebase/app-types': 0.9.6
 
-  '@firebase/installations@0.6.20(@firebase/app@0.14.9)':
+  '@firebase/installations@0.6.24(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/util': 1.15.3
       idb: 7.1.1
       tslib: 2.8.1
 
-  '@firebase/logger@0.5.0':
+  '@firebase/logger@0.5.2':
     dependencies:
       tslib: 2.8.1
 
-  '@firebase/messaging-compat@0.2.24(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/messaging-compat@0.2.30(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/messaging': 0.12.24(@firebase/app@0.14.9)
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/messaging': 0.13.3(@firebase/app@0.16.4)
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
 
-  '@firebase/messaging-interop-types@0.2.3': {}
+  '@firebase/messaging-interop-types@0.2.6': {}
 
-  '@firebase/messaging@0.12.24(@firebase/app@0.14.9)':
+  '@firebase/messaging@0.13.3(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/messaging-interop-types': 0.2.3
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/messaging-interop-types': 0.2.6
+      '@firebase/util': 1.15.3
       idb: 7.1.1
       tslib: 2.8.1
 
-  '@firebase/performance-compat@0.2.23(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/performance-compat@0.2.27(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/performance': 0.7.10(@firebase/app@0.14.9)
-      '@firebase/performance-types': 0.2.3
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/performance': 0.7.14(@firebase/app@0.16.4)
+      '@firebase/performance-types': 0.2.5
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
 
-  '@firebase/performance-types@0.2.3': {}
+  '@firebase/performance-types@0.2.5': {}
 
-  '@firebase/performance@0.7.10(@firebase/app@0.14.9)':
+  '@firebase/performance@0.7.14(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
       web-vitals: 4.2.4
 
-  '@firebase/remote-config-compat@0.2.22(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)':
+  '@firebase/remote-config-compat@0.2.30(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/logger': 0.5.0
-      '@firebase/remote-config': 0.8.1(@firebase/app@0.14.9)
-      '@firebase/remote-config-types': 0.5.0
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/logger': 0.5.2
+      '@firebase/remote-config': 0.9.3(@firebase/app@0.16.4)
+      '@firebase/remote-config-types': 0.5.2
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/remote-config-types@0.5.2': {}
+
+  '@firebase/remote-config@0.9.3(@firebase/app@0.16.4)':
+    dependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/logger': 0.5.2
+      '@firebase/util': 1.15.3
+      tslib: 2.8.1
+
+  '@firebase/storage-compat@0.4.6(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)':
+    dependencies:
+      '@firebase/app': 0.16.4
+      '@firebase/app-compat': 0.5.20
+      '@firebase/component': 0.7.5
+      '@firebase/storage': 0.14.6(@firebase/app@0.16.4)
+      '@firebase/storage-types': 0.8.5(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
     transitivePeerDependencies:
-      - '@firebase/app'
-
-  '@firebase/remote-config-types@0.5.0': {}
-
-  '@firebase/remote-config@0.8.1(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/logger': 0.5.0
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-
-  '@firebase/storage-compat@0.4.1(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)':
-    dependencies:
-      '@firebase/app-compat': 0.5.9
-      '@firebase/component': 0.7.1
-      '@firebase/storage': 0.14.1(@firebase/app@0.14.9)
-      '@firebase/storage-types': 0.8.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)
-      '@firebase/util': 1.14.0
-      tslib: 2.8.1
-    transitivePeerDependencies:
-      - '@firebase/app'
       - '@firebase/app-types'
 
-  '@firebase/storage-types@0.8.3(@firebase/app-types@0.9.3)(@firebase/util@1.14.0)':
+  '@firebase/storage-types@0.8.5(@firebase/app-types@0.9.6)(@firebase/util@1.15.3)':
     dependencies:
-      '@firebase/app-types': 0.9.3
-      '@firebase/util': 1.14.0
+      '@firebase/app-types': 0.9.6
+      '@firebase/util': 1.15.3
 
-  '@firebase/storage@0.14.1(@firebase/app@0.14.9)':
+  '@firebase/storage@0.14.6(@firebase/app@0.16.4)':
     dependencies:
-      '@firebase/app': 0.14.9
-      '@firebase/component': 0.7.1
-      '@firebase/util': 1.14.0
+      '@firebase/app': 0.16.4
+      '@firebase/component': 0.7.5
+      '@firebase/util': 1.15.3
       tslib: 2.8.1
 
-  '@firebase/util@1.14.0':
+  '@firebase/util@1.15.3':
     dependencies:
       tslib: 2.8.1
 
-  '@firebase/webchannel-wrapper@1.0.5': {}
+  '@firebase/webchannel-wrapper@1.0.7': {}
 
   '@google-cloud/cloud-sql-connector@1.11.3(supports-color@10.2.2)':
     dependencies:
@@ -16259,13 +16267,13 @@ snapshots:
 
   '@sindresorhus/is@7.2.0': {}
 
-  '@sneat/api-firebase-auth@0.27.6(f468e8a05c79e8fa8f0e1fa0d28df397)':
+  '@sneat/api-firebase-auth@0.27.6(c8eefb911b7e14e7bef5d81964430226)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@sneat/api-public': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
-      firebase: 12.10.0
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
+      firebase: 13.1.0
       tslib: 2.8.1
 
   '@sneat/api-public@0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)':
@@ -16276,28 +16284,28 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@sneat/api@0.27.41(feeb35d658401fdb750904bc73f2934d)':
+  '@sneat/api@0.27.41(d891fd3f2861e06e9e66780f6a9ca82e)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@sneat/api-public': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
-      firebase: 12.10.0
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
+      firebase: 13.1.0
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@sneat/app-auth@0.27.41(dcec74fc09005185436ff8fdc544c7a0)':
+  '@sneat/app-auth@0.27.41(175424b5f280594cf26c4c136e9bcbf6)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@angular/router': 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@capacitor/core': 8.5.3
-      '@sneat/api-firebase-auth': 0.27.6(f468e8a05c79e8fa8f0e1fa0d28df397)
+      '@sneat/api-firebase-auth': 0.27.6(c8eefb911b7e14e7bef5d81964430226)
       '@sneat/app-public': 0.27.6(e16b909429bde9ec2b7351ce18df557a)
-      '@sneat/auth-core': 0.27.41(8e357e0b4d4ea506c9434c4b10f4e5a6)
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
-      '@sneat/logging': 0.27.41(06f3a4a8840ccd074e17401b5feb45a4)
-      firebase: 12.10.0
+      '@sneat/auth-core': 0.27.41(895d3955a1dc2ab7371751dac8366069)
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
+      '@sneat/logging': 0.27.41(c495a0e44d4329590448d365c52d244c)
+      firebase: 13.1.0
       posthog-js: 1.438.13
       rxjs: 7.8.2
       tslib: 2.8.1
@@ -16317,19 +16325,19 @@ snapshots:
     dependencies:
       astro: 7.4.2(@types/node@24.19.2)(esbuild@0.28.2)(jiti@2.7.0)(less@4.9.1(supports-color@10.2.2))(sass-embedded@1.106.1)(sass@1.106.1)(terser@5.51.2)(yaml@2.9.1)
 
-  '@sneat/auth-core@0.27.41(8e357e0b4d4ea506c9434c4b10f4e5a6)':
+  '@sneat/auth-core@0.27.41(895d3955a1dc2ab7371751dac8366069)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@angular/router': 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
-      '@capacitor-firebase/authentication': 8.1.0(@capacitor/core@8.5.3)(firebase@12.10.0)
+      '@capacitor-firebase/authentication': 8.5.2(@capacitor/core@8.5.3)(firebase@13.1.0)
       '@capacitor/core': 8.5.3
-      '@sneat/api': 0.27.41(feeb35d658401fdb750904bc73f2934d)
+      '@sneat/api': 0.27.41(d891fd3f2861e06e9e66780f6a9ca82e)
       '@sneat/auth-models': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
       '@sneat/dto': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/random': 0.0.4(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
-      firebase: 12.10.0
+      firebase: 13.1.0
       rxjs: 7.8.2
       tslib: 2.8.1
 
@@ -16339,20 +16347,20 @@ snapshots:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/auth-ui@0.27.41(ed43bc05364967996ba523543a0041e3)':
+  '@sneat/auth-ui@0.27.41(f1b7fb074acaf44461c2db49e05c2252)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@angular/forms': 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@angular/router': 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@ionic/angular': 9.0.9(8151b849faddff6ad2d09cce1241f706)
-      '@sneat/api': 0.27.41(feeb35d658401fdb750904bc73f2934d)
-      '@sneat/auth-core': 0.27.41(8e357e0b4d4ea506c9434c4b10f4e5a6)
+      '@sneat/api': 0.27.41(d891fd3f2861e06e9e66780f6a9ca82e)
+      '@sneat/auth-core': 0.27.41(895d3955a1dc2ab7371751dac8366069)
       '@sneat/auth-models': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
       '@sneat/random': 0.0.4(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
-      '@sneat/space-services': 0.27.41(521d19cf441980fc35fde6da3432bdfc)
-      firebase: 12.10.0
+      '@sneat/space-services': 0.27.41(cea581b0415a9d7c0b451e9af82f9351)
+      firebase: 13.1.0
       tslib: 2.8.1
 
   '@sneat/build-info@0.27.41': {}
@@ -16371,7 +16379,7 @@ snapshots:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/core@0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)':
+  '@sneat/core@0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)':
     dependencies:
       '@angular/animations': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
@@ -16382,7 +16390,7 @@ snapshots:
       rxjs: 7.8.2
       tslib: 2.8.1
     optionalDependencies:
-      firebase: 12.10.0
+      firebase: 13.1.0
 
   '@sneat/data@0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))':
     dependencies:
@@ -16402,11 +16410,11 @@ snapshots:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/extension-contactus-contract@0.12.11(bb94c9da89fbfac3d3da753a7e631423)':
+  '@sneat/extension-contactus-contract@0.12.11(b2910492438f94ad6df1386e7b4de4c5)':
     dependencies:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@sneat/auth-models': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
       '@sneat/dto': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       '@sneat/space-models': 0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))
       rxjs: 7.8.2
@@ -16418,15 +16426,15 @@ snapshots:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/logging@0.27.41(06f3a4a8840ccd074e17401b5feb45a4)':
+  '@sneat/logging@0.27.41(c495a0e44d4329590448d365c52d244c)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@angular/router': 22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2)
       '@ionic/angular': 9.0.9(8151b849faddff6ad2d09cce1241f706)
       '@sentry/angular': 10.70.0(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(rxjs@7.8.2)
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
-      firebase: 12.10.0
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
+      firebase: 13.1.0
       posthog-js: 1.438.13
       rxjs: 7.8.2
       tslib: 2.8.1
@@ -16443,23 +16451,23 @@ snapshots:
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       tslib: 2.8.1
 
-  '@sneat/space-services@0.27.41(521d19cf441980fc35fde6da3432bdfc)':
+  '@sneat/space-services@0.27.41(cea581b0415a9d7c0b451e9af82f9351)':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
-      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@12.10.0)(rxjs@7.8.2)
-      '@sneat/extension-contactus-contract': 0.12.11(bb94c9da89fbfac3d3da753a7e631423)
-      firebase: 12.10.0
+      '@sneat/core': 0.27.41(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/router@22.2.3(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@angular/platform-browser@22.2.3(@angular/animations@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/core-public@0.27.41(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)))(firebase@13.1.0)(rxjs@7.8.2)
+      '@sneat/extension-contactus-contract': 0.12.11(b2910492438f94ad6df1386e7b4de4c5)
+      firebase: 13.1.0
       tslib: 2.8.1
     optionalDependencies:
       '@ionic/angular': 9.0.9(8151b849faddff6ad2d09cce1241f706)
 
-  '@sneat/ui@0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/logging@0.27.41(06f3a4a8840ccd074e17401b5feb45a4))':
+  '@sneat/ui@0.27.41(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(@ionic/angular@9.0.9(8151b849faddff6ad2d09cce1241f706))(@sneat/logging@0.27.41(c495a0e44d4329590448d365c52d244c))':
     dependencies:
       '@angular/common': 22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)
       '@angular/core': 22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2)
       '@ionic/angular': 9.0.9(8151b849faddff6ad2d09cce1241f706)
-      '@sneat/logging': 0.27.41(06f3a4a8840ccd074e17401b5feb45a4)
+      '@sneat/logging': 0.27.41(c495a0e44d4329590448d365c52d244c)
       tslib: 2.8.1
 
   '@sneat/wormhole@0.0.6(@angular/common@22.2.3(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2))(@angular/core@22.2.3(@angular/compiler@22.2.3)(rxjs@7.8.2))(rxjs@7.8.2)':
@@ -18448,9 +18456,6 @@ snapshots:
 
   es-errors@1.3.0: {}
 
-  es-module-lexer@2.3.0:
-    optional: true
-
   es-module-lexer@2.3.2: {}
 
   es-module-lexer@3.0.4: {}
@@ -18924,36 +18929,36 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  firebase@12.10.0:
+  firebase@13.1.0:
     dependencies:
-      '@firebase/ai': 2.9.0(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)
-      '@firebase/analytics': 0.10.20(@firebase/app@0.14.9)
-      '@firebase/analytics-compat': 0.2.26(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/app': 0.14.9
-      '@firebase/app-check': 0.11.1(@firebase/app@0.14.9)
-      '@firebase/app-check-compat': 0.4.1(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/app-compat': 0.5.9
-      '@firebase/app-types': 0.9.3
-      '@firebase/auth': 1.12.1(@firebase/app@0.14.9)
-      '@firebase/auth-compat': 0.6.3(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)
-      '@firebase/data-connect': 0.4.0(@firebase/app@0.14.9)
-      '@firebase/database': 1.1.1
-      '@firebase/database-compat': 2.1.1
-      '@firebase/firestore': 4.12.0(@firebase/app@0.14.9)
-      '@firebase/firestore-compat': 0.4.6(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)
-      '@firebase/functions': 0.13.2(@firebase/app@0.14.9)
-      '@firebase/functions-compat': 0.4.2(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/installations': 0.6.20(@firebase/app@0.14.9)
-      '@firebase/installations-compat': 0.2.20(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)
-      '@firebase/messaging': 0.12.24(@firebase/app@0.14.9)
-      '@firebase/messaging-compat': 0.2.24(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/performance': 0.7.10(@firebase/app@0.14.9)
-      '@firebase/performance-compat': 0.2.23(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/remote-config': 0.8.1(@firebase/app@0.14.9)
-      '@firebase/remote-config-compat': 0.2.22(@firebase/app-compat@0.5.9)(@firebase/app@0.14.9)
-      '@firebase/storage': 0.14.1(@firebase/app@0.14.9)
-      '@firebase/storage-compat': 0.4.1(@firebase/app-compat@0.5.9)(@firebase/app-types@0.9.3)(@firebase/app@0.14.9)
-      '@firebase/util': 1.14.0
+      '@firebase/ai': 3.0.0(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)
+      '@firebase/analytics': 0.10.25(@firebase/app@0.16.4)
+      '@firebase/analytics-compat': 0.2.31(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/app': 0.16.4
+      '@firebase/app-check': 0.13.1(@firebase/app@0.16.4)
+      '@firebase/app-check-compat': 0.4.7(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/app-compat': 0.5.20
+      '@firebase/app-types': 0.9.6
+      '@firebase/auth': 1.13.8(@firebase/app@0.16.4)
+      '@firebase/auth-compat': 0.6.13(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)
+      '@firebase/data-connect': 0.7.4(@firebase/app@0.16.4)
+      '@firebase/database': 1.1.5
+      '@firebase/database-compat': 2.1.7(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/firestore': 4.19.0(@firebase/app@0.16.4)
+      '@firebase/firestore-compat': 0.4.16(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)
+      '@firebase/functions': 0.14.0(@firebase/app@0.16.4)
+      '@firebase/functions-compat': 0.5.0(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/installations': 0.6.24(@firebase/app@0.16.4)
+      '@firebase/installations-compat': 0.2.24(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)
+      '@firebase/messaging': 0.13.3(@firebase/app@0.16.4)
+      '@firebase/messaging-compat': 0.2.30(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/performance': 0.7.14(@firebase/app@0.16.4)
+      '@firebase/performance-compat': 0.2.27(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/remote-config': 0.9.3(@firebase/app@0.16.4)
+      '@firebase/remote-config-compat': 0.2.30(@firebase/app-compat@0.5.20)(@firebase/app@0.16.4)
+      '@firebase/storage': 0.14.6(@firebase/app@0.16.4)
+      '@firebase/storage-compat': 0.4.6(@firebase/app-compat@0.5.20)(@firebase/app-types@0.9.6)(@firebase/app@0.16.4)
+      '@firebase/util': 1.15.3
     transitivePeerDependencies:
       - '@react-native-async-storage/async-storage'
 
@@ -21228,6 +21233,8 @@ snapshots:
       node-gyp: 13.0.2
     optional: true
 
+  re2js@2.9.0: {}
+
   readable-stream@2.3.8:
     dependencies:
       core-util-is: 1.0.3
@@ -22795,7 +22802,7 @@ snapshots:
       browserslist: 4.29.4
       chrome-trace-event: 1.0.4
       enhanced-resolve: 5.26.0
-      es-module-lexer: 2.3.0
+      es-module-lexer: 2.3.2
       events: 3.3.0
       graceful-fs: 4.2.11
       mime-db: 1.54.0
