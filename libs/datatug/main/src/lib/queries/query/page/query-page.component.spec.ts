@@ -7402,7 +7402,7 @@ select (
       select.mockClear();
       (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
       await Promise.resolve();
-      expect(select).toHaveBeenCalledWith('local');
+      expect(select).toHaveBeenCalledWith('local', { persist: false });
       // the person picks another environment: it is theirs, only a cleared one is put back
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
       select.mockClear();
