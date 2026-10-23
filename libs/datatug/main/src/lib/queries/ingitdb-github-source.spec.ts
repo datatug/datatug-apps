@@ -27,6 +27,9 @@ import worldMeta from './fixtures/geo-ingitdb-github/countries-currency-populati
 import worldText from './fixtures/geo-ingitdb-github/countries-currency-population.query.dtql?raw';
 
 const base = 'https://ovdb.example.test';
+/** Requests are told apart by their parsed origin or host, never by a substring of the URL. */
+const isOvdbRequest = (url: string): boolean => new URL(url).origin === base;
+const isGitHubApiRequest = (url: string): boolean => new URL(url).hostname === 'api.github.com';
 const descriptorUrl = chinookMeta.federation.ingitdbSources[0].descriptor;
 const raw = 'https://raw.githubusercontent.com/ingitdb/geo-ingitdb/2a84199bcab79744b48ec529e48559a89a4b8851';
 const files: Record<string, string> = {
@@ -98,14 +101,14 @@ describe('inGitDB databases read straight from GitHub', () => {
     // One view per collection, no GitHub API listing, no per-record files.
     const github = requested.filter((url) => url.startsWith('https://raw.githubusercontent.com/ingitdb/'));
     expect(github.filter((url) => url.endsWith('.ingr'))).toHaveLength(2);
-    expect(requested.some((url) => url.includes('api.github.com') || url.includes('/$records/'))).toBe(false);
+    expect(requested.some((url) => isGitHubApiRequest(url) || url.includes('/$records/'))).toBe(false);
     // GitHub reads are anonymous simple requests; only OVDB sees the token.
     for (const [url, init] of vi.mocked(fetch).mock.calls)
-      if (!String(url).startsWith(base)) {
+      if (!isOvdbRequest(String(url))) {
         expect(init?.headers).toBeUndefined();
         expect(init).toMatchObject({ credentials: 'omit', redirect: 'error' });
       }
-    expect(requested.filter((url) => url.startsWith(base)).every((url) => url.includes('/chinook/'))).toBe(true);
+    expect(requested.filter(isOvdbRequest).every((url) => url.includes('/chinook/'))).toBe(true);
   });
 
   it('gives Northwind customers a currency and population, leaving out customers without a Country', async () => {
@@ -125,7 +128,7 @@ describe('inGitDB databases read straight from GitHub', () => {
     expect(rows).toHaveLength(216);
     expect(rows[0]).toMatchObject({ iso2: 'IN', currency: 'INR', populationYear: 2025 });
     expect(rows.find((row) => row['iso2'] === 'CA')).toMatchObject({ currency: 'CAD', population: 41651653 });
-    expect(requested.some((url) => url.startsWith(base))).toBe(false);
+    expect(requested.some(isOvdbRequest)).toBe(false);
     expect(result.provenance.source).toBe('GitHub (direct, no server)');
   });
 
@@ -142,7 +145,7 @@ describe('inGitDB databases read straight from GitHub', () => {
     const error = await run(definition(chinookMeta, chinookText)).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(IngitdbSourceError);
     expect((error as IngitdbSourceError).detail).toBe('collection population_wb publishes no default view');
-    expect(requested.some((url) => url.includes('api.github.com') || url.includes('/$records/') || url.includes('%24records'))).toBe(false);
+    expect(requested.some((url) => isGitHubApiRequest(url) || url.includes('/$records/') || url.includes('%24records'))).toBe(false);
   });
 
   it('refuses a descriptor that is not pinned to a commit', async () => {
