@@ -1039,7 +1039,7 @@
               <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" ariaLabel="DTQL source"
                 [sql]="queryBodyText() ?? ''" [disabled]="queryState.isSaving || running()"
                 [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
-                [lineNumbers]="false" [autoCloseBrackets]="false" (sqlChanged)="sqlTextChanged($event)" />
+                [lineNumbers]="false" [autoCloseBrackets]="false" [hashComments]="true" (sqlChanged)="sqlTextChanged($event)" />
             </section>
           }
           @if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {

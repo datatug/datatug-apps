@@ -2,10 +2,11 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { closeBrackets, insertBracket } from '@codemirror/autocomplete';
 import { history, redo, undo } from '@codemirror/commands';
 import { StandardSQL } from '@codemirror/lang-sql';
-import { syntaxTree } from '@codemirror/language';
+import { type LanguageSupport, syntaxTree } from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView, lineNumbers } from '@codemirror/view';
 
+import { SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS } from './sql-language';
 import { getRawSource } from '../code-editor/raw-source';
 import { SqlEditorComponent } from './sql-editor.component';
 
@@ -461,6 +462,35 @@ describe('SqlEditorComponent', () => {
     expect(component.instance().value).toBe(replacement);
     expect(listener).not.toHaveBeenCalled();
     expect(getRawSource(view.state)).toBe('SELECT 1;');
+  });
+
+  it('colours # line comments as SQL comments for TugQL YAML sources, not the next line', async () => {
+    fixture.componentRef.setInput('hashComments', true);
+    expect(component.languages()).toBe(SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS);
+    const source = '# customers\nlimit: 20 -- cap';
+    const host = document.createElement('div');
+    fixture.nativeElement.appendChild(host);
+    const view = new EditorView({
+      root: document,
+      parent: host,
+      state: EditorState.create({
+        doc: source,
+        extensions: [
+          SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS[0].support as LanguageSupport,
+          ...component.instance().extensions,
+        ],
+      }),
+    });
+    views.add(view);
+    const [first, second] = Array.from(view.dom.querySelectorAll('.cm-line'));
+
+    expect(first.querySelector('.sql-token-comment')?.textContent).toBe(
+      '# customers',
+    );
+    expect(second.querySelector('.sql-token-comment')?.textContent).toBe(
+      '-- cap',
+    );
+    expect(second.textContent).toBe('limit: 20 -- cap');
   });
 });
 
