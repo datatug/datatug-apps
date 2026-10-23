@@ -4,7 +4,7 @@ import {
   LanguageSupport,
   syntaxHighlighting,
 } from '@codemirror/language';
-import { StandardSQL } from '@codemirror/lang-sql';
+import { SQLDialect, StandardSQL } from '@codemirror/lang-sql';
 import { EditorState, Prec, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { tags } from '@lezer/highlight';
@@ -15,6 +15,21 @@ export const SQL_LANGUAGE_DESCRIPTIONS = [
     name: 'SQL',
     alias: ['sql'],
     support: new LanguageSupport(StandardSQL.language),
+  }),
+];
+
+/**
+ * The same grammar, plus `#` line comments, for saved TugQL sources whose body
+ * is YAML (`# note`). Comments keep the standard SQL comment tag, so they get
+ * the same `sql-token-comment` colour as `-- note` in both themes.
+ */
+export const SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS = [
+  LanguageDescription.of({
+    name: 'SQL',
+    alias: ['sql'],
+    support: new LanguageSupport(
+      SQLDialect.define({ ...StandardSQL.spec, hashComments: true }).language,
+    ),
   }),
 ];
 

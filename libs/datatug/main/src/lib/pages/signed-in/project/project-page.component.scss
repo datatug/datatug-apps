@@ -1,40 +1,9 @@
 .overview-quick-search {
+  display: block;
   margin: 16px;
-  label {
-    display: block;
-    font-weight: 600;
-    margin-bottom: 8px;
-  }
-  div {
-    display: flex;
-    gap: 8px;
-  }
-  input {
-    flex: 1;
-    min-width: 0;
-    padding: 12px;
-    border: 1px solid var(--ion-color-medium);
-    border-radius: 6px;
-    background: var(--ion-background-color);
-    color: var(--ion-text-color);
-    font: inherit;
-  }
-  button {
-    padding: 10px 16px;
-    border: 0;
-    border-radius: 6px;
-    background: var(--ion-color-primary);
-    color: var(--ion-color-primary-contrast);
-    font: inherit;
-  }
-  button:disabled {
-    opacity: 0.5;
-  }
-  input:focus-visible,
-  button:focus-visible {
-    outline: 2px solid var(--ion-color-primary);
-    outline-offset: 2px;
-  }
+  // The suggestions panel floats over the cards below it.
+  position: relative;
+  z-index: 10;
 }
 
 .overview-environments {
@@ -119,9 +88,23 @@
   }
 }
 
-@media (max-width: 379px) {
+// Four tabs stay on one row down to 320px: tighter type and chip spacing
+// instead of wrapping "Databases" onto a second row.
+@media (max-width: 420px) {
   .overview-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-inline: 4px;
+
+    button {
+      padding-inline: 0;
+      font-size: 0.75rem;
+      letter-spacing: 0;
+    }
+
+    .overview-tab-count {
+      margin-left: 3px;
+      padding: 0 5px;
+      font-size: 0.6875rem;
+    }
   }
 }
 
@@ -159,4 +142,30 @@
   font-size: 0.75rem;
   vertical-align: middle;
   pointer-events: none;
+}
+
+.card-header-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// A standalone card's message and its action share one line on wide screens:
+// the text grows and the button sits at the end. On a narrow screen the
+// button wraps below the text, right-aligned.
+.card-message-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+
+  p {
+    flex: 1 1 18rem;
+    margin: 0;
+  }
+
+  ion-button {
+    flex: 0 0 auto;
+    margin: 0 0 0 auto;
+  }
 }

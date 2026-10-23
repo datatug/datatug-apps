@@ -75,6 +75,9 @@ export function cardShowsEntity(
 export interface RelatedQueryShape {
   readonly id: string;
   readonly title?: string;
+  /** Present on saved-query listings: the type and creation time a query row shows. */
+  readonly createdAt?: string;
+  readonly request?: { readonly queryType?: string };
   readonly parameters?: readonly RelatedParameter[] | null;
 }
 

@@ -77,6 +77,25 @@ export async function installCountryComparisonFixture(
     downloads: string[] = [],
     mutations: string[] = [],
     rootBodies: string[] = [];
+  // Answered (fulfilled) fixture POSTs by kind. A chart can only render after its query was answered, and on a busy
+  // runner the dev-server boot before that POST alone can take longer than expect's 5 s window (2026-10-23, merge-group
+  // run 39956333256: the comparison POST was answered 4.6 s into the first toHaveCount(17)). Specs wait for this event,
+  // which the test timeout bounds, and keep the default expect timeout for the render that follows it.
+  const answeredCounts = new Map<string, number>();
+  const waiters: { kind: string; count: number; resolve: () => void }[] = [];
+  const markAnswered = (kind: string) => {
+    const count = (answeredCounts.get(kind) ?? 0) + 1;
+    answeredCounts.set(kind, count);
+    for (const waiter of waiters.filter((w) => w.kind === kind && w.count <= count)) {
+      waiters.splice(waiters.indexOf(waiter), 1);
+      waiter.resolve();
+    }
+  };
+  /** Resolves once the fixture has answered the `count`-th POST of `kind`: 'comparison', 'orders', 'countries' or 'inspector-counts'. */
+  const answered = (kind: string, count = 1) =>
+    (answeredCounts.get(kind) ?? 0) >= count
+      ? Promise.resolve()
+      : new Promise<void>((resolve) => waiters.push({ kind, count, resolve }));
   context.on('request', (request) => {
     const url = new URL(request.url()),
       method = request.method();
@@ -137,11 +156,13 @@ export async function installCountryComparisonFixture(
         if (
           options.failRootOnce &&
           posts.filter((value) => value === 'comparison').length === 1
-        )
-          return route.fulfill({
+        ) {
+          await route.fulfill({
             status: 503,
             body: 'fixture temporary refusal',
           });
+          return markAnswered('comparison');
+        }
         const result = structuredClone(snapshot.comparison);
         if (simulatedProvider) {
           // Preserve captured root rows; simulate the coordinated new provider inventory/usage only.
@@ -151,7 +172,8 @@ export async function installCountryComparisonFixture(
         // Deliberately synthetic negative fixture only: real captured labels all have shipping matches.
         if (options.syntheticZero)
           result.records[0].data.country = 'United Kingdom';
-        return route.fulfill({ json: result });
+        await route.fulfill({ json: result });
+        return markAnswered('comparison');
       }
       if (path === '/v1/databases/northwind')
         return route.fulfill({ json: { ...snapshot.northwind, ...(simulatedProvider ? { serverId: fixtureServerId, sourceRights: terms('northwind').sourceRights } : {}), capabilities: { ...snapshot.northwind.capabilities, dtql: true, dtqlStreaming: !options.customerOrdinary, dtqlStreamingErrors: !options.customerOrdinary } } });
@@ -189,7 +211,8 @@ export async function installCountryComparisonFixture(
       const text = body.startsWith('{') ? JSON.parse(body).query : body;
       if (text === countQuery) {
         posts.push('countries');
-        return route.fulfill({ json: countsEnvelope(counts) });
+        await route.fulfill({ json: countsEnvelope(counts) });
+        return markAnswered('countries');
       }
       const distinctQuery = readFileSync(
         join(
@@ -200,7 +223,7 @@ export async function installCountryComparisonFixture(
       );
       if (text === distinctQuery) {
         posts.push('inspector-counts');
-        return route.fulfill({
+        await route.fulfill({
           json: countsEnvelope(
             [...counts].sort(
               (a, b) =>
@@ -209,22 +232,25 @@ export async function installCountryComparisonFixture(
             ),
           ),
         });
+        return markAnswered('inspector-counts');
       }
       if (text === countryFixture('northwind-orders-query.dtql')) {
         posts.push('orders');
-        return route.fulfill({
+        await route.fulfill({
           json: {
             complete: !options.partialOrders,
             columns: fields,
             records: countryOrders.map((data) => ({ data })),
           },
         });
+        return markAnswered('orders');
       }
       return route.abort();
     },
   );
   return {
     posts,
+    answered,
     downloads,
     mutations,
     rootBodies,

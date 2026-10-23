@@ -47,6 +47,14 @@ module.exports = [
     ignores: ['node_modules', '**/dist', '**/vitest.config.*.timestamp*'],
   },
   {
+    // The one spec that guards the shared root vitest config (vite.config.base.ts) must import it by a relative path:
+    // the config is workspace tooling, not a project or an npm scope. Exactly this file, no wider.
+    files: ['libs/testing/src/vite-config-base.spec.ts'],
+    rules: {
+      '@nx/enforce-module-boundaries': 'off',
+    },
+  },
+  {
     files: ['**/eslint.config.*', '**/.eslintrc.*', '**/test-setup.ts'],
     rules: {
       '@nx/enforce-module-boundaries': 'off',

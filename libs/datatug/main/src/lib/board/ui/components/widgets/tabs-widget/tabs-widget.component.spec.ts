@@ -55,3 +55,28 @@ describe('TabsWidgetComponent accessible relationships', () => {
     expect(panel.getAttribute('aria-labelledby')).toBe(first.componentInstance.tabDOMID('id:two'));
   });
 });
+
+describe('TabsWidgetComponent narrow strip', () => {
+  it('scrolls the newly selected tab into view after it renders', async () => {
+    await TestBed.configureTestingModule({ imports: [TabsWidgetComponent] }).compileComponents();
+    const fixture = TestBed.createComponent(TabsWidgetComponent);
+    fixture.componentRef.setInput('boardWidgetComponent', TabsWidgetComponent);
+    fixture.componentRef.setInput('resultSnapshot', signal(undefined));
+    fixture.componentRef.setInput('tabsWidgetDef', { tabs: [{ id: 'one', title: 'First' }, { id: 'two', title: 'Second' }] });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const segment = fixture.nativeElement.querySelector('ion-segment') as HTMLElement;
+    const second = fixture.nativeElement.querySelectorAll('ion-segment-button')[1] as HTMLElement;
+    const box = (left: number, width: number) => ({ left, right: left + width, width, top: 0, bottom: 40, height: 40, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+    Object.defineProperty(segment, 'scrollWidth', { value: 974 });
+    Object.defineProperty(segment, 'clientWidth', { value: 355 });
+    segment.getBoundingClientRect = () => box(10, 355);
+    second.getBoundingClientRect = () => box(318, 311);
+    const scrollTo = vi.fn();
+    segment.scrollTo = scrollTo as typeof segment.scrollTo;
+    fixture.componentInstance.select('id:two');
+    await fixture.whenStable();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    expect(scrollTo).toHaveBeenCalledWith({ left: segment.scrollLeft + 264, behavior: 'instant' });
+  });
+});

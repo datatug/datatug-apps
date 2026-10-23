@@ -778,8 +778,10 @@ export class ServersPageComponent implements OnDestroy {
    * "could not be loaded". A GitHub project's `connections/*.json` files are
    * ordinary repository files, so when the API refuses (401/403) or has no
    * such catalogue (404) fall back to the same browser-direct repository
-   * reader the other public pages use. Any other failure (outage, network,
-   * malformed response) is still surfaced as the error banner.
+   * reader the other public pages use. Any other failure (409 when the
+   * signed-in user has no connected GitHub credential, outage, network,
+   * malformed response) also tries that reader, and is surfaced as the error
+   * banner only when the repository read yields nothing as well.
    */
   private connectionCatalog(
     target: IProjectRef,
@@ -788,11 +790,21 @@ export class ServersPageComponent implements OnDestroy {
       this.projectQueries.connectionCatalog<ProjectConnectionCatalog>(target);
     if (!isGithubStoreId(target.storeId)) return api$;
     return api$.pipe(
-      catchError((error: unknown) =>
-        isHostedReadRefused(error)
-          ? this.readGithubConnections(target)
-          : throwError(() => error),
-      ),
+      catchError((error: unknown) => {
+        if (isHostedReadRefused(error)) return this.readGithubConnections(target);
+        // A signed-in visitor whose hosted API read fails for any other
+        // reason (e.g. 409 reauthorization_required when no GitHub credential
+        // is connected, 503 while GitHub is unavailable) still gets what the
+        // repository itself publishes. If that read finds nothing, or fails
+        // too, the original API error is what the page reports.
+        return this.readGithubConnections(target).pipe(
+          map((catalog) => {
+            if (!catalog.connections?.length) throw error;
+            return catalog;
+          }),
+          catchError(() => throwError(() => error)),
+        );
+      }),
     );
   }
 

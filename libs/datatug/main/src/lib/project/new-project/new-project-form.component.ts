@@ -55,6 +55,7 @@ import {
 import {
   ProjectQueryApiService,
   DATATUG_DEMO_PROJECT_TEMPLATE,
+  githubReauthorizationReason,
   type CreateGithubProject,
   type GithubProjectCreateStatus,
   type PendingGithubProjectSetup,
@@ -983,6 +984,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.queryApi.reportGithubReauthorizationRequired(
             this.pendingSetupProjectRef(setup),
             githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+            githubReauthorizationReason(githubProjectErrorCode(error)),
           );
           return;
         }
@@ -1046,6 +1048,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.queryApi.reportGithubReauthorizationRequired(
             this.pendingSetupProjectRef(setup),
             githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+            githubReauthorizationReason(githubProjectErrorCode(error)),
           );
           return;
         }

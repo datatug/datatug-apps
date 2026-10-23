@@ -47,12 +47,12 @@ describe('shared project database connections', () => {
     for (const dataset of datasets) for (const storage of ['sqlite', 'postgresql', 'ingitdb']) {
       expect(catalog.connections.find((entry) => entry.id === `${dataset}-${storage}`)?.tags).toEqual([dataset, storage]);
     }
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(8);
+    expect(fixture.nativeElement.querySelectorAll('ion-list ion-item').length).toBe(8);
     expect(fixture.nativeElement.querySelectorAll('[data-testid^="dataset-"]').length).toBe(6);
     expect(fixture.componentInstance['readiness'](catalog.connections[1])).toBe('PostgreSQL query endpoint pending');
     expect(fixture.nativeElement.querySelectorAll('ion-button').length).toBe(0);
     expect(fixture.nativeElement.querySelector('a[href*="chinook-postgresql-artist-tracks"]')).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain('Demo databases');
+    expect(fixture.nativeElement.innerHTML).toContain('Demo databases');
     for (const dataset of datasets) {
       expect(fixture.nativeElement.querySelector(`a[data-testid="explore-local-${dataset}"]`)?.getAttribute('href'))
         .toBe(`/demo/sqlite/${dataset}`);
@@ -63,7 +63,7 @@ describe('shared project database connections', () => {
     expect(rendered).toContain('demodb-dev.chinook');
     expect(rendered).toContain('Source SQLite SHA-256');
     expect(fixture.nativeElement.querySelectorAll('a[href="https://console.cloud.google.com/bigquery"]').length).toBe(6);
-    expect(fixture.nativeElement.querySelectorAll('ion-card-title')[1].textContent).toContain('discoveries');
+    expect(fixture.nativeElement.querySelectorAll('.tab-panel-header h2')[1].innerHTML).toContain('discoveries');
     for (const dataset of datasets) {
       const row = fixture.nativeElement.querySelector(`[data-testid="dataset-${dataset}"]`);
       expect(row.innerHTML).toContain('SQLite');
@@ -191,7 +191,7 @@ describe('shared project database connections', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(fixture.componentInstance['catalog']()).toBeDefined();
-    expect(fixture.nativeElement.querySelectorAll('ion-item').length).toBe(8);
+    expect(fixture.nativeElement.querySelectorAll('ion-list ion-item').length).toBe(8);
     expect(fixture.nativeElement.innerHTML).not.toContain('Hosted BigQuery editions');
     expect(fixture.nativeElement.innerHTML).toContain('BigQuery discoveries (setup planned)');
   });

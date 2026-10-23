@@ -196,6 +196,62 @@ describe('DemoOvdbPageComponent', () => {
     expect(q('demo-ovdb-failed')).toBeNull();
   });
 
+  describe('while a PostgreSQL edition is still mounting (pending 503, Retry-After)', () => {
+    const pendingFetch = () => {
+      const calls: string[] = [];
+      const fetch: typeof globalThis.fetch = async (input) => {
+        calls.push(String(input));
+        return new Response(
+          '{"error":{"code":"database_unavailable","message":"This PostgreSQL edition is not available right now (pending)."}}',
+          { status: 503, headers: { 'Retry-After': '30' } },
+        );
+      };
+      return { calls, fetch };
+    };
+
+    it('shows the waking-up message, and Try again aborts the previous attempt: no more requests, no live timers', async () => {
+      vi.useFakeTimers();
+      const pending = pendingFetch();
+      const { q, settle, fixture } = await setup(
+        { database: 'chinook-postgresql' },
+        { fetch: pending.fetch, requests: [] },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      await settle();
+      expect(q('demo-ovdb-connecting')?.textContent).toContain('waking up');
+      expect(pending.calls).toHaveLength(1);
+      const timersWhileWaiting = vi.getTimerCount();
+
+      // Try again is only on the failed card; drive the same path through the component.
+      (fixture.componentInstance as unknown as { retry(): void }).retry();
+      await settle();
+      await vi.advanceTimersByTimeAsync(0);
+      // The old attempt's wait ended at once; only the new attempt's wait is left.
+      expect(pending.calls).toHaveLength(2);
+      expect(vi.getTimerCount()).toBe(timersWhileWaiting);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(pending.calls).toHaveLength(3);
+      fixture.destroy();
+    });
+
+    it('aborts on destroy: no further requests and no live timers', async () => {
+      vi.useFakeTimers();
+      const pending = pendingFetch();
+      const { fixture, settle } = await setup(
+        { database: 'chinook-postgresql' },
+        { fetch: pending.fetch, requests: [] },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+      await settle();
+      expect(pending.calls).toHaveLength(1);
+      const timersWhileWaiting = vi.getTimerCount();
+      fixture.destroy();
+      expect(vi.getTimerCount()).toBeLessThan(timersWhileWaiting);
+      await vi.advanceTimersByTimeAsync(200_000);
+      expect(pending.calls).toHaveLength(1);
+    });
+  });
+
   it('ignores a connection that finished after the page moved on', async () => {
     const fake = fakeCloudFetch();
     let release: () => void = () => undefined;
