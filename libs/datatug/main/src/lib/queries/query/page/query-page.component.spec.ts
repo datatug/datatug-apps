@@ -3093,6 +3093,47 @@ select (
     );
   });
 
+  it('shows a Learn about TugQL link in the read-only note for TugQL queries only', async () => {
+    // Render only the real template's read-only note block, so the test follows the shipped markup.
+    const html = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    const start = html.indexOf('@if (isQueryReadOnly() && queryDef()) {');
+    const end = html.indexOf('@if (demoDraftRecovery()');
+    expect(start).toBeGreaterThan(-1);
+    component = await createComponent({}, queryDef, html.slice(start, end));
+    component.project = {
+      ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
+    };
+    component.queryState = { ...component.queryState, saveSupported: false };
+    const link = () =>
+      (runFixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="query-read-only-tugql-link"]',
+      );
+    component.queryDef.set({
+      ...queryDef,
+      request: { queryType: QueryType.TugQL, text: 'from: Artist' } as ITextQueryRequest,
+    });
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(link()?.getAttribute('href')).toBe('https://tugql.org/');
+    expect(link()?.getAttribute('target')).toBe('_blank');
+    expect(link()?.getAttribute('rel')).toBe('noopener');
+    component.queryDef.set({
+      ...queryDef,
+      request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,
+    });
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(
+      (runFixture.nativeElement as HTMLElement).querySelector(
+        '[data-testid="query-read-only-note"]',
+      ),
+    ).not.toBeNull();
+    expect(link()).toBeNull();
+  });
+
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
     component.project = {

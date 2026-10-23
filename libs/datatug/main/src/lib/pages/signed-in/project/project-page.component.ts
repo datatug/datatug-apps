@@ -16,12 +16,11 @@ import {
   IonCard,
   IonCardContent,
   IonChip,
-  IonCardHeader,
-  IonCardTitle,
   IonContent,
   IonHeader,
   IonIcon,
   IonItem,
+  IonItemDivider,
   IonLabel,
   IonList,
   IonMenuButton,
@@ -70,7 +69,13 @@ import {
   countProjectQueries,
 } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { ProjectOverviewCardComponent } from './project-overview-card.component';
+import {
+  ProjectTabPanelComponent,
+  matchesOverviewFilter,
+} from './project-tab-panel.component';
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
+import { ProjectQuickSearchBoxComponent } from '../../../quick-search/project-quick-search-box.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -109,6 +114,9 @@ function refusedReadHint(error: unknown, what: string): string | undefined {
     DemoDbConnectionsComponent,
     ProjectQueriesPreviewComponent,
     ProjectDatabaseServersPreviewComponent,
+    ProjectOverviewCardComponent,
+    ProjectTabPanelComponent,
+    ProjectQuickSearchBoxComponent,
     GitHubReauthorizationBannerComponent,
     IonHeader,
     IonToolbar,
@@ -120,10 +128,9 @@ function refusedReadHint(error: unknown, what: string): string | undefined {
     IonCard,
     IonCardContent,
     IonChip,
-    IonCardHeader,
-    IonCardTitle,
     IonButton,
     IonItem,
+    IonItemDivider,
     IonLabel,
     IonIcon,
     IonList,
@@ -190,24 +197,8 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
+  /** The overview Quick Search text; cleared when the project changes. */
   readonly quickSearchQuery = signal('');
-  updateQuickSearch(event: Event): void {
-    if (event.target instanceof HTMLInputElement)
-      this.quickSearchQuery.set(event.target.value);
-  }
-  submitQuickSearch(event: Event): void {
-    event.preventDefault();
-    const ref = this.project()?.ref,
-      q = this.quickSearchQuery().trim();
-    if (!ref || !q) return;
-    const destination = this.router.parseUrl(
-      projectPageHref(ref, ['quick-search']),
-    );
-    destination.queryParams = { ...destination.queryParams, q };
-    void this.router
-      .navigateByUrl(destination)
-      .catch(() => this.errorLogger.logError('Could not open Quick Search'));
-  }
 
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;
@@ -277,6 +268,30 @@ export class ProjectPageComponent
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
+  /** Quick client-side filters typed in the Boards and Entities overview cards. */
+  readonly boardFilter = signal('');
+  readonly entityFilter = signal('');
+  protected readonly filteredBoards = computed(() => {
+    const filter = this.boardFilter();
+    return (this.boards() ?? []).filter((board) =>
+      matchesOverviewFilter(filter, board.title, board.id),
+    );
+  });
+  protected readonly filteredEntities = computed(() => {
+    const filter = this.entityFilter();
+    return (this.entities() ?? []).filter((entity) =>
+      matchesOverviewFilter(filter, entity.dbo?.title, entity.id),
+    );
+  });
+  /** Each overview card's title links to the section's full page. */
+  protected readonly sectionHref = computed(() => {
+    const ref = this.project()?.ref;
+    return {
+      boards: ref ? projectPageHref(ref, 'boards') : undefined,
+      entities: ref ? projectPageHref(ref, 'entities') : undefined,
+      servers: ref ? projectPageHref(ref, 'servers') : undefined,
+    };
+  });
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
     return isCanonicalDemoDbProject(ref)
@@ -324,6 +339,8 @@ export class ProjectPageComponent
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.boards.set(undefined);
+      this.boardFilter.set('');
+      this.entityFilter.set('');
       this.environmentError.set(false);
       this.environmentErrorMessage.set(undefined);
       this.environmentFailure.set(undefined);

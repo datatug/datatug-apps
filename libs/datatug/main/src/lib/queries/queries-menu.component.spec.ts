@@ -80,7 +80,9 @@ describe('QueriesMenuComponent live sidebar actions', () => {
     expect(closeQuery).toHaveBeenCalledOnce();
     expect(setCurrentQuery).not.toHaveBeenCalled();
 
-    row?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    row
+      ?.querySelector('.query-row-main')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(setCurrentQuery).toHaveBeenCalledWith('q1');
     expect(TestBed.inject(Router).url).toBe('/');
   });

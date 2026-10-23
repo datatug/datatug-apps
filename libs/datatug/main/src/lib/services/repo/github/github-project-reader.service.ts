@@ -1,5 +1,5 @@
 import { IEnvironmentPresentation } from '../../../models/definition/environments';
-import { Injectable, InjectionToken, inject } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
 import { map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
@@ -17,8 +17,16 @@ import {
   GITHUB_MIRROR_HOST,
   GITHUB_RAW_HOST,
   GithubFetch,
+  GithubOutcome,
   githubGet,
 } from './github-http';
+import {
+  ANONYMOUS_GITHUB_IDENTITY,
+  GITHUB_SIGNED_OUT_EVENT,
+  GITHUB_USER_TOKEN,
+  githubIdentity,
+  usableGithubToken,
+} from './github-user-token';
 import {
   GITHUB_RESOLVE_TTL_MS,
   GithubSetTimer,
@@ -334,6 +342,13 @@ const COMMIT_SHA = /^[0-9a-f]{40}$/i;
 
 /** The listing of a commit is kept in the file cache under this name; no file path can be it (`#` is encoded). */
 const TREE_CACHE_PATH = '#tree';
+/** The cache entry of a listing GitHub answered in full (not truncated): what an inventory that must be complete reads. */
+const COMPLETE_TREE_CACHE_PATH = '#complete-tree-v1';
+/**
+ * How many listings at a commit this page keeps in memory: a listing at a commit never changes, so a second reader of
+ * it (the quick search's complete inventory, the meanings of the project at its own commit) asks GitHub nothing.
+ */
+const MAX_PINNED_TREES_IN_MEMORY = 4;
 
 /** The file that makes a folder a project. A project that is not there yet is not remembered as absent. */
 const PROJECT_FILE_NAME = 'datatug-project.json';
@@ -398,7 +413,18 @@ function startRead<T>(
 }
 
 /** Everything read for one `owner/repo@ref` during this page load: one commit, one listing, the files. */
+/**
+ * Who a read asks GitHub as: anonymous, or the signed-in user (by the fingerprint of the token, never the token in a
+ * key). Every answer of `api.github.com` is kept for its own identity only: a listing read with a token (which may be
+ * of a private repository) is never served to another identity, and is never written to the persistent cache.
+ */
+interface IGithubAuth {
+  readonly identity: string;
+  readonly token?: string;
+}
+
 interface IGithubSession {
+  readonly auth: IGithubAuth;
   readonly org: string;
   readonly repo: string;
   readonly ref?: string;
@@ -464,6 +490,24 @@ interface IGithubSession {
 export class GithubProjectReaderService {
   private readonly fetchFn = inject(GITHUB_FETCH);
   private readonly now = inject(GITHUB_CLOCK);
+  /** The signed-in user's GitHub token, when there is one: sent with the two `api.github.com` calls of a read. */
+  private readonly userToken = inject(GITHUB_USER_TOKEN);
+  /**
+   * Listing calls by address: one call however many ask at once, and an answer at a commit (immutable) kept for the
+   * page, bounded by {@link MAX_PINNED_TREES_IN_MEMORY}. Anything else is dropped once answered.
+   */
+  private readonly treeCalls = new Map<string, Promise<GithubOutcome>>();
+  /** The identity of the last read: when it changes (sign-out, another account), what the old one read is dropped. */
+  private lastIdentity = ANONYMOUS_GITHUB_IDENTITY;
+
+  constructor() {
+    // Sign-out or another account: what the old token read goes now, not at the next read.
+    const signedOut = () => void this.auth();
+    globalThis.addEventListener?.(GITHUB_SIGNED_OUT_EVENT, signedOut);
+    inject(DestroyRef).onDestroy(() =>
+      globalThis.removeEventListener?.(GITHUB_SIGNED_OUT_EVENT, signedOut),
+    );
+  }
   // A cache that does not answer is no cache (see `guardGithubFileStore`): no read waits for it for long.
   private readonly store = guardGithubFileStore(
     inject(GITHUB_FILE_STORE),
@@ -494,7 +538,7 @@ export class GithubProjectReaderService {
     const repoKey = `${org}/${repo}`.toLowerCase();
     this.generations.set(repoKey, this.generation(repoKey) + 1);
     for (const key of [...this.sessions.keys()]) {
-      if (key.startsWith(`${repoKey}@`)) {
+      if (key.slice(key.indexOf('|') + 1).startsWith(`${repoKey}@`)) {
         this.sessions.delete(key);
       }
     }
@@ -509,29 +553,58 @@ export class GithubProjectReaderService {
   // The commit: one per repo and ref, resolved once
   // ---------------------------------------------------------------------
 
-  private sessionKey(id: IGithubProjectId): string {
-    return `${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+  private sessionKey(id: IGithubProjectId, auth: IGithubAuth): string {
+    return `${auth.identity}|${id.org}/${id.repo}@${id.ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
+  }
+
+  /**
+   * Who reads now. When that is no longer who read before (signed out, another account, a refused token), everything
+   * read with the earlier token is dropped from memory: its visits and its listings. Anonymous reads are kept.
+   */
+  private auth(): IGithubAuth {
+    const token = usableGithubToken(this.userToken());
+    const identity = githubIdentity(token);
+    if (identity !== this.lastIdentity) {
+      this.dropIdentity(this.lastIdentity);
+      this.lastIdentity = identity;
+    }
+    return token ? { identity, token } : { identity };
+  }
+
+  /** Drops what was read as `identity` (never the anonymous reads, which anyone may be served). */
+  public dropIdentity(identity: string): void {
+    if (identity === ANONYMOUS_GITHUB_IDENTITY) return;
+    for (const key of [...this.sessions.keys()]) {
+      if (key.startsWith(`${identity}|`)) this.sessions.delete(key);
+    }
+    for (const key of [...this.treeCalls.keys()]) {
+      if (key.startsWith(`${identity}|`)) this.treeCalls.delete(key);
+    }
   }
 
   /**
    * Changes whenever the commit this visit reads a project at is replaced: the visit moved to another commit (GitHub,
-   * asked again, named one), or the repository was forgotten. A caller that keeps something it read (the summary of
-   * the project) drops it when this is not what it was when it read it. Read-only: starts nothing. Throws for an id that
-   * is not valid.
+   * asked again, named one), the repository was forgotten, or who reads changed (a sign-in, a sign-out, another
+   * account: what one identity read is never kept for another). A caller that keeps something it read (the summary of
+   * the project, the quick-search snapshot) drops it when this is not what it was when it read it. Starts no read.
+   * Throws for an id that is not valid.
    */
   public visitEpoch(projectId: string): string {
     const id = readableId(projectId);
     const repoKey = `${id.org}/${id.repo}`.toLowerCase();
-    const session = this.sessions.get(this.sessionKey(id));
-    return `${this.generation(repoKey)}.${session?.epoch ?? 0}`;
+    const auth = this.auth();
+    const session = this.sessions.get(this.sessionKey(id, auth));
+    return `${auth.identity}.${this.generation(repoKey)}.${session?.epoch ?? 0}`;
   }
 
   private session(id: IGithubProjectId): IGithubSession {
-    const key = this.sessionKey(id);
+    const auth = this.auth();
+    const key = this.sessionKey(id, auth);
     let session = this.sessions.get(key);
     if (!session) {
-      const resolve = (fresh: boolean) => this.resolveCommit(id, fresh);
+      const resolve = (fresh: boolean) => this.resolveCommit(id, fresh, auth);
       session = {
+        auth,
         org: id.org,
         repo: id.repo,
         ref: id.ref,
@@ -550,6 +623,7 @@ export class GithubProjectReaderService {
   private async resolveCommit(
     id: IGithubProjectId,
     fresh: boolean,
+    auth: IGithubAuth,
   ): Promise<IGithubResolvedCommit> {
     const { org, repo, ref } = id;
     if (ref && COMMIT_SHA.test(ref)) {
@@ -561,7 +635,11 @@ export class GithubProjectReaderService {
     const memoKey = `${org}/${repo}@${ref ?? GITHUB_DEFAULT_BRANCH_REF}`;
     const repoKey = `${org}/${repo}`.toLowerCase();
     const generation = this.generation(repoKey);
-    const memo = fresh ? undefined : await this.store.getResolved(memoKey);
+    // The persistent memory of resolved commits is the anonymous reader's only: an answer given to a token (it may be
+    // of a private repository) is neither read from it nor written to it.
+    const persist = !auth.token;
+    const memo =
+      fresh || !persist ? undefined : await this.store.getResolved(memoKey);
     const now = this.now();
     if (memo) {
       const age = now - memo.at;
@@ -577,19 +655,20 @@ export class GithubProjectReaderService {
         accept: 'application/vnd.github.sha',
         detectMoved: true,
         timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
+        token: auth.token,
       },
     );
     if (out.kind === 'ok') {
       const sha = out.text.trim().toLowerCase();
       if (COMMIT_SHA.test(sha)) {
-        if (this.generation(repoKey) === generation) {
+        if (persist && this.generation(repoKey) === generation) {
           // Not when the repository was forgotten while this was asking: the answer is of the visit, not the memory.
           await this.store.putResolved(memoKey, { sha, at: now });
         }
         return { state: 'resolved', sha, remembered: false };
       }
     } else if (out.kind === 'moved' || out.kind === 'missing') {
-      if (fresh || memo) {
+      if (persist && (fresh || memo)) {
         // GitHub has answered that there is no such ref (or that the repository moved): what was remembered of it is
         // of no use. Only now, and only this ref's.
         await this.store.dropResolved(memoKey);
@@ -795,14 +874,16 @@ export class GithubProjectReaderService {
     )
       throw new Error('Complete project inventory unavailable');
     const treeCachePath = requireComplete
-      ? '#complete-tree-v1'
+      ? COMPLETE_TREE_CACHE_PATH
       : TREE_CACHE_PATH;
     if (commit.state === 'missing' || commit.state === 'moved') {
       return [];
     }
-    const commitKey = commit.sha
-      ? `${session.org}/${session.repo}@${commit.sha}`
-      : undefined;
+    // A listing asked with a token stays in this page's memory, for that identity only (see `IGithubAuth`).
+    const commitKey =
+      commit.sha && !session.auth.token
+        ? `${session.org}/${session.repo}@${commit.sha}`
+        : undefined;
     if (commitKey) {
       const hit = await this.store.getFile(commitKey, treeCachePath);
       const kept = hit?.text ? readCachedTree(hit.text) : undefined;
@@ -811,30 +892,32 @@ export class GithubProjectReaderService {
       }
     }
     const revision = commit.sha ?? session.ref ?? GITHUB_DEFAULT_BRANCH_REF;
-    const out = await githubGet(
-      this.fetchFn,
+    const out = await this.treeCall(
       `https://${GITHUB_API_HOST}/repos/${session.org}/${session.repo}/git/trees/${encodeURIComponent(revision)}?recursive=1`,
-      { maxBytes: MAX_TREE_BYTES, detectMoved: true },
+      !!commit.sha,
+      session.auth,
     );
     switch (out.kind) {
       case 'ok': {
         const response = JSON.parse(out.text) as IGithubGitTreeResponse;
-        if (
-          requireComplete &&
-          (response.truncated !== false ||
-            !Array.isArray(response.tree) ||
-            !response.tree.every(isTreeEntry))
-        )
+        const complete =
+          response.truncated === false &&
+          Array.isArray(response.tree) &&
+          response.tree.every(isTreeEntry);
+        if (requireComplete && !complete)
           throw new Error('Complete project inventory unavailable');
         const tree = (response.tree || []).map(({ path, type }) => ({
           path,
           type,
         }));
         if (commitKey) {
-          await this.store.putFile(commitKey, treeCachePath, {
-            text: JSON.stringify(tree),
-            bytes: out.bytes,
-          });
+          // One call answers both listings: the complete one is kept too when GitHub gave it in full, so an inventory
+          // that must be complete (the quick search) is not asked of GitHub a second time, now or on a later visit.
+          const kept = { text: JSON.stringify(tree), bytes: out.bytes };
+          await this.store.putFile(commitKey, TREE_CACHE_PATH, kept);
+          if (complete) {
+            await this.store.putFile(commitKey, COMPLETE_TREE_CACHE_PATH, kept);
+          }
         }
         return tree;
       }
@@ -872,6 +955,40 @@ export class GithubProjectReaderService {
       default:
         throw new GithubReadError('the project listing', [GITHUB_API_HOST]);
     }
+  }
+
+  /**
+   * The listing call at `url`: shared by every reader that asks while it is on its way, and kept for the page when it
+   * is at a commit (`pinned`) and GitHub answered it. Carries the user's token, when there is one.
+   */
+  private treeCall(
+    url: string,
+    pinned: boolean,
+    auth: IGithubAuth,
+  ): Promise<GithubOutcome> {
+    const key = `${auth.identity}|${url}`;
+    const known = this.treeCalls.get(key);
+    if (known) {
+      return known;
+    }
+    const call = githubGet(this.fetchFn, url, {
+      maxBytes: MAX_TREE_BYTES,
+      detectMoved: true,
+      token: auth.token,
+    });
+    this.treeCalls.set(key, call);
+    void call.then((out) => {
+      if (!pinned || out.kind !== 'ok') {
+        if (this.treeCalls.get(key) === call) this.treeCalls.delete(key);
+        return;
+      }
+      const pinnedUrls = [...this.treeCalls.keys()];
+      while (this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY && pinnedUrls.length) {
+        const oldest = pinnedUrls.shift() as string;
+        if (oldest !== key) this.treeCalls.delete(oldest);
+      }
+    });
+    return call;
   }
 
   /**
@@ -966,7 +1083,12 @@ export class GithubProjectReaderService {
       return undefined;
     }
     const { org, repo } = session;
-    const commitKey = commit.sha ? `${org}/${repo}@${commit.sha}` : undefined;
+    // A visit read with a token neither reads nor writes the persistent cache: its commit may be of a private
+    // repository (see `IGithubAuth`). The file host is not API-limited, so this costs no `api.github.com` call.
+    const commitKey =
+      commit.sha && !session.auth.token
+        ? `${org}/${repo}@${commit.sha}`
+        : undefined;
     if (commitKey) {
       const hit = await this.store.getFile(commitKey, path);
       if (hit) {
@@ -1418,8 +1540,9 @@ export class GithubProjectReaderService {
    * matching datatug-cli's own `all_queries` (queries.service.ts's own doc
    * comment: "text is absent from all_queries' own response") — so this one
    * call stays cheap (one raw fetch per DEFINITION file only, no body
-   * fetches) and the query PAGE ({@link getQuery}) remains the only place a
-   * body is ever read. */
+   * fetches). A body is read only through {@link getQuery}: by the query page,
+   * and on demand by a query row's hover preview (one query at a time, after a
+   * hover-intent delay, cached per project by `QueryTextPreviewService`). */
   public getQueriesFolder(
     projectId: string,
   ): Observable<IGithubWireQueryFolder> {

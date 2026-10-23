@@ -11,32 +11,32 @@
     {
       "id": "demo-browser",
       "repo": "datatug/datatug-demo-project",
-      "sha": "7c67575a8313d67ecae364c1dd7164ee85c48ae0",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "The browser catalog revision the app admits: required creation dates on all 59 query definitions and the server-comparison query the showcase specs read (docs/testing-workflow.md)."
+      "why": "The browser catalog revision the app admits: required creation dates on every query definition and the server-comparison query the showcase specs read (docs/testing-workflow.md). Bumped to the commit that renames the project title to \"DataTug Demo Project\" (datatug-demo-project#85); the three demo pins share that commit."
     },
     {
       "id": "demo-independent",
       "repo": "datatug/datatug-demo-project",
-      "sha": "2692f1c09d35dc384313dba9444c6635de0f8c68",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "Paired revision of the independent chart sources spec (spec/features/independent-chart-sources/local-acceptance.md)."
+      "why": "Revision the independent chart sources spec (spec/features/independent-chart-sources/local-acceptance.md) runs against; same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
     },
     {
       "id": "demo-agent",
       "repo": "datatug/datatug-demo-project",
-      "sha": "3c43fa3d3094bce5a33e2964d9a52a7f9dd7295e",
+      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "The project the real datatug agent serves in the journey and card-link lanes (#515)."
+      "why": "The project the real datatug agent serves in the journey and card-link lanes (#515); same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
     },
     {
       "id": "meta-iso",

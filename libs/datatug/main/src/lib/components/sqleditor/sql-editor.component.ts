@@ -8,6 +8,7 @@ import {
   Output,
   input,
   inject,
+  computed,
   signal,
   ViewChild,
 } from '@angular/core';
@@ -21,6 +22,7 @@ import {
 } from '../code-editor/raw-source';
 import {
   createSqlEditorExtensions,
+  SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS,
   SQL_LANGUAGE_DESCRIPTIONS,
 } from './sql-language';
 
@@ -45,13 +47,19 @@ export class SqlEditorComponent implements OnChanges, AfterViewInit {
   readonly readonly = input(true);
   readonly disabled = input(false);
   readonly autoCloseBrackets = input(true);
+  /** Treat `#` as a line comment too (saved TugQL YAML sources). */
+  readonly hashComments = input(false);
   /** Accessible name of the editable text (CodeMirror's content element). */
   readonly ariaLabel = input('SQL query');
 
   @Output() sqlChanged = new EventEmitter<string>();
 
   readonly editorRoot = inject(DOCUMENT);
-  readonly languages = SQL_LANGUAGE_DESCRIPTIONS;
+  readonly languages = computed(() =>
+    this.hashComments()
+      ? SQL_HASH_COMMENT_LANGUAGE_DESCRIPTIONS
+      : SQL_LANGUAGE_DESCRIPTIONS,
+  );
   readonly instance = signal<SqlEditorInstance>({
     generation: 0,
     value: '',

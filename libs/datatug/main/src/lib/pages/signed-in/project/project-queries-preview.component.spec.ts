@@ -99,7 +99,7 @@ describe('project query overview', () => {
     );
     expect(
       fixture.nativeElement
-        .querySelector('ion-item[button]')
+        .querySelector('a.query-row-main')
         .getAttribute('href'),
     ).toContain('nested%2FQuery%20104');
     await reverse(fixture);
@@ -175,7 +175,7 @@ describe('project query overview', () => {
     await fixture.whenStable();
     pending.next({ id: '~', items: [query('stale')] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('No shared queries');
+    expect(fixture.nativeElement.innerHTML).toContain('No shared queries');
     expect(titles(fixture.nativeElement)).toHaveLength(0);
     fixture.componentRef.setInput('projectRef', { ...ref, projectId: 'third' });
     fixture.detectChanges();
@@ -183,5 +183,37 @@ describe('project query overview', () => {
     expect(
       fixture.nativeElement.querySelector('[role="status"]'),
     ).not.toBeNull();
+  });
+
+  it('heads the card with a Queries link to the full Queries page and filters rows client-side', async () => {
+    const fixture = await create(
+      vi.fn(() =>
+        of({
+          id: '~',
+          items: [query('Chinook customers'), query('Northwind orders')],
+          folders: [{ id: 'sub', items: [query('Chinook invoices')] }],
+        }),
+      ),
+    );
+    const el: HTMLElement = fixture.nativeElement;
+    const link = el.querySelector('.tab-panel-header a');
+    expect(link?.textContent?.trim()).toBe('Queries');
+    expect(link?.getAttribute('href')).toBe(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/queries',
+    );
+    el.querySelector('ion-input')?.dispatchEvent(
+      new CustomEvent('ionInput', { detail: { value: 'chinook' } }),
+    );
+    await fixture.whenStable();
+    expect(titles(el).sort()).toEqual([
+      'Chinook customers',
+      'Chinook invoices',
+    ]);
+    el.querySelector('ion-input')?.dispatchEvent(
+      new CustomEvent('ionInput', { detail: { value: 'nothing-like-this' } }),
+    );
+    await fixture.whenStable();
+    expect(titles(el)).toHaveLength(0);
+    expect(el.textContent).toContain('No queries match “nothing-like-this”.');
   });
 });

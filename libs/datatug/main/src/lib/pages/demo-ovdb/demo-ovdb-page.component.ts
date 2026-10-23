@@ -17,6 +17,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   effect,
   inject,
   signal,
@@ -186,9 +187,7 @@ addIcons({ arrowBackOutline });
               <ion-item lines="none">
                 <ion-spinner slot="start" />
                 <ion-label class="ion-text-wrap" role="status">
-                  Connecting to {{ entry()!.title }} through OpenVaultDB… A
-                  hosted database that has been idle can take a few seconds to
-                  wake up.
+                  {{ connectingText() }}
                 </ion-label>
               </ion-item>
             </ion-card>
@@ -221,6 +220,13 @@ export class DemoOvdbPageComponent {
     () => findDemoPostgresqlEdition(this.databaseParam()),
   );
   protected readonly state = signal<OpenState>({ kind: 'idle' });
+  protected readonly waking = signal(false);
+  protected readonly connectingText = computed(() => {
+    const title = this.entry()?.title ?? '';
+    return this.waking()
+      ? `The hosted demo database is waking up. This can take up to about 90 seconds; ${title} will open by itself.`
+      : `Connecting to ${title} through OpenVaultDB… A hosted database that has been idle can take a few seconds to wake up.`;
+  });
   protected readonly connection = computed(() => {
     const state = this.state();
     return state.kind === 'ready' ? state.connection : undefined;
@@ -240,8 +246,13 @@ export class DemoOvdbPageComponent {
   });
   readonly #attempt = signal(0);
   #epoch = 0;
+  #controller?: AbortController;
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      this.#epoch++;
+      this.#controller?.abort();
+    });
     // One connection per database (`entry` keeps its identity while only the table changes). "Try again" opens it again.
     effect(() => {
       const entry = this.entry();
@@ -254,13 +265,23 @@ export class DemoOvdbPageComponent {
     entry: DemoPostgresqlCatalogEntry | undefined,
   ): Promise<void> {
     const epoch = ++this.#epoch;
+    // A new attempt (Try again, another edition) ends the previous one: no more requests, no live timers.
+    this.#controller?.abort();
+    const controller = new AbortController();
+    this.#controller = controller;
     if (!entry) {
       this.state.set({ kind: 'idle' });
       return;
     }
     this.state.set({ kind: 'connecting' });
+    this.waking.set(false);
     try {
-      const connection = await openDemoPostgresql(entry);
+      const connection = await openDemoPostgresql(entry, {
+        signal: controller.signal,
+        onWaking: () => {
+          if (epoch === this.#epoch) this.waking.set(true);
+        },
+      });
       if (epoch === this.#epoch) this.state.set({ kind: 'ready', connection });
     } catch (error) {
       if (epoch === this.#epoch)

@@ -20,7 +20,14 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
-import { combineLatest, forkJoin, of, Subject, Subscription } from 'rxjs';
+import {
+  combineLatest,
+  forkJoin,
+  Observable,
+  of,
+  Subject,
+  Subscription,
+} from 'rxjs';
 import {
   catchError,
   defaultIfEmpty,
@@ -56,6 +63,8 @@ import {
   type RelatedQueryShape,
 } from '../../../cards/related-links';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../../components/query-list-item/query-text-preview.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -73,6 +82,7 @@ import { projectPageHref } from '../../../nav/project-page-href';
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     DataGridComponent,
+    QueryListItemComponent,
     FormsModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -204,6 +214,16 @@ export class EntityPageComponent implements OnDestroy {
   /** A saved query's page; the id itself rides in `?id=` (the `query/**` route). */
   queryLink(queryId: string): string {
     return this.projectLink(['query', ...queryId.split('/')]);
+  }
+
+  private readonly textPreviews = inject(QueryTextPreviewService);
+
+  /** Reads a related query's text for its row's hover preview (the folder listing carries no text). */
+  queryTextLoader(
+    queryId: string,
+  ): (() => Observable<string | undefined>) | undefined {
+    const ref = this.projectRef();
+    return ref ? this.textPreviews.loader(ref, queryId) : undefined;
   }
 
   /** Cards that show this entity and saved queries whose parameters mean it. */

@@ -1,4 +1,11 @@
-import { tokenizeTugql } from './tugql-syntax';
+import { LanguageSupport } from '@codemirror/language';
+import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import {
+  createTugqlEditorExtensions,
+  TUGQL_LANGUAGE_DESCRIPTIONS,
+  tokenizeTugql,
+} from './tugql-syntax';
 
 describe('tokenizeTugql', () => {
   it('classifies TugQL and SQL tokens without changing source bytes', () => {
@@ -109,5 +116,42 @@ describe('tokenizeTugql', () => {
         .filter((token) => token.kind === 'string')
         .map((token) => token.text),
     ).toContain('"./saved.tql"');
+  });
+});
+
+describe('TugQL comment highlighting in the editor', () => {
+  const render = (source: string): EditorView => {
+    const support = TUGQL_LANGUAGE_DESCRIPTIONS[0].support as LanguageSupport;
+    const view = new EditorView({
+      parent: document.body,
+      state: EditorState.create({
+        doc: source,
+        extensions: [support, ...createTugqlEditorExtensions('TugQL source')],
+      }),
+    });
+    // The stream parser is lazy: ask the viewport to be styled.
+    view.requestMeasure();
+    return view;
+  };
+
+  it('marks a -- comment line as a comment and not the code on the next line', () => {
+    const view = render('-- all invoices\nselect 1 from Invoice');
+    const [comment, code] = Array.from(view.dom.querySelectorAll('.cm-line'));
+
+    expect(comment.querySelector('.tugql-token-comment')?.textContent).toBe(
+      '-- all invoices',
+    );
+    expect(code.querySelector('.tugql-token-comment')).toBeNull();
+    expect(code.querySelector('.tugql-token-keyword')?.textContent).toBe(
+      'select',
+    );
+    view.destroy();
+  });
+
+  it('ends a trailing comment at the line break', () => {
+    const tokens = tokenizeTugql('select 1 -- note\nfrom Invoice');
+    expect(
+      tokens.filter((t) => t.kind === 'comment').map((t) => t.text),
+    ).toEqual(['-- note']);
   });
 });

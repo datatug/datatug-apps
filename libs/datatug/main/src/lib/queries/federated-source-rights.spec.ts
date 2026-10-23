@@ -348,4 +348,18 @@ describe('frozen source terms before browser federation output', () => {
       ),
     ).rejects.toThrow(/unavailable/);
   });
+  it('maps a network failure of the discovery request to the friendly OVDB message', async () => {
+    const failure = await preflightSourceRights(
+      'https://ovdb.example.test',
+      planned,
+      vi.fn(async () => { throw new TypeError('Failed to fetch'); }) as unknown as typeof fetch,
+      {},
+      undefined,
+      undefined,
+      undefined,
+      'fixture-server',
+    ).then(() => new Error('resolved'), (error: unknown) => error as Error);
+    expect(failure.message).toBe('OVDB metadata could not be reached. Retry or open the saved query to inspect it.');
+    expect(failure.message).not.toMatch(/Failed to fetch|https?:/);
+  });
 });

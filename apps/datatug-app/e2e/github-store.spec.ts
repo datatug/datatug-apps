@@ -879,7 +879,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
         join(project, 'datatug-project.json'),
         JSON.stringify({
           id: 'datatug-demo-project',
-          title: 'DataTug Demo: DemoDB datasets',
+          title: 'DataTug Demo Project',
           environments: [{ id: 'local' }],
         }),
       );
@@ -955,7 +955,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       // that *something* rendered where the Servers list used to be.
       const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
       await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
-      await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
+      await expect(pageTitle).toContainText('DataTug Demo Project');
 
       // The rest of the detail page's own structure — Host/Environments/
       // Databases cards (dbserver-page.component.html) — renders even though
@@ -1088,13 +1088,13 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
       .toBe(PROJECT_URL);
     await projectOverviewButton(page, 'Databases').click();
     const connections = activePage(page).locator(
-      'sneat-datatug-demodb-connections ion-card',
+      'sneat-datatug-demodb-connections section.overview-tab-panel',
       { hasText: 'Demo databases' },
     );
     await expect(connections.getByText('Demo databases')).toBeVisible({
       timeout: 15_000,
     });
-    await expect(connections.locator('ion-item')).toHaveCount(6);
+    await expect(connections.locator('[data-testid^="dataset-"]')).toHaveCount(6);
     const chinook = connections.getByTestId('dataset-chinook');
     await expect(chinook).toContainText('SQLite');
     await expect(chinook).toContainText('PostgreSQL');

@@ -68,7 +68,11 @@ describe('GitHub reauthorization handoff', () => {
       branch: 'work',
     };
     const authorizationURL = 'https://github.com/login/oauth/authorize?client_id=client&state=expected-state';
-    const reauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
+    const reauthorizationRequired = new Subject<{
+      ref: IProjectRef;
+      requiredScopes: readonly ('repo' | 'workflow')[];
+      reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied';
+    }>();
     const authState = new BehaviorSubject({
       status: 'authenticated',
       user: { uid: 'firebase-actor' },
@@ -88,7 +92,7 @@ describe('GitHub reauthorization handoff', () => {
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('returnUrl', '/new-project?store=github');
     fixture.detectChanges();
-    reauthorizationRequired.next({ ref, requiredScopes: ['repo', 'workflow'] });
+    reauthorizationRequired.next({ ref, requiredScopes: ['repo', 'workflow'], reason: 'expired' });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Reconnect GitHub');
 
@@ -110,5 +114,119 @@ describe('GitHub reauthorization handoff', () => {
       requiredScopes: ['repo', 'workflow'],
     });
     assign.mockRestore();
+  });
+});
+
+describe('GitHub access banner states', () => {
+  const ref: IProjectRef = {
+    storeId: 'github.com',
+    projectId: 'repo@owner@folder',
+  };
+  const hintKey = `datatug:github:connect-hint-dismissed:${ref.storeId}/${ref.projectId}`;
+  afterEach(() => sessionStorage.removeItem(hintKey));
+
+  function create(publicRepository = false) {
+    TestBed.resetTestingModule();
+    const required = new Subject<{
+      ref: IProjectRef;
+      requiredScopes: readonly ('repo' | 'workflow')[];
+      reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied';
+    }>();
+    TestBed.configureTestingModule({
+      imports: [GitHubReauthorizationBannerComponent],
+      providers: [
+        { provide: ProjectQueryApiService, useValue: { githubReauthorizationRequired: required } },
+        { provide: GithubConnectionService, useValue: { startOAuth: vi.fn() } },
+        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
+        { provide: Router, useValue: { url: '/project/github.com/owner/repo' } },
+      ],
+    });
+    const fixture = TestBed.createComponent(GitHubReauthorizationBannerComponent);
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('publicRepository', publicRepository);
+    fixture.detectChanges();
+    const raise = (reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied') => {
+      required.next({ ref, requiredScopes: ['repo'], reason });
+      fixture.detectChanges();
+    };
+    return { fixture, raise, el: fixture.nativeElement as HTMLElement };
+  }
+
+  it('keeps the warning card only for an expired grant', () => {
+    const { el, raise } = create();
+    raise('expired');
+    const card = el.querySelector('[data-testid="github-reauthorization"]');
+    expect(card?.querySelector('ion-item-divider')?.getAttribute('color')).toBe('warning');
+    expect(card?.innerHTML).toContain('GitHub access expired.');
+    expect(card?.innerHTML).toContain('Reconnect GitHub');
+    expect(el.querySelector('[data-testid="github-connect"]')).toBeNull();
+  });
+
+  it('asks a private repository to connect GitHub in a neutral card, without claiming expiry', () => {
+    const { el, raise } = create(false);
+    raise('not_connected');
+    const card = el.querySelector('[data-testid="github-connect"]');
+    expect(card?.querySelector('ion-item-divider')?.getAttribute('color')).toBe('light');
+    expect(card?.innerHTML).toContain('Connect GitHub');
+    expect(card?.innerHTML).toContain('This repository needs GitHub access.');
+    expect(card?.innerHTML).not.toContain('expired');
+    expect(card?.querySelector('[aria-label="Dismiss"]')).toBeNull();
+  });
+
+  it('shows a public repository a dismissible hint and remembers the dismissal for the session', () => {
+    const first = create(true);
+    first.raise('not_connected');
+    const card = first.el.querySelector('[data-testid="github-connect"]');
+    expect(card?.innerHTML).toContain('Connect GitHub to edit this project or open private repositories.');
+    (card?.querySelector('[aria-label="Dismiss"]') as HTMLElement).click();
+    first.fixture.detectChanges();
+    expect(first.el.querySelector('[data-testid="github-connect"]')).toBeNull();
+    expect(sessionStorage.getItem(hintKey)).toBe('1');
+
+    const again = create(true);
+    again.raise('not_connected');
+    expect(again.el.querySelector('[data-testid="github-connect"]')).toBeNull();
+  });
+
+  it('keeps the hint dismissal working when session storage throws', () => {
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    try {
+      const { el, fixture, raise } = create(true);
+      raise('not_connected');
+      (el.querySelector('[aria-label="Dismiss"]') as HTMLElement).click();
+      fixture.detectChanges();
+      expect(el.querySelector('[data-testid="github-connect"]')).toBeNull();
+    } finally {
+      setItem.mockRestore();
+    }
+  });
+
+  it('asks for the missing permission, not a reconnect for expiry, when a scope is required', () => {
+    const { el, raise } = create(true);
+    raise('scope_required');
+    const card = el.querySelector('[data-testid="github-connect"]');
+    expect(card?.innerHTML).toContain('GitHub permission needed');
+    expect(card?.innerHTML).not.toContain('expired');
+    expect(card?.querySelector('[aria-label="Dismiss"]')).toBeNull();
+  });
+
+  it('treats a request without a reason as access needed, never as expired', () => {
+    const { el, raise } = create(false);
+    raise(undefined as never);
+    expect(el.querySelector('[data-testid="github-reauthorization"]')).toBeNull();
+    expect(el.querySelector('[data-testid="github-connect"]')?.innerHTML).toContain('GitHub access needed');
+  });
+
+  it('words a bare refusal as access needed, not expired', () => {
+    const { el, raise } = create(true);
+    raise('access_denied');
+    const card = el.querySelector('[data-testid="github-connect"]');
+    expect(card?.getAttribute('data-reason')).toBe('access_denied');
+    expect(card?.innerHTML).toContain('GitHub access needed');
+    expect(card?.innerHTML).not.toContain('expired');
+    // Only a missing connection on a public repository is a dismissible hint.
+    expect(card?.querySelector('[aria-label="Dismiss"]')).toBeNull();
   });
 });

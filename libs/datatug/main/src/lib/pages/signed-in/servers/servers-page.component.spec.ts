@@ -236,9 +236,14 @@ describe('ServersPage signed-out public GitHub declarations', () => {
     expect(view.html).not.toContain('Environments could not be loaded');
   });
 
-  it.each([{ status: 500 }, { status: 0 }, new Error('boom')])(
-    'keeps the error banner and does not read the repository when the API fails with %o',
-    async (apiError) => {
+  it.each([
+    ['409 reauthorization_required', { status: 409 }],
+    ['503 unavailable', { status: 503 }],
+    ['500', { status: 500 }],
+    ['a network failure', new Error('boom')],
+  ])(
+    'still lists Northwind from the repository for a signed-in visitor when the catalogue API fails with %s',
+    async (_, apiError) => {
       const view = await render({
         apiError,
         files: {
@@ -247,7 +252,15 @@ describe('ServersPage signed-out public GitHub declarations', () => {
           }),
         },
       });
-      expect(view.listDirectory).not.toHaveBeenCalled();
+      expect(view.row('northwind')).toContain('northwind-sqlite');
+      expect(view.html).not.toContain('could not be loaded');
+    },
+  );
+
+  it.each([{ status: 500 }, { status: 0 }, new Error('boom')])(
+    'keeps the error banner when the API fails with %o and the repository has no connections',
+    async (apiError) => {
+      const view = await render({ apiError, files: {} });
       expect(view.row('northwind')).toBeUndefined();
       expect(view.html).toContain(
         'Database connection declarations could not be loaded.',

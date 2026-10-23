@@ -280,7 +280,7 @@ const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
   const variants = [
     {
       relativePath: 'demo-project-1/datatug-project.json',
-      originalTitle: 'DataTug Demo: DemoDB datasets',
+      originalTitle: 'DataTug Demo Project',
       title: LONG_HEADER_PROJECT_TITLE,
     },
     {

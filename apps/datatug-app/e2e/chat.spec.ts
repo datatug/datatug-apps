@@ -17,7 +17,7 @@ test('project side menu opens Chat', async ({ page }) => {
   await page.goto('/store/localhost:8989/project/datatug-demo-project/environments');
   await page.locator('ion-menu').getByText('Chat', { exact: true }).click();
   await expect(page).toHaveURL(/\/store\/localhost:8989\/project\/datatug-demo-project\/chat$/);
-  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo: DemoDB datasets|datatug-demo-project)/)).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project|datatug-demo-project)/)).toBeVisible();
 });
 
 test('Chat persists a selected endpoint and renders seeded Chinook rows from deterministic DTQL', async ({ page }) => {
@@ -64,7 +64,7 @@ test('Chat persists a selected endpoint and renders seeded Chinook rows from det
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat', { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo: DemoDB datasets|datatug-demo-project)/)).toBeVisible();
+  await expect(page.locator('#main-content').getByText(/Chat\s*@\s*(DataTug Demo Project|datatug-demo-project)/)).toBeVisible();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toBeVisible();
   await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 30_000 });
   await page.getByLabel('Ask about project data').fill('Show last 100 orders');

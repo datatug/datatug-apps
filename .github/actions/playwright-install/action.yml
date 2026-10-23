@@ -1,8 +1,12 @@
 name: Install Playwright browsers
 description: >-
-  Restores the Playwright browser cache (keyed on the locked Playwright version and the browser list), then installs the
-  browsers and their system libraries. Each attempt is time-boxed and retried, so a slow Ubuntu mirror fails fast and
-  clearly instead of eating the job's timeout-minutes (2026-10-23: e2e-query-mobile died twice on a 13.6 MB apt download).
+  Restores the Playwright browser cache and the cache of the system-library .deb archives those browsers need (both
+  keyed on the locked Playwright version and the browser list), then installs the browsers and their system libraries.
+  With both caches warm, apt installs from local archives and makes no package download from the Ubuntu mirror, whose
+  throughput on hosted runners sometimes drops to ~40 KB/s (2026-10-23, merge-group run 39956333256: the 119 MB of
+  chromium+firefox+webkit libraries that normally arrive in 10 s did not finish in 3 x 6 minutes). Each attempt is
+  time-boxed; after attempt 1 fails, ubuntu-mirror.py moves apt from the Azure mirror to archive.ubuntu.com, so the
+  retry does not repeat the same slow path.
 inputs:
   browsers:
     description: Space-separated Playwright browsers, for example "chromium" or "chromium webkit".
@@ -29,9 +33,15 @@ runs:
         BROWSERS: ${{ inputs.browsers }}
       run: |
         v=$(grep -m1 -E '^  playwright@[0-9]' pnpm-lock.yaml | sed -E 's/^  playwright@([^:]+):.*/\1/')
-        echo "playwright=${v:-unknown}" >> "$GITHUB_OUTPUT"
-        echo "os-key=${RUNNER_OS}-${RUNNER_ARCH}-${ImageOS:-unknown}-$(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-na}")" >> "$GITHUB_OUTPUT"
-        echo "browsers-key=$(echo "$BROWSERS" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+        {
+          echo "playwright=${v:-unknown}"
+          # shellcheck disable=SC1091
+          echo "os-key=${RUNNER_OS}-${RUNNER_ARCH}-${ImageOS:-unknown}-$(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-na}")"
+          echo "browsers-key=$(echo "$BROWSERS" | tr ' ' '-')"
+          # The runner image's preinstalled packages decide which .debs install-deps needs, so the archive cache is keyed
+          # on the image version too; restore-keys fall back to the newest archive set, and apt fetches only what changed.
+          echo "image=${ImageVersion:-unknown}"
+        } >> "$GITHUB_OUTPUT"
 
     - name: Cache Playwright browsers
       id: cache
@@ -40,7 +50,19 @@ runs:
         path: ~/.cache/ms-playwright
         key: playwright-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}
 
-    - name: Make apt fail fast and retry
+    # GitHub's cache service is a different network path from the Ubuntu mirror, so a slow mirror no longer decides
+    # whether the job can install the browsers' system libraries.
+    - name: Cache Playwright system-library archives
+      id: debs
+      uses: actions/cache@v5
+      with:
+        path: ~/.cache/playwright-apt-archives
+        key: playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}_${{ steps.version.outputs.image }}
+        # "_" ends the browser list, so a chromium job never restores (and re-saves) the chromium-firefox-webkit set.
+        restore-keys: |
+          playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}_
+
+    - name: Make apt fail fast, retry and keep downloaded archives
       shell: bash
       run: |
         sudo tee /etc/apt/apt.conf.d/99-ci-fast-fail >/dev/null <<'CONF'
@@ -48,15 +70,27 @@ runs:
         Acquire::http::Timeout "20";
         Acquire::https::Timeout "20";
         DPkg::Lock::Timeout "120";
+        APT::Keep-Downloaded-Packages "true";
+        Binary::apt::APT::Keep-Downloaded-Packages "true";
         CONF
+        sudo rm -f /etc/apt/apt.conf.d/docker-clean
+        archives="$HOME/.cache/playwright-apt-archives"
+        mkdir -p "$archives"
+        n=$(find "$archives" -maxdepth 1 -name '*.deb' | wc -l)
+        if [ "$n" -gt 0 ]; then
+          sudo cp -n "$archives"/*.deb /var/cache/apt/archives/
+        fi
+        echo "Seeded $n cached .deb archives into /var/cache/apt/archives"
 
-    # Cache hit: browsers are on disk, so only the system libraries are fetched (install-deps, no browser download).
-    # Cache miss: full download. Either way a hung attempt is killed and retried.
+    # Browser cache hit: browsers are on disk, so only the system libraries are installed (install-deps, no browser
+    # download); archive cache hit: those libraries come from the seeded .debs, not the mirror. A hung attempt is killed
+    # and the retry runs on Ubuntu's main mirror (ubuntu-mirror.py); seeded and partially downloaded .debs stay put.
     - name: Install Playwright browsers and system dependencies
       shell: bash
       env:
         BROWSERS: ${{ inputs.browsers }}
         CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
+        DEBS_HIT: ${{ steps.debs.outputs.cache-hit }}
         ATTEMPTS: ${{ inputs.attempts }}
         LIMIT_MIN: ${{ inputs.attempt-timeout-minutes }}
         ACTION_PATH: ${{ github.action_path }}
@@ -67,7 +101,14 @@ runs:
         for i in $(seq 1 "$ATTEMPTS"); do
           echo "Attempt $i/$ATTEMPTS: playwright ${cmd[*]} ${browser_list[*]}"
           if timeout "${LIMIT_MIN}m" pnpm exec playwright "${cmd[@]}" "${browser_list[@]}"; then
-            echo "Playwright install ok in $(( $(date +%s) - start ))s (cache-hit=$CACHE_HIT)"
+            echo "Playwright install ok in $(( $(date +%s) - start ))s (cache-hit=$CACHE_HIT, archive-cache-hit=$DEBS_HIT)"
+            # Hand the archives apt used to the cache step, which saves them at job end when its key missed.
+            archives="$HOME/.cache/playwright-apt-archives"
+            # Drop superseded package versions so the archive set does not grow with every runner-image update.
+            sudo apt-get autoclean -qq || true
+            find "$archives" -maxdepth 1 -name '*.deb' -delete
+            find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp {} "$archives"/ \;
+            echo "Archive cache holds $(find "$archives" -maxdepth 1 -name '*.deb' | wc -l) .debs ($(du -sh "$archives" | cut -f1))"
             exit 0
           fi
           echo "::warning::Playwright install attempt $i timed out or failed"
