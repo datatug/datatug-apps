@@ -64,6 +64,11 @@ async function isPendingMount(response: Response): Promise<boolean> {
 /** Roughly 10 s in total: longer than a cold start (about 6 s), short enough to tell the user. */
 export const OVDB_RETRY_DELAYS_MS: readonly number[] = [500, 1500, 3000, 5000];
 
+/** A timed-out (408) or rate-limited (429) read is retried a couple of times, apart from the pending-mount wait. */
+const THROTTLE_STATUSES: ReadonlySet<number> = new Set([408, 429]);
+const THROTTLE_MAX_RETRIES = 2;
+const THROTTLE_408_WAIT_MS = 500;
+
 const RETRIED_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 
 function requestUrl(input: RequestInfo | URL): string {
@@ -128,6 +133,7 @@ export function retryingOvdbFetch(
       : init;
     let pendingWaited = 0;
     let pendingRetries = 0;
+    let throttleRetries = 0;
     for (let attempt = 0; ; attempt++) {
       const last = attempt >= delays.length;
       let waitMs: number;
@@ -147,6 +153,16 @@ export function retryingOvdbFetch(
           // A pending mount does not use up the short back-off used for other transient errors.
           attempt--;
           waking = { attempt: pendingRetries, waitMs };
+        } else if (
+          THROTTLE_STATUSES.has(response.status) &&
+          throttleRetries < THROTTLE_MAX_RETRIES
+        ) {
+          throttleRetries++;
+          attempt--;
+          waitMs =
+            response.status === 429
+              ? retryAfterMs(response)
+              : THROTTLE_408_WAIT_MS;
         } else {
           if (last || !RETRIED_STATUSES.has(response.status)) return response;
           waitMs = delays[attempt];

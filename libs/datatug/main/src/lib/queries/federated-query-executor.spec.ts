@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SELF_RETRYING_FETCH } from '../ovdb/ovdb-retrying-fetch';
 import { runFederatedQuery, type FederatedQueryProgress } from './federated-query-executor';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
 
@@ -187,6 +188,48 @@ describe('visible browser query execution', () => {
       const definition = { ...query, federation: { ...query.federation, expectedServerIdentity: { baseUrl: 'https://ovdb.example.test', serverId: 'fixture-server' } } } as unknown as IQueryDef;
       const text = await message(runFederatedQuery(definition, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: noFetch() }));
       expect(text).toBe('OVDB metadata could not be reached. Retry or open the saved query to inspect it.');
+    });
+
+
+    describe('detail lookup attempts', () => {
+      const dtqlThenLookup = (lookupFetch: () => Promise<Response>): typeof fetch =>
+        vi.fn(async (url: RequestInfo | URL) => {
+          if (String(url).endsWith('/dtql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
+          return lookupFetch();
+        }) as unknown as typeof fetch;
+      const lookupCalls = (http: typeof fetch) =>
+        (http as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => !String(url).endsWith('/dtql')).length;
+      const timeoutDelays = (spy: { mock: { calls: unknown[][] } }) =>
+        spy.mock.calls.map((call) => call[1]).filter((delay) => delay === 15000 || delay === 120000);
+
+      it('gives a self-retrying fetch one attempt with a 120 s timeout', async () => {
+        noIndexedDb();
+        const http = Object.assign(
+          dtqlThenLookup(async () => { throw new TypeError('Failed to fetch'); }),
+          { [SELF_RETRYING_FETCH]: true as const },
+        );
+        const timers = vi.spyOn(globalThis, 'setTimeout');
+        try {
+          expect(await message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: http }))).toBe(reached);
+          expect(lookupCalls(http)).toBe(1);
+          expect(timeoutDelays(timers)).toEqual([120000]);
+        } finally {
+          timers.mockRestore();
+        }
+      });
+
+      it('keeps three attempts with a 15 s timeout for an unmarked fetch', async () => {
+        noIndexedDb();
+        const http = dtqlThenLookup(async () => { throw new TypeError('Failed to fetch'); });
+        const timers = vi.spyOn(globalThis, 'setTimeout');
+        try {
+          expect(await message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: http }))).toBe(reached);
+          expect(lookupCalls(http)).toBe(3);
+          expect(timeoutDelays(timers)).toEqual([15000, 15000, 15000]);
+        } finally {
+          timers.mockRestore();
+        }
+      });
     });
   });
 });

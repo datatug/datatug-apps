@@ -289,4 +289,23 @@ describe('retryingOvdbFetch while a PostgreSQL edition is mounting', () => {
     ).rejects.toBe(boom);
     expect(base).toHaveBeenCalledTimes(1);
   });
+
+  it('retries 429 with its Retry-After and 408 shortly, a bounded number of times, apart from the pending wait', async () => {
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => undefined);
+    const throttled = (status: number, retryAfter?: string) =>
+      new Response('', {
+        status,
+        headers: retryAfter ? { 'Retry-After': retryAfter } : {},
+      });
+    const base = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(throttled(429, '7'))
+      .mockResolvedValueOnce(throttled(408))
+      .mockResolvedValueOnce(throttled(429, '7'))
+      .mockResolvedValueOnce(ok());
+    const response = await retryingOvdbFetch(base, { sleep })(URL_);
+    expect(response.status).toBe(429);
+    expect(base).toHaveBeenCalledTimes(3);
+    expect(sleep.mock.calls).toEqual([[7_000], [500]]);
+  });
 });
