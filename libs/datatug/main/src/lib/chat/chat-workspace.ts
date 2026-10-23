@@ -120,23 +120,42 @@ function sameReference(a: ChatContextReference, b: ChatContextReference): boolea
   return a.kind === b.kind && a.projectId === b.projectId && a.sourceId === b.sourceId && a.objectId === b.objectId;
 }
 
-function projectIdFromScope(scope: string): string {
+export function chatProjectIdFromScope(scope: string): string {
   try {
     const parts = JSON.parse(scope) as unknown;
-    if (Array.isArray(parts) && typeof parts[1] === 'string') return parts[1];
+    if (Array.isArray(parts)) {
+      const projectId: unknown = parts[0] === 'managed-project-ai/1' && parts[1] && typeof parts[1] === 'object' ? parts[1].projectId : parts[1];
+      if (typeof projectId === 'string' && projectId.trim() && projectId.length <= 2048 && ![...projectId].some((character) => character.charCodeAt(0) < 32)) return projectId;
+    }
   } catch { /* Invalid scopes cannot own project references. */ }
   throw new Error('The chat project identity is invalid.');
 }
 
+/** Exact source ownership for the ordinary demo and generic project chat. */
+export function chatSourceAccepted(scope: string, source: string): boolean {
+  try {
+    chatProjectIdFromScope(scope);
+    const parts = JSON.parse(scope) as unknown[];
+    return parts[0] === 'managed-project-ai/1' ? source === `${scope}/project-query` : source === `${scope}/chinook`;
+  } catch { return false; }
+}
+
+function sourceIdFromScope(scope: string): string {
+  const parts = JSON.parse(scope) as unknown[];
+  if (parts[0] !== 'managed-project-ai/1') return 'chinook';
+  if (typeof parts[3] !== 'string' || !parts[3]) throw new Error('The chat source identity is invalid.');
+  return parts[3];
+}
+
 function isChinookScope(scope: string): boolean {
   const parts = JSON.parse(scope) as unknown[];
-  return typeof parts[0] === 'string' && isChinookChatProject(parts[0], projectIdFromScope(scope));
+  return typeof parts[0] === 'string' && isChinookChatProject(parts[0], chatProjectIdFromScope(scope));
 }
 
 function validateReference(
   scope: string, state: ChatWorkspaceState, records: ReadonlyMap<string, ChatRecordSetData>, ref: ChatContextReference,
 ): void {
-  const projectId = projectIdFromScope(scope);
+  const projectId = chatProjectIdFromScope(scope);
   if (ref.projectId !== projectId || !ref.objectId || typeof ref.objectId !== 'string' || ref.objectId.length > 200 ||
       typeof ref.title !== 'string' || !ref.title || ref.title.length > 100) {
     throw new Error('This context object is not in the current project.');
@@ -188,7 +207,7 @@ function select(
   action: Extract<ChatWorkspaceAction, { kind: 'select' }>,
 ): ChatWorkspaceResult {
   const record = records.get(action.recordSetId);
-  if (!record || record.source !== `${scope}/chinook`) throw new Error('The selected RecordSet is unavailable in this project.');
+  if (!record || !chatSourceAccepted(scope, record.source)) throw new Error('The selected RecordSet is unavailable in this project.');
   const parent = action.viewId ? state.views[action.viewId] : undefined;
   if (action.viewId && (!parent || parent.recordSetId !== record.id)) throw new Error('The selected View is unavailable.');
   const allowed = parent?.rowIndices || record.rows.map((_, index) => index);
@@ -237,7 +256,7 @@ function select(
     id: crypto.randomUUID(), viewId: view.id, title, rows, columns, ranges, createdAt: view.createdAt,
   };
   const ref: ChatContextReference = {
-    kind: 'selection', projectId: projectIdFromScope(scope), sourceId: 'chinook', objectId: selection.id, title,
+    kind: 'selection', projectId: chatProjectIdFromScope(scope), sourceId: sourceIdFromScope(scope), objectId: selection.id, title,
   };
   return {
     state: {
@@ -292,7 +311,7 @@ export function applyChatWorkspaceAction(
       const selection = state.currentSelectionId && state.selections[state.currentSelectionId];
       if (!selection) throw new Error('Select rows or a cell before docking.');
       const ref: ChatContextReference = {
-        kind: 'selection', projectId: projectIdFromScope(scope), sourceId: 'chinook', objectId: selection.id, title: selection.title,
+        kind: 'selection', projectId: chatProjectIdFromScope(scope), sourceId: sourceIdFromScope(scope), objectId: selection.id, title: selection.title,
       };
       return applyChatWorkspaceAction(scope, state, records, { kind: 'dock', reference: ref, title: action.title });
     }
