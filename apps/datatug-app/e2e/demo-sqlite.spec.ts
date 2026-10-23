@@ -6,6 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { demoProjectPin } from './helpers/github-pins';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 /**
@@ -188,15 +189,9 @@ test('demo project GitHub choice carries verified source into the existing setup
   test.skip(!source, 'requires the offline demo project checkout');
   if (!source) return;
   await installPinnedChinookSqlite(context, source);
-  const commit = 'a'.repeat(40);
-  const tree = 'b'.repeat(40);
-  await context.route('https://api.github.com/repos/datatug/datatug-demo-project**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
-      : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
-      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
-    await route.fulfill({ json });
-  });
+  // The repository, its default branch's commit and its root tree come from the pinned checkout (the guard's GitHub fake,
+  // e2e/github-pins.json), in GitHub's response shapes: the summary names the pinned commit.
+  const commit = demoProjectPin().sha;
   await openDataset(page, 'chinook');
   await page.getByTestId('project-copy-github').click();
   await expect(page).toHaveURL(/\/new-project\?/);

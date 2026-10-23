@@ -3,6 +3,8 @@ import { join, resolve } from 'node:path';
 import { APIRequestContext, Browser, BrowserContext, expect, Route, test as base, TestInfo } from '@playwright/test';
 import { Counter, type HostCounts, type Kind, resolveRequest, type Rules } from './demodb-guard-logic';
 import { readBreaker, type Stored } from './demodb-guard-state';
+import { fulfillFromCheckouts, GITHUB_HOST, GithubCheckouts, type IFakeGithubRepo } from './fake-github';
+import { servingGithubPins } from './github-pins';
 
 /**
  * Keeps the e2e suites off the live DemoDB hosts (demodb.dev and every *.demodb.dev, including ovdb.demodb.dev) and off the
@@ -41,6 +43,17 @@ import { readBreaker, type Stored } from './demodb-guard-state';
  * breaker kept in a file (demodb-guard-state.ts): every worker of the run, including one started after a failure, refuses
  * every further request, and the test fails naming the URL. The live config also sets maxFailures 1 so the run stops.
  *
+ * GitHub (api.github.com, raw.githubusercontent.com, cdn.jsdelivr.net) is guarded the same way, picked by GITHUB_E2E_MODE:
+ *  - `checkout` (default): every request is answered by helpers/fake-github.ts from the shallow checkouts of the commits in
+ *    e2e/github-pins.json (scripts/fetch-github-pins.mjs, run by globalSetup). A repository, branch name or endpoint outside the
+ *    pins is answered 404 and FAILS the test, naming the URL; a request that reaches the network is ESCAPED and fails it too. A
+ *    spec's own `installFakeGithub` (a scratch repository) answers first. Live budget: 0.
+ *  - `live` (the "GitHub live smoke" workflow only): requests go to the real hosts under the same budgets and memo as DemoDB's live
+ *    mode, for api.github.com (GITHUB_E2E_MAX_LIVE_REQUESTS per test, default 30; GITHUB_E2E_MAX_RUN_LIVE_REQUESTS per run, default
+ *    50, under the anonymous 60 an hour; raw files and the mirror have no quota and go to the network unbudgeted). A 403 with
+ *    x-ratelimit-remaining 0 trips the breaker.
+ * Passive tests (real-agent lanes) get no GitHub route either: a GitHub request there escapes and fails the test.
+ *
  * Every test records its per-host request counts (`demodb-requests` annotation); demodb-request-reporter.ts prints them at
  * the end of the run and writes them to $GITHUB_STEP_SUMMARY.
  */
@@ -51,6 +64,32 @@ export const DEMODB_LIVE = process.env['DEMODB_E2E_MODE'] === 'live';
 const MAX_LIVE_PER_TEST = Number(process.env['DEMODB_E2E_MAX_LIVE_REQUESTS'] || 15);
 const MAX_LIVE_PER_RUN = Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120);
 const MEMO_LIMIT_BYTES = 16 * 1024 * 1024;
+export const GITHUB_LIVE = process.env['GITHUB_E2E_MODE'] === 'live';
+const GITHUB_MAX_LIVE_PER_TEST = Number(process.env['GITHUB_E2E_MAX_LIVE_REQUESTS'] || 30);
+const GITHUB_MAX_LIVE_PER_RUN = Number(process.env['GITHUB_E2E_MAX_RUN_LIVE_REQUESTS'] || 50);
+/** Every host the guard watches. */
+const WATCHED = (host: string): boolean => DEMODB_HOST.test(host) || GITHUB_HOST.test(host);
+
+let pinned: GithubCheckouts | undefined;
+/**
+ * The pinned checkouts, loaded once per worker. DATATUG_E2E_GITHUB_FAKE set by hand to a checkout that is not a pin (local
+ * work on the demo project) serves that checkout's HEAD as the demo project's HEAD/main instead of the pinned one.
+ */
+function pinnedCheckouts(): GithubCheckouts {
+  if (pinned) return pinned;
+  const pins = servingGithubPins();
+  const custom = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  const customDemo = custom && !pins.some((pin) => resolve(pin.dir) === resolve(custom)) ? resolve(custom) : undefined;
+  const repos: IFakeGithubRepo[] = pins.map((pin) => {
+    if (!existsSync(join(pin.dir, '.datatug-pin-complete'))) {
+      throw new Error(`GitHub pin ${pin.id} (${pin.repo}@${pin.sha}) is not checked out at ${pin.dir}: run \`node scripts/fetch-github-pins.mjs\` (the lane's globalSetup does).`);
+    }
+    return { fullName: pin.repo, dir: pin.dir, sha: pin.sha, refs: customDemo && pin.repo === 'datatug/datatug-demo-project' ? [] : pin.refs };
+  });
+  if (customDemo) repos.push({ fullName: 'datatug/datatug-demo-project', dir: customDemo, refs: ['HEAD', 'main'] });
+  pinned = new GithubCheckouts(repos);
+  return pinned;
+}
 
 /** Committed fixtures (corpus.json, dataset pages) built from demo-db/websites; see fixtures/demodb/provenance.json. */
 const committedDir = (): string => join(__dirname, '../fixtures/demodb');
@@ -129,6 +168,8 @@ const orphan = new Counter();
 let current: Counter = orphan;
 /** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. False outside a test. */
 let currentPassive = false;
+/** GitHub reads of the running test that no pin answers (checkout mode); each one fails the test. */
+let currentUnpinned: string[] = [];
 
 const rules: Rules = {
   live: DEMODB_LIVE,
@@ -140,6 +181,14 @@ const rules: Rules = {
 };
 const resolve_ = (url: URL, method: string, hasRange: boolean, counter: Counter, live: () => Promise<Stored>) =>
   resolveRequest(rules, url, method, hasRange, counter, live);
+const githubLiveRules: Rules = {
+  live: true,
+  maxLivePerTest: GITHUB_MAX_LIVE_PER_TEST,
+  maxLivePerRun: GITHUB_MAX_LIVE_PER_RUN,
+  memoLimitBytes: MEMO_LIMIT_BYTES,
+  fixture: () => undefined,
+  refusal: (url) => `Refused ${url.href}`,
+};
 
 const dropEncoding = (headers: Record<string, string>): Record<string, string> => {
   const copy = { ...headers };
@@ -152,7 +201,13 @@ const dropEncoding = (headers: Record<string, string>): Record<string, string> =
 
 const observed = new WeakSet<BrowserContext>();
 const routed = new WeakSet<BrowserContext>();
-const routes = new WeakMap<BrowserContext, { matcher: (url: URL) => boolean; handler: (route: Route) => Promise<void> }>();
+interface Installed {
+  matcher: (url: URL) => boolean;
+  handler: (route: Route) => Promise<void>;
+  githubMatcher: (url: URL) => boolean;
+  githubHandler: (route: Route) => Promise<void>;
+}
+const routes = new WeakMap<BrowserContext, Installed>();
 
 /** Test hook: whether the guard's route is installed on a context (see demodb-guard-selftest.spec.ts). */
 export const hasGuardRoute = (context: BrowserContext): boolean => routed.has(context);
@@ -163,7 +218,7 @@ function observe(context: BrowserContext): void {
   observed.add(context);
   context.on('request', (request) => {
     const host = new URL(request.url()).hostname;
-    if (DEMODB_HOST.test(host)) current.bump(host, 'total');
+    if (WATCHED(host)) current.bump(host, 'total');
   });
   // Escapes: only what actually left the machine counts (see HostCounts.escaped).
   context.on('response', async (response) => {
@@ -174,7 +229,7 @@ function observe(context: BrowserContext): void {
       current.bump(new URL(refusedUpstream).hostname, 'escaped');
       return;
     }
-    if (!DEMODB_HOST.test(url.hostname)) return;
+    if (!WATCHED(url.hostname)) return;
     try {
       if (await response.serverAddr()) current.bump(url.hostname, 'escaped');
     } catch {
@@ -183,7 +238,7 @@ function observe(context: BrowserContext): void {
   });
   context.on('requestfailed', (request) => {
     const host = new URL(request.url()).hostname;
-    if (DEMODB_HOST.test(host) && /NAME_NOT_RESOLVED|CONNECTION_|TIMED_OUT|UNKNOWN_HOST|could not connect|cannot find/i.test(request.failure()?.errorText ?? '')) {
+    if (WATCHED(host) && /NAME_NOT_RESOLVED|CONNECTION_|TIMED_OUT|UNKNOWN_HOST|could not connect|cannot find/i.test(request.failure()?.errorText ?? '')) {
       current.bump(host, 'escaped');
     }
   });
@@ -216,8 +271,42 @@ async function installRoute(context: BrowserContext): Promise<void> {
     if (process.env['DEMODB_GUARD_DEBUG']) console.error(`[demodb-guard] ${request.method()} ${url.href} -> ${result.status} (${result.body.length} bytes)`);
     return route.fulfill({ status: result.status, headers: result.headers, body: result.body });
   };
-  routes.set(context, { matcher, handler });
+  const githubMatcher = (url: URL): boolean => GITHUB_HOST.test(url.hostname);
+  const githubHandler = async (route: Route): Promise<void> => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const counter = current;
+    counter.bump(url.hostname, 'handled');
+    if (!GITHUB_LIVE) {
+      const answer = await fulfillFromCheckouts(route, pinnedCheckouts());
+      if (!answer) return;
+      if (answer.unpinned) {
+        counter.bump(url.hostname, 'refused');
+        currentUnpinned.push(answer.unpinned);
+        console.error(`[github-guard] ${answer.unpinned}`);
+      } else counter.bump(url.hostname, 'fixture');
+      return;
+    }
+    if (request.method() === 'OPTIONS') return route.continue();
+    // Only the API has a quota (60 an hour per address, anonymous): raw files and the mirror go to the network unbudgeted.
+    if (url.hostname !== 'api.github.com') {
+      counter.bump(url.hostname, 'live');
+      return route.continue();
+    }
+    const apiOnly = { bump: (host: string, kind: Kind) => counter.bump(host, kind), sum: (kind: Kind) => counter.counts.get('api.github.com')?.[kind] ?? 0 } as Counter;
+    const result = await resolveRequest(githubLiveRules, url, request.method(), 'range' in request.headers(), apiOnly, async () => {
+      const response = await route.fetch();
+      return { status: response.status(), headers: dropEncoding(response.headers()), body: await response.body() };
+    });
+    if ('abort' in result) {
+      console.error(`[github-guard] ${result.abort}`);
+      return route.abort();
+    }
+    return route.fulfill({ status: result.status, headers: result.headers, body: result.body });
+  };
+  routes.set(context, { matcher, handler, githubMatcher, githubHandler });
   await context.route(matcher, handler);
+  await context.route(githubMatcher, githubHandler);
 }
 
 /** Removes the route again (a passive test's own context is created before the test's option is known). */
@@ -227,6 +316,7 @@ async function removeRoute(context: BrowserContext): Promise<void> {
   routes.delete(context);
   routed.delete(context);
   await context.unroute(installed.matcher, installed.handler);
+  await context.unroute(installed.githubMatcher, installed.githubHandler);
 }
 
 function summarise(counter: Counter): Record<string, HostCounts> {
@@ -273,6 +363,8 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
       const counter = new Counter();
       current = counter;
       currentPassive = demodbPassive;
+      const unpinned: string[] = [];
+      currentUnpinned = unpinned;
       observe(context);
       if (demodbPassive) await removeRoute(context);
       else await installRoute(context);
@@ -306,17 +398,29 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
       const summary = summarise(counter);
       current = orphan;
       currentPassive = false;
-      testInfo.annotations.push({ type: 'demodb-requests', description: JSON.stringify({ mode: DEMODB_LIVE ? 'live' : 'fixture', hosts: summary }) });
+      currentUnpinned = [];
+      testInfo.annotations.push({
+        type: 'demodb-requests',
+        description: JSON.stringify({ mode: DEMODB_LIVE ? 'live' : 'fixture', github: GITHUB_LIVE ? 'live' : 'checkout', hosts: summary }),
+      });
       const tripped = readBreaker();
       if (tripped) throw new Error(tripped);
       const sum = (kind: Kind): number => Object.values(summary).reduce((n, host) => n + host[kind], 0);
       const budget = DEMODB_LIVE ? MAX_LIVE_PER_TEST : 0;
-      expect(sum('escaped'), `DemoDB / OpenVaultDB requests that reached the network (the guard did not answer them): ${JSON.stringify(summary)}`).toBe(0);
+      const demodbLive = Object.entries(summary).filter(([host]) => DEMODB_HOST.test(host)).reduce((n, [, host]) => n + host.live, 0);
+      expect(sum('escaped'), `DemoDB / OpenVaultDB / GitHub requests that reached the network (the guard did not answer them): ${JSON.stringify(summary)}`).toBe(0);
+      expect(unpinned, 'GitHub reads outside e2e/github-pins.json (pin the repository/commit, or serve a scratch repository with installFakeGithub)').toEqual([]);
+      const githubLive = summary['api.github.com']?.live ?? 0;
+      expect(githubLive, `live api.github.com requests in this test (budget ${GITHUB_LIVE ? GITHUB_MAX_LIVE_PER_TEST : 0})`).toBeLessThanOrEqual(GITHUB_LIVE ? GITHUB_MAX_LIVE_PER_TEST : 0);
       // Fixture mode refuses what has no fixture (page assets, the OVDB API) and the test goes on; they show in the report.
       // In live mode a refusal means a budget or the breaker stopped a request the test needed: that is a failure.
-      if (DEMODB_LIVE) expect(sum('refused'), `DemoDB requests refused by the guard (budget spent): ${JSON.stringify(summary)}`).toBe(0);
+      if (DEMODB_LIVE) expect(Object.entries(summary).filter(([host]) => DEMODB_HOST.test(host)).reduce((n, [, host]) => n + host.refused, 0), `DemoDB requests refused by the guard (budget spent): ${JSON.stringify(summary)}`).toBe(0);
+      if (GITHUB_LIVE) {
+        const githubRefused = Object.entries(summary).filter(([host]) => GITHUB_HOST.test(host)).reduce((n, [, host]) => n + host.refused, 0);
+        expect(githubRefused, `GitHub requests refused by the guard (budget spent or rate limited): ${JSON.stringify(summary)}`).toBe(0);
+      }
       expect(
-        sum('live'),
+        demodbLive,
         `live DemoDB requests in this test (budget ${budget}; ${DEMODB_LIVE ? 'live mode' : 'fixture mode must make none'}): ${JSON.stringify(summary)}`,
       ).toBeLessThanOrEqual(budget);
     },

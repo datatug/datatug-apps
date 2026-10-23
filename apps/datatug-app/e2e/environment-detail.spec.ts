@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const demoDir = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const base =
@@ -9,12 +8,6 @@ test.skip(
   !demoDir,
   'Set DATATUG_E2E_GITHUB_FAKE to a checkout of the demo repository',
 );
-test.beforeEach(async ({ context }) => {
-  if (!demoDir) return;
-  await installFakeGithub(context, [
-    { fullName: 'datatug/datatug-demo-project', dir: demoDir },
-  ]);
-});
 for (const width of [1440, 900, 390]) {
   test(`environment connections and catalog journey at ${width}px`, async ({
     page,

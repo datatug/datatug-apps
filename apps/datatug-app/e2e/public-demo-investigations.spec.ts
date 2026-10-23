@@ -1,17 +1,8 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const project =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
 const sessionExample = 'customer-coverage-investigation';
-const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
-
-test.beforeEach(async ({ context }) => {
-  if (fake)
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: fake },
-    ]);
-});
 
 for (const width of [1440, 900, 390]) {
   test(`public sample investigations link to runnable data and survive cold links at ${width}px`, async ({

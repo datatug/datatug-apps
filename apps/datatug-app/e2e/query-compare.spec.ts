@@ -1,5 +1,4 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 import { installPinnedChinookComparison, installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
@@ -15,9 +14,6 @@ test.beforeEach(async ({ context }) => {
   if (DEMO_REPO) {
     await installPinnedChinookSqlite(context, DEMO_REPO);
     await installPinnedChinookComparison(context);
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: DEMO_REPO },
-    ]);
   }
 });
 
