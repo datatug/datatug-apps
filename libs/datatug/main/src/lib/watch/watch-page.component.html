@@ -107,339 +107,356 @@
               ><h1>{{ isNew ? 'Create Watch' : 'Edit Watch' }}</h1></ion-label
             ></ion-item-divider
           >
-          <ion-card-content
-            ><form (submit)="$event.preventDefault(); save()">
-              <div class="form-grid">
-                <ion-item lines="full"
-                  ><ion-input
-                    label="Title"
-                    [errorText]="fieldError('title')"
-                    [class.ion-invalid]="!!fieldError('title')"
-                    [class.ion-touched]="true"
-                    (ionBlur)="touch('title')"
-                    labelPlacement="stacked"
-                    [value]="form().title"
-                    (ionInput)="setField('title', $event.detail.value || '')"
-                    maxlength="160"
-                /></ion-item>
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="Saved Check"
-                    [errorText]="fieldError('checkId')"
-                    [class.ion-invalid]="!!fieldError('checkId')"
-                    [class.ion-touched]="true"
-                    (ionBlur)="touch('checkId')"
-                    labelPlacement="stacked"
-                    [value]="form().checkId"
-                    (ionChange)="chooseCheck($event.detail.value)"
-                  >
-                    @for (check of checks(); track check.id) {
-                      <ion-select-option [value]="check.id"
-                        >{{ check.title }} · {{ check.id }}</ion-select-option
-                      >
-                    }
-                  </ion-select></ion-item
-                >
-                @if (!checks().length) {
-                  <p>
-                    No saved Checks are available. Open this project through its
-                    DataTug agent, and save a Check first.
-                  </p>
-                }
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="Visibility"
-                    labelPlacement="stacked"
-                    [value]="form().visibility"
-                    (ionChange)="setField('visibility', $event.detail.value)"
-                    ><ion-select-option value="personal"
-                      >Personal</ion-select-option
-                    ><ion-select-option
-                      value="shared"
-                      [disabled]="!user.sharedEditor"
-                      >Shared</ion-select-option
-                    ></ion-select
-                  ></ion-item
-                >
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="Environment"
-                    labelPlacement="stacked"
-                    [value]="form().environment"
-                    (ionChange)="setField('environment', $event.detail.value)"
-                    ><ion-select-option [value]="user.environment">{{
-                      user.environment
-                    }}</ion-select-option></ion-select
-                  ></ion-item
-                >
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="Notify when"
-                    labelPlacement="stacked"
-                    [value]="form().trigger"
-                    (ionChange)="setField('trigger', $event.detail.value)"
-                    ><ion-select-option value="becomes_true"
-                      >The Check passes</ion-select-option
-                    ><ion-select-option value="becomes_false"
-                      >The Check fails</ion-select-option
-                    ><ion-select-option value="changes"
-                      >The result changes</ion-select-option
-                    ></ion-select
-                  ></ion-item
-                >
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="Mode"
-                    labelPlacement="stacked"
-                    [value]="form().mode"
-                    (ionChange)="setField('mode', $event.detail.value)"
-                    ><ion-select-option value="one_shot">Once</ion-select-option
-                    ><ion-select-option value="continuous"
-                      >Ongoing</ion-select-option
-                    ></ion-select
-                  ></ion-item
-                >
-                <ion-item lines="full"
-                  ><ion-input
-                    label="Evaluate every (seconds)"
-                    [errorText]="fieldError('interval')"
-                    [class.ion-invalid]="!!fieldError('interval')"
-                    [class.ion-touched]="true"
-                    (ionBlur)="touch('interval')"
-                    labelPlacement="stacked"
-                    type="number"
-                    [min]="user.limits.minIntervalSeconds || 10"
-                    max="86400"
-                    [value]="form().interval"
-                    (ionInput)="setNumber('interval', $event.detail.value)"
-                /></ion-item>
-                <ion-item lines="full"
-                  ><ion-select
-                    interface="popover"
-                    label="First observation"
-                    labelPlacement="stacked"
-                    [value]="form().initial"
-                    (ionChange)="setField('initial', $event.detail.value)"
-                    ><ion-select-option value="baseline"
-                      >Set baseline, wait for a transition</ion-select-option
-                    ><ion-select-option value="notify"
-                      >Notify if already matching</ion-select-option
-                    ></ion-select
-                  ></ion-item
-                >
-              </div>
-              @if (selectedCheck(); as check) {
-                <h2>Check inputs</h2>
-                @for (inputDef of check.inputs; track inputDef.name) {
-                  <ion-item lines="full"
-                    ><ion-input
-                      [errorText]="fieldError('input:' + inputDef.name)"
-                      [class.ion-invalid]="
-                        !!fieldError('input:' + inputDef.name)
-                      "
-                      [class.ion-touched]="true"
-                      (ionBlur)="touch('input:' + inputDef.name)"
-                      [label]="
-                        inputDef.name + (inputDef.required ? ' (required)' : '')
-                      "
-                      labelPlacement="stacked"
-                      [value]="form().inputs[inputDef.name]?.value || ''"
-                      (ionInput)="
-                        input(inputDef.name, 'value', $event.detail.value || '')
-                      "
-                  /></ion-item>
-                  @if (inputDef.cardinality === 'range') {
-                    <ion-item lines="full"
-                      ><ion-input
-                        [label]="inputDef.name + ' end'"
-                        labelPlacement="stacked"
-                        [value]="form().inputs[inputDef.name]?.end || ''"
-                        (ionInput)="
-                          input(inputDef.name, 'end', $event.detail.value || '')
-                        "
-                    /></ion-item>
-                  }
-                  @if (inputDef.cardinality === 'set') {
-                    <ion-note>Separate values with commas.</ion-note>
-                  }
-                } @empty {
-                  <p>This Check has no inputs.</p>
-                }
-              }
-              <details class="advanced">
-                <summary>Advanced settings</summary>
+          <ion-card-content>
+            @if (busy() && !checks().length) {
+              <p role="status">
+                <ion-spinner name="dots" /> Loading saved Checks…
+              </p>
+            } @else {
+              <form (submit)="$event.preventDefault(); save()">
                 <div class="form-grid">
                   <ion-item lines="full"
                     ><ion-input
-                      label="Notification cooldown (seconds)"
-                      [errorText]="fieldError('cooldown')"
-                      [class.ion-invalid]="!!fieldError('cooldown')"
+                      label="Title"
+                      [errorText]="fieldError('title')"
+                      [class.ion-invalid]="!!fieldError('title')"
                       [class.ion-touched]="true"
-                      (ionBlur)="touch('cooldown')"
+                      (ionBlur)="touch('title')"
                       labelPlacement="stacked"
-                      type="number"
-                      min="0"
-                      [value]="form().cooldown"
-                      (ionInput)="setNumber('cooldown', $event.detail.value)"
+                      [value]="form().title"
+                      (ionInput)="setField('title', $event.detail.value || '')"
+                      maxlength="160"
                   /></ion-item>
                   <ion-item lines="full"
-                    ><ion-input
-                      label="Required runner capabilities (comma-separated)"
+                    ><ion-select
+                      interface="popover"
+                      label="Saved Check"
+                      [errorText]="fieldError('checkId')"
+                      [class.ion-invalid]="!!fieldError('checkId')"
+                      [class.ion-touched]="true"
+                      (ionBlur)="touch('checkId')"
                       labelPlacement="stacked"
-                      [value]="form().requirements"
-                      (ionInput)="
-                        setField('requirements', $event.detail.value || '')
-                      "
-                  /></ion-item>
-                  <ion-checkbox
-                    [disabled]="form().mode === 'one_shot'"
-                    labelPlacement="end"
-                    justify="start"
-                    [checked]="form().recovery"
-                    (ionChange)="setField('recovery', $event.detail.checked)"
-                    >Notify on recovery</ion-checkbox
+                      [value]="form().checkId"
+                      (ionChange)="chooseCheck($event.detail.value)"
+                    >
+                      @for (check of checks(); track check.id) {
+                        <ion-select-option [value]="check.id"
+                          >{{ check.title }} · {{ check.id }}</ion-select-option
+                        >
+                      }
+                    </ion-select></ion-item
                   >
-                </div>
-              </details>
-              @if (isNew) {
-                <h2>Your notification channels</h2>
-                <p>
-                  Evaluation starts after your notification preferences are
-                  saved.
-                </p>
-                <ion-list>
-                  <ion-item
-                    ><ion-checkbox
-                      labelPlacement="end"
-                      justify="start"
-                      [checked]="channels().includes('in_app')"
-                      (ionChange)="
-                        toggleChannel('in_app', $event.detail.checked)
-                      "
-                      >In-app</ion-checkbox
+                  @if (!checks().length) {
+                    <p>
+                      No saved Checks are available. Open this project through
+                      its DataTug agent, and save a Check first.
+                    </p>
+                  }
+                  <ion-item lines="full"
+                    ><ion-select
+                      interface="popover"
+                      label="Visibility"
+                      labelPlacement="stacked"
+                      [value]="form().visibility"
+                      (ionChange)="setField('visibility', $event.detail.value)"
+                      ><ion-select-option value="personal"
+                        >Personal</ion-select-option
+                      ><ion-select-option
+                        value="shared"
+                        [disabled]="!user.sharedEditor"
+                        >Shared</ion-select-option
+                      ></ion-select
                     ></ion-item
                   >
-                  <ion-item
-                    ><div class="channel-row">
-                      <ion-checkbox
+                  <ion-item lines="full"
+                    ><ion-select
+                      interface="popover"
+                      label="Environment"
+                      labelPlacement="stacked"
+                      [value]="form().environment"
+                      (ionChange)="setField('environment', $event.detail.value)"
+                      ><ion-select-option [value]="user.environment">{{
+                        user.environment
+                      }}</ion-select-option></ion-select
+                    ></ion-item
+                  >
+                  <ion-item lines="full"
+                    ><ion-select
+                      interface="popover"
+                      label="Notify when"
+                      labelPlacement="stacked"
+                      [value]="form().trigger"
+                      (ionChange)="setField('trigger', $event.detail.value)"
+                      ><ion-select-option value="becomes_true"
+                        >The Check passes</ion-select-option
+                      ><ion-select-option value="becomes_false"
+                        >The Check fails</ion-select-option
+                      ><ion-select-option value="changes"
+                        >The result changes</ion-select-option
+                      ></ion-select
+                    ></ion-item
+                  >
+                  <ion-item lines="full"
+                    ><ion-select
+                      interface="popover"
+                      label="Mode"
+                      labelPlacement="stacked"
+                      [value]="form().mode"
+                      (ionChange)="setField('mode', $event.detail.value)"
+                      ><ion-select-option value="one_shot"
+                        >Once</ion-select-option
+                      ><ion-select-option value="continuous"
+                        >Ongoing</ion-select-option
+                      ></ion-select
+                    ></ion-item
+                  >
+                  <ion-item lines="full"
+                    ><ion-input
+                      label="Evaluate every (seconds)"
+                      [errorText]="fieldError('interval')"
+                      [class.ion-invalid]="!!fieldError('interval')"
+                      [class.ion-touched]="true"
+                      (ionBlur)="touch('interval')"
+                      labelPlacement="stacked"
+                      type="number"
+                      [min]="user.limits.minIntervalSeconds || 10"
+                      max="86400"
+                      [value]="form().interval"
+                      (ionInput)="setNumber('interval', $event.detail.value)"
+                  /></ion-item>
+                  <ion-item lines="full"
+                    ><ion-select
+                      interface="popover"
+                      label="First observation"
+                      labelPlacement="stacked"
+                      [value]="form().initial"
+                      (ionChange)="setField('initial', $event.detail.value)"
+                      ><ion-select-option value="baseline"
+                        >Set baseline, wait for a transition</ion-select-option
+                      ><ion-select-option value="notify"
+                        >Notify if already matching</ion-select-option
+                      ></ion-select
+                    ></ion-item
+                  >
+                </div>
+                @if (selectedCheck(); as check) {
+                  <h2>Check inputs</h2>
+                  @for (inputDef of check.inputs; track inputDef.name) {
+                    <ion-item lines="full"
+                      ><ion-input
+                        [errorText]="fieldError('input:' + inputDef.name)"
+                        [class.ion-invalid]="
+                          !!fieldError('input:' + inputDef.name)
+                        "
+                        [class.ion-touched]="true"
+                        (ionBlur)="touch('input:' + inputDef.name)"
+                        [label]="
+                          inputDef.name +
+                          (inputDef.required ? ' (required)' : '')
+                        "
+                        labelPlacement="stacked"
+                        [value]="form().inputs[inputDef.name]?.value || ''"
+                        (ionInput)="
+                          input(
+                            inputDef.name,
+                            'value',
+                            $event.detail.value || ''
+                          )
+                        "
+                    /></ion-item>
+                    @if (inputDef.cardinality === 'range') {
+                      <ion-item lines="full"
+                        ><ion-input
+                          [label]="inputDef.name + ' end'"
+                          labelPlacement="stacked"
+                          [value]="form().inputs[inputDef.name]?.end || ''"
+                          (ionInput)="
+                            input(
+                              inputDef.name,
+                              'end',
+                              $event.detail.value || ''
+                            )
+                          "
+                      /></ion-item>
+                    }
+                    @if (inputDef.cardinality === 'set') {
+                      <ion-note>Separate values with commas.</ion-note>
+                    }
+                  } @empty {
+                    <p>This Check has no inputs.</p>
+                  }
+                }
+                <details class="advanced">
+                  <summary>Advanced settings</summary>
+                  <div class="form-grid">
+                    <ion-item lines="full"
+                      ><ion-input
+                        label="Notification cooldown (seconds)"
+                        [errorText]="fieldError('cooldown')"
+                        [class.ion-invalid]="!!fieldError('cooldown')"
+                        [class.ion-touched]="true"
+                        (ionBlur)="touch('cooldown')"
+                        labelPlacement="stacked"
+                        type="number"
+                        min="0"
+                        [value]="form().cooldown"
+                        (ionInput)="setNumber('cooldown', $event.detail.value)"
+                    /></ion-item>
+                    <ion-item lines="full"
+                      ><ion-input
+                        label="Required runner capabilities (comma-separated)"
+                        labelPlacement="stacked"
+                        [value]="form().requirements"
+                        (ionInput)="
+                          setField('requirements', $event.detail.value || '')
+                        "
+                    /></ion-item>
+                    <ion-checkbox
+                      [disabled]="form().mode === 'one_shot'"
+                      labelPlacement="end"
+                      justify="start"
+                      [checked]="form().recovery"
+                      (ionChange)="setField('recovery', $event.detail.checked)"
+                      >Notify on recovery</ion-checkbox
+                    >
+                  </div>
+                </details>
+                @if (isNew) {
+                  <h2>Your notification channels</h2>
+                  <p>
+                    Evaluation starts after your notification preferences are
+                    saved.
+                  </p>
+                  <ion-list>
+                    <ion-item
+                      ><ion-checkbox
                         labelPlacement="end"
                         justify="start"
-                        [disabled]="!user.channels.email"
-                        [checked]="channels().includes('email')"
+                        [checked]="channels().includes('in_app')"
                         (ionChange)="
-                          toggleChannel('email', $event.detail.checked)
+                          toggleChannel('in_app', $event.detail.checked)
                         "
-                        >Email · free</ion-checkbox
+                        >In-app</ion-checkbox
+                      ></ion-item
+                    >
+                    <ion-item
+                      ><div class="channel-row">
+                        <ion-checkbox
+                          labelPlacement="end"
+                          justify="start"
+                          [disabled]="!user.channels.email"
+                          [checked]="channels().includes('email')"
+                          (ionChange)="
+                            toggleChannel('email', $event.detail.checked)
+                          "
+                          >Email · free</ion-checkbox
+                        >
+                        <ion-note class="channel-description"
+                          >{{ user.limits.emailPerDay }} per day ·
+                          {{ user.limits.emailPerMinute || 0 }} per
+                          minute</ion-note
+                        >
+                      </div></ion-item
+                    >
+                    <ion-item
+                      ><div class="channel-row">
+                        <ion-checkbox
+                          labelPlacement="end"
+                          justify="start"
+                          [disabled]="!user.channels.sms"
+                          [checked]="channels().includes('sms')"
+                          (ionChange)="
+                            toggleChannel('sms', $event.detail.checked)
+                          "
+                          >SMS · paid accounts</ion-checkbox
+                        >
+                        <ion-note class="channel-description"
+                          >{{ user.limits.smsPerDay }} per day ·
+                          {{ user.limits.smsPerMinute || 0 }} per minute.
+                          @if (!user.channels.sms) {
+                            A paid account and verified phone number are
+                            required.
+                          }
+                        </ion-note>
+                      </div></ion-item
+                    >
+                    <ion-item
+                      ><div class="channel-row">
+                        <ion-checkbox
+                          labelPlacement="end"
+                          justify="start"
+                          [disabled]="
+                            !user.channels.telegram || !telegramConnected()
+                          "
+                          [checked]="channels().includes('telegram')"
+                          (ionChange)="
+                            toggleChannel('telegram', $event.detail.checked)
+                          "
+                          >Telegram
+                          @if (telegramBotUsername()) {
+                            · @{{ telegramBotUsername() }}
+                          }
+                        </ion-checkbox>
+                        <ion-note class="channel-description"
+                          >{{ user.limits.telegramPerDay || 0 }} per day ·
+                          {{ user.limits.telegramPerMinute || 0 }} per minute.
+                          @if (!telegramConnected()) {
+                            Connect your Telegram account first.
+                          }
+                        </ion-note>
+                      </div></ion-item
+                    >
+                  </ion-list>
+                  @if (user.channels.telegram && !telegramConnected()) {
+                    <ion-button
+                      fill="outline"
+                      [disabled]="busy()"
+                      (click)="connectTelegram()"
+                      >Connect Telegram</ion-button
+                    ><ion-button
+                      fill="clear"
+                      [disabled]="busy()"
+                      (click)="refresh()"
+                      >Refresh Telegram status</ion-button
+                    >
+                  }
+                  @if (telegramLink()) {
+                    <p>
+                      <a
+                        [href]="telegramLink()"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        >Open @{{ telegramBotUsername() || 'Telegram bot' }} to
+                        connect</a
                       >
-                      <ion-note class="channel-description"
-                        >{{ user.limits.emailPerDay }} per day ·
-                        {{ user.limits.emailPerMinute || 0 }} per
-                        minute</ion-note
-                      >
-                    </div></ion-item
-                  >
-                  <ion-item
-                    ><div class="channel-row">
-                      <ion-checkbox
-                        labelPlacement="end"
-                        justify="start"
-                        [disabled]="!user.channels.sms"
-                        [checked]="channels().includes('sms')"
-                        (ionChange)="
-                          toggleChannel('sms', $event.detail.checked)
-                        "
-                        >SMS · paid accounts</ion-checkbox
-                      >
-                      <ion-note class="channel-description"
-                        >{{ user.limits.smsPerDay }} per day ·
-                        {{ user.limits.smsPerMinute || 0 }} per minute.
-                        @if (!user.channels.sms) {
-                          A paid account and verified phone number are required.
-                        }
-                      </ion-note>
-                    </div></ion-item
-                  >
-                  <ion-item
-                    ><div class="channel-row">
-                      <ion-checkbox
-                        labelPlacement="end"
-                        justify="start"
-                        [disabled]="
-                          !user.channels.telegram || !telegramConnected()
-                        "
-                        [checked]="channels().includes('telegram')"
-                        (ionChange)="
-                          toggleChannel('telegram', $event.detail.checked)
-                        "
-                        >Telegram
-                        @if (telegramBotUsername()) {
-                          · @{{ telegramBotUsername() }}
-                        }
-                      </ion-checkbox>
-                      <ion-note class="channel-description"
-                        >{{ user.limits.telegramPerDay || 0 }} per day ·
-                        {{ user.limits.telegramPerMinute || 0 }} per minute.
-                        @if (!telegramConnected()) {
-                          Connect your Telegram account first.
-                        }
-                      </ion-note>
-                    </div></ion-item
-                  >
-                </ion-list>
-                @if (user.channels.telegram && !telegramConnected()) {
+                    </p>
+                  }
+                }
+                <p>
+                  Changing the Check, inputs or environment starts a new
+                  observation baseline. Execution errors remain unknown.
+                </p>
+                <div class="actions">
                   <ion-button
-                    fill="outline"
-                    [disabled]="busy()"
-                    (click)="connectTelegram()"
-                    >Connect Telegram</ion-button
+                    type="submit"
+                    [disabled]="busy() || !checks().length"
+                  >
+                    @if (busy()) {
+                      <ion-spinner name="dots" />
+                    }
+                    Save Watch</ion-button
                   ><ion-button
                     fill="clear"
-                    [disabled]="busy()"
-                    (click)="refresh()"
-                    >Refresh Telegram status</ion-button
+                    [routerLink]="
+                      isNew ? pageHref('watch') : pageHref(['watch', watchId()])
+                    "
+                    (click)="editing.set(false)"
+                    >Cancel</ion-button
                   >
-                }
-                @if (telegramLink()) {
-                  <p>
-                    <a
-                      [href]="telegramLink()"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      >Open @{{ telegramBotUsername() || 'Telegram bot' }} to
-                      connect</a
-                    >
-                  </p>
-                }
-              }
-              <p>
-                Changing the Check, inputs or environment starts a new
-                observation baseline. Execution errors remain unknown.
-              </p>
-              <div class="actions">
-                <ion-button
-                  type="submit"
-                  [disabled]="busy() || !checks().length"
-                >
-                  @if (busy()) {
-                    <ion-spinner name="dots" />
-                  }
-                  Save Watch</ion-button
-                ><ion-button
-                  fill="clear"
-                  [routerLink]="
-                    isNew ? pageHref('watch') : pageHref(['watch', watchId()])
-                  "
-                  (click)="editing.set(false)"
-                  >Cancel</ion-button
-                >
-              </div>
-            </form></ion-card-content
-          >
+                </div>
+              </form>
+            }
+          </ion-card-content>
         </ion-card>
       } @else if (watchId()) {
         @if (current(); as watch) {
@@ -485,13 +502,19 @@
                     }}</ion-badge>
                     {{ label(observation()?.availability) }}
                   </p>
-                  @if (observation()?.lastObservedAt) {
+                  @if (
+                    observation()?.lastObservedAt &&
+                    !observation()?.lastObservedAt?.startsWith('0001-')
+                  ) {
                     <p>
                       Observed:
                       {{ observation()?.lastObservedAt | date: 'medium' }}
                     </p>
                   }
-                  @if (observation()?.nextEvaluation) {
+                  @if (
+                    observation()?.nextEvaluation &&
+                    !observation()?.nextEvaluation?.startsWith('0001-')
+                  ) {
                     <p>
                       Next evaluation:
                       {{ observation()?.nextEvaluation | date: 'medium' }}

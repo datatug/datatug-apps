@@ -206,7 +206,7 @@ async function install(page: Page) {
       },
     });
   });
-  return { stages };
+  return { stages, subscribedChannels: () => subscription.channels };
 }
 
 async function connect(page: Page) {
@@ -229,7 +229,7 @@ test('project Watch menu, paused creation consent, cold details and narrow inbox
     page.getByRole('heading', { name: 'Carrier assignment', exact: true }),
   ).toBeVisible();
   const rejectAnalytics = page.getByRole('button', {
-    name: 'Reject analytics',
+    name: /^(Reject|Reject analytics)$/,
     exact: true,
   });
   if (await rejectAnalytics.isVisible()) await rejectAnalytics.click();
@@ -243,6 +243,12 @@ test('project Watch menu, paused creation consent, cold details and narrow inbox
     page.getByRole('heading', { name: 'Create Watch', exact: true }),
   ).toBeVisible();
   await page.getByLabel('order_id (required)').fill('11045');
+  await page
+    .getByRole('checkbox', { name: 'Email · free', exact: true })
+    .click();
+  await expect(
+    page.getByRole('checkbox', { name: 'Email · free', exact: true }),
+  ).toBeChecked();
   await page.screenshot({ path: testInfo.outputPath('watch-create-1440.png') });
   await page.setViewportSize({ width: 390, height: 900 });
   await page
@@ -257,6 +263,7 @@ test('project Watch menu, paused creation consent, cold details and narrow inbox
   await expect(
     page.getByRole('heading', { name: 'Create Watch', exact: true }),
   ).toBeHidden();
+  expect(fixture.subscribedChannels()).toEqual(['in_app', 'email']);
   expect(fixture.stages).toEqual([
     'definition:paused',
     'subscription',

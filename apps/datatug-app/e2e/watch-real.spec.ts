@@ -27,7 +27,7 @@ test('real coordinator: existing Check creates a Watch with consent, observes an
     page.getByRole('button', { name: 'Create Watch', exact: true }),
   ).toBeVisible();
   const rejectAnalytics = page.getByRole('button', {
-    name: 'Reject analytics',
+    name: /^(Reject|Reject analytics)$/,
     exact: true,
   });
   if (await rejectAnalytics.isVisible()) await rejectAnalytics.click();
