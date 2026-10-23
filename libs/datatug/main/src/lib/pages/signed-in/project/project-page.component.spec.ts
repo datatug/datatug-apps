@@ -621,7 +621,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
     const el: HTMLElement = fixture.nativeElement;
     const base = `/store/localhost:8989/project/${summary.id}`;
     const card = () =>
-      el.querySelector('sneat-datatug-project-overview-card') as HTMLElement & {
+      el.querySelector('sneat-datatug-project-tab-panel') as HTMLElement & {
         titleHref?: string;
       };
     // happy-dom can report a stale empty textContent for projected nodes, so
@@ -630,7 +630,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
       [...card().querySelectorAll('ion-list ion-label')].map((label) =>
         label.innerHTML.replace(/<[^>]*>/g, '').trim(),
       );
-    expect(card().getAttribute('cardTitle')).toBe('Boards');
+    expect(card().getAttribute('panelTitle')).toBe('Boards');
     expect(card().titleHref).toBe(`${base}/boards`);
     expect(rows()).toEqual(['Sales board', 'Operations']);
     fixture.componentInstance.boardFilter.set('SALES');
@@ -642,7 +642,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
 
     page.selectTab('entities');
     await fixture.whenStable();
-    expect(card().getAttribute('cardTitle')).toBe('Entities');
+    expect(card().getAttribute('panelTitle')).toBe('Entities');
     expect(card().titleHref).toBe(`${base}/entities`);
     fixture.componentInstance.entityFilter.set('inv');
     await fixture.whenStable();

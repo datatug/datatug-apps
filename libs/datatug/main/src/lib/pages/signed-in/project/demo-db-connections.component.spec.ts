@@ -63,7 +63,7 @@ describe('shared project database connections', () => {
     expect(rendered).toContain('demodb-dev.chinook');
     expect(rendered).toContain('Source SQLite SHA-256');
     expect(fixture.nativeElement.querySelectorAll('a[href="https://console.cloud.google.com/bigquery"]').length).toBe(6);
-    expect(fixture.nativeElement.querySelectorAll('ion-item-divider h2')[1].innerHTML).toContain('discoveries');
+    expect(fixture.nativeElement.querySelectorAll('.tab-panel-header h2')[1].innerHTML).toContain('discoveries');
     for (const dataset of datasets) {
       const row = fixture.nativeElement.querySelector(`[data-testid="dataset-${dataset}"]`);
       expect(row.innerHTML).toContain('SQLite');

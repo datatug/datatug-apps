@@ -6,7 +6,7 @@ import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
-import { ProjectOverviewCardComponent, matchesOverviewFilter } from './project-overview-card.component';
+import { ProjectTabPanelComponent, matchesOverviewFilter } from './project-tab-panel.component';
 
 const datasets = ['chinook', 'northwind', 'pubs', 'sakila', 'adventureworks', 'employees'] as const;
 type Dataset = typeof datasets[number];
@@ -109,11 +109,11 @@ function validCatalog(raw: ConnectionCatalog): boolean {
 @Component({
   selector: 'sneat-datatug-demodb-connections',
   standalone: true,
-  imports: [RouterLink, ProjectOverviewCardComponent, IonIcon, IonItem, IonLabel, IonList],
+  imports: [RouterLink, ProjectTabPanelComponent, IonIcon, IonItem, IonLabel, IonList],
   template: `
     @if (catalog()) {
-      <sneat-datatug-project-overview-card cardTitle="Demo databases" filterNoun="demo databases"
-        testId="overview-databases-card" [titleHref]="serversHref()" [(filter)]="filter">
+      <sneat-datatug-project-tab-panel panelTitle="Demo databases" filterNoun="demo databases"
+        testId="overview-databases-panel" [titleHref]="serversHref()" [(filter)]="filter">
         <ion-list>
           @for (group of filteredGroups(); track group.id) {
             <ion-item [attr.data-testid]="'dataset-' + group.id">
@@ -156,8 +156,8 @@ function validCatalog(raw: ConnectionCatalog): boolean {
             </ion-item>
           }
         </ion-list>
-      </sneat-datatug-project-overview-card>
-      <sneat-datatug-project-overview-card cardTitle="BigQuery discoveries (setup planned)" [filterable]="false">
+      </sneat-datatug-project-tab-panel>
+      <sneat-datatug-project-tab-panel panelTitle="BigQuery discoveries (setup planned)" [filterable]="false">
         <ion-list>
           @for (plan of catalog()!.bigQueryPlans; track plan.id) {
             <ion-item>
@@ -167,12 +167,12 @@ function validCatalog(raw: ConnectionCatalog): boolean {
             </ion-label></ion-item>
           }
         </ion-list>
-      </sneat-datatug-project-overview-card>
+      </sneat-datatug-project-tab-panel>
     } @else if (error()) {
-      <sneat-datatug-project-overview-card cardTitle="Demo databases" testId="overview-databases-card"
+      <sneat-datatug-project-tab-panel panelTitle="Demo databases" testId="overview-databases-panel"
         [titleHref]="serversHref()" [filterable]="false">
-        <ion-item lines="none"><ion-label role="alert">{{ error() }}</ion-label></ion-item>
-      </sneat-datatug-project-overview-card>
+        <ion-list><ion-item lines="none"><ion-label role="alert">{{ error() }}</ion-label></ion-item></ion-list>
+      </sneat-datatug-project-tab-panel>
     }
   `,
 })

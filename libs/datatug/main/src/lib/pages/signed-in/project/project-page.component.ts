@@ -69,10 +69,11 @@ import {
   countProjectQueries,
 } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { ProjectOverviewCardComponent } from './project-overview-card.component';
 import {
-  ProjectOverviewCardComponent,
+  ProjectTabPanelComponent,
   matchesOverviewFilter,
-} from './project-overview-card.component';
+} from './project-tab-panel.component';
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
@@ -113,6 +114,7 @@ function refusedReadHint(error: unknown, what: string): string | undefined {
     ProjectQueriesPreviewComponent,
     ProjectDatabaseServersPreviewComponent,
     ProjectOverviewCardComponent,
+    ProjectTabPanelComponent,
     GitHubReauthorizationBannerComponent,
     IonHeader,
     IonToolbar,

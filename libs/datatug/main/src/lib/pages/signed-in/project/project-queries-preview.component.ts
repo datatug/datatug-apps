@@ -1,6 +1,5 @@
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { isQueryCreationTime } from '../../../queries/query-creation-time';
-import { DatePipe } from '@angular/common';
 import {
   Component,
   Input,
@@ -31,9 +30,17 @@ import type { IQueryFolder } from '../../../models/definition/query-def';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { QueriesService } from '../../../queries/queries.service';
 import {
-  ProjectOverviewCardComponent,
+  QueryItemHeadingComponent,
+  formatQueryTimestamp,
+} from '../../../queries/query-list-item/query-list-item';
+import {
+  QueryTypeIconComponent,
+  queryTypeLabel,
+} from '../../../components/query-type-icon/query-type-icon.component';
+import {
+  ProjectTabPanelComponent,
   matchesOverviewFilter,
-} from './project-overview-card.component';
+} from './project-tab-panel.component';
 
 interface QueryLink {
   readonly id: string;
@@ -95,9 +102,10 @@ function previewQueries(
   standalone: true,
   imports: [
     ErrorStateComponent,
-    DatePipe,
     RouterLink,
-    ProjectOverviewCardComponent,
+    ProjectTabPanelComponent,
+    QueryTypeIconComponent,
+    QueryItemHeadingComponent,
     IonButton,
     IonIcon,
     IonItem,
@@ -107,34 +115,67 @@ function previewQueries(
     IonSegmentButton,
   ],
   template: `
-    <sneat-datatug-project-overview-card
-      cardTitle="Queries"
+    <sneat-datatug-project-tab-panel
+      panelTitle="Queries"
       filterNoun="queries"
-      testId="overview-queries-card"
+      testId="overview-queries-panel"
       [titleHref]="listHref()"
       [filterable]="state() === 'ready'"
       [(filter)]="filter"
     >
-      @if (state() === 'ready') {
-        <ion-button
-          overviewCardAction
-          color="medium"
-          (click)="toggleSortDirection()"
-          [attr.aria-label]="directionLabel() + '. Reverse sort order'"
-          [attr.title]="directionLabel()"
-        >
-          <ion-icon
-            slot="start"
-            [icon]="
-              sortDirection() === 'descending' ? descendingIcon : ascendingIcon
-            "
-            aria-hidden="true"
-          />
-          {{ directionLabel() }}
-        </ion-button>
-      }
+      <ng-container tabPanelControls>
+        @if (state() === 'ready') {
+          <ion-segment
+            class="query-sort-segment"
+            aria-label="Sort project queries"
+            [value]="sortOrder()"
+            (ionChange)="setSortOrder($event.detail.value)"
+          >
+            <ion-segment-button
+              value="alphabetical"
+              layout="icon-start"
+              aria-label="Alphabetically"
+              title="Alphabetically"
+              ><ion-icon [icon]="textIcon" aria-hidden="true" /><ion-label
+                >Alphabetically</ion-label
+              ></ion-segment-button
+            >
+            <ion-segment-button
+              value="newest"
+              layout="icon-start"
+              aria-label="Last added"
+              title="Last added"
+              ><ion-icon [icon]="calendarIcon" aria-hidden="true" /><ion-label
+                >Last added</ion-label
+              ></ion-segment-button
+            >
+          </ion-segment>
+          <ion-button
+            class="query-sort-direction"
+            fill="clear"
+            size="small"
+            color="medium"
+            (click)="toggleSortDirection()"
+            [attr.aria-label]="directionLabel() + '. Reverse sort order'"
+            [attr.title]="directionLabel()"
+          >
+            <ion-icon
+              slot="start"
+              [icon]="
+                sortDirection() === 'descending'
+                  ? descendingIcon
+                  : ascendingIcon
+              "
+              aria-hidden="true"
+            />
+            {{ directionLabel() }}
+          </ion-button>
+        }
+      </ng-container>
       @if (state() === 'loading') {
-        <ion-item><ion-label>Loading project queries…</ion-label></ion-item>
+        <ion-list>
+          <ion-item><ion-label>Loading project queries…</ion-label></ion-item>
+        </ion-list>
       } @else if (state() === 'error') {
         <sneat-datatug-error-state
           compact
@@ -143,30 +184,14 @@ function previewQueries(
           (retry)="retry()"
         />
       } @else if (state() === 'empty') {
-        <ion-item
-          ><ion-label
-            >No shared queries saved in this project yet.</ion-label
-          ></ion-item
-        >
-      } @else {
-        <div class="query-sort-toolbar">
-          <ion-segment
-            aria-label="Sort project queries"
-            [value]="sortOrder()"
-            (ionChange)="setSortOrder($event.detail.value)"
+        <ion-list>
+          <ion-item
+            ><ion-label
+              >No shared queries saved in this project yet.</ion-label
+            ></ion-item
           >
-            <ion-segment-button value="alphabetical" layout="icon-start"
-              ><ion-icon [icon]="textIcon" aria-hidden="true" /><ion-label
-                >Alphabetically</ion-label
-              ></ion-segment-button
-            >
-            <ion-segment-button value="newest" layout="icon-start"
-              ><ion-icon [icon]="calendarIcon" aria-hidden="true" /><ion-label
-                >Last added</ion-label
-              ></ion-segment-button
-            >
-          </ion-segment>
-        </div>
+        </ion-list>
+      } @else {
         @if (matchCount() > queries().length) {
           <p class="query-limit" role="status">
             Showing {{ queries().length }} of {{ matchCount() }} queries.
@@ -180,25 +205,20 @@ function previewQueries(
               detail
               [routerLink]="query.href"
               [attr.aria-label]="
-                query.title + ', ' + query.type + ', open saved query'
+                query.title +
+                ', ' +
+                typeLabel(query.type) +
+                ' query, open saved query' +
+                (query.createdAt ? '. ' + timestampText(query.createdAt) : '')
               "
             >
-              <ion-icon
-                name="document-text-outline"
-                slot="start"
-                color="medium"
-                aria-hidden="true"
-              />
+              <sneat-datatug-query-type-icon slot="start" [type]="query.type" />
               <ion-label>
-                <h3 [attr.data-testid]="'saved-query-' + query.id">
-                  {{ query.title }}
-                </h3>
-                <p>
-                  {{ query.type }}
-                  @if (query.createdAt) {
-                    · Added {{ query.createdAt | date: 'mediumDate' }}
-                  }
-                </p>
+                <sneat-datatug-query-item-heading
+                  [queryTitle]="query.title"
+                  [createdAt]="query.createdAt"
+                  [testId]="'saved-query-' + query.id"
+                />
               </ion-label>
             </ion-item>
           } @empty {
@@ -210,25 +230,45 @@ function previewQueries(
           }
         </ion-list>
       }
-    </sneat-datatug-project-overview-card>
+    </sneat-datatug-project-tab-panel>
   `,
   styles: [
     `
-      .query-sort-toolbar {
-        padding: 8px 16px;
+      /* Compact, not full width: the segment shares one line with the panel
+         title and the direction toggle. */
+      /* Ionic lays a segment out as a grid of equal columns up to 360px
+         each; a compact segment sizes each button to its content instead. */
+      .query-sort-segment {
+        display: inline-flex;
+        width: auto;
+        flex: 0 0 auto;
       }
-      /* Full width: the two sort orders share the card width evenly, so the
-         row never wraps or leaves a ragged gap; the direction toggle is a
-         header action (slot="end"). */
-      .query-sort-toolbar ion-segment {
-        width: 100%;
-      }
-      .query-sort-toolbar ion-segment-button {
+      .query-sort-segment ion-segment-button {
+        flex: 0 0 auto;
+        width: auto;
+        min-width: 0;
         max-width: none;
-        --padding-start: 6px;
-        --padding-end: 6px;
+        min-height: 36px;
+        --padding-start: 10px;
+        --padding-end: 10px;
         font-size: 0.75rem;
         letter-spacing: 0.02em;
+        text-transform: none;
+      }
+      .query-sort-direction {
+        margin: 0;
+        text-transform: none;
+        letter-spacing: 0;
+      }
+      /* Phones: the sort orders collapse to their icons (the accessible
+         names stay on the buttons) so the header keeps one line. */
+      @media (max-width: 575px) {
+        .query-sort-segment ion-segment-button ion-label {
+          display: none;
+        }
+        .query-sort-segment ion-segment-button ion-icon {
+          margin: 0;
+        }
       }
       .query-limit {
         margin: 0 16px 12px;
@@ -274,7 +314,13 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
   private readonly matching = computed(() => {
     const filter = this.filter();
     return this.allQueries().filter((query) =>
-      matchesOverviewFilter(filter, query.title, query.type, query.id),
+      matchesOverviewFilter(
+        filter,
+        query.title,
+        query.type,
+        queryTypeLabel(query.type),
+        query.id,
+      ),
     );
   });
   protected readonly matchCount = computed(() => this.matching().length);
@@ -292,6 +338,11 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       })
       .slice(0, previewLimit),
   );
+
+  protected readonly typeLabel = queryTypeLabel;
+  protected timestampText(createdAt: string): string {
+    return formatQueryTimestamp(createdAt)?.full ?? '';
+  }
 
   protected setSortOrder(value: unknown): void {
     if (value === 'alphabetical' || value === 'newest')

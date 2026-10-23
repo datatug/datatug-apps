@@ -175,7 +175,7 @@ describe('project query overview', () => {
     await fixture.whenStable();
     pending.next({ id: '~', items: [query('stale')] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('No shared queries');
+    expect(fixture.nativeElement.innerHTML).toContain('No shared queries');
     expect(titles(fixture.nativeElement)).toHaveLength(0);
     fixture.componentRef.setInput('projectRef', { ...ref, projectId: 'third' });
     fixture.detectChanges();
@@ -196,7 +196,7 @@ describe('project query overview', () => {
       ),
     );
     const el: HTMLElement = fixture.nativeElement;
-    const link = el.querySelector('ion-item-divider a');
+    const link = el.querySelector('.tab-panel-header a');
     expect(link?.textContent?.trim()).toBe('Queries');
     expect(link?.getAttribute('href')).toBe(
       '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/queries',

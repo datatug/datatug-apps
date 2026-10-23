@@ -71,3 +71,14 @@ export {
   canonicalJson,
 } from './lib/board/core/board-query-results.service';
 export * from './lib/analytics/usage-analytics';
+export {
+  QUERY_TYPE_DISPLAY_NAMES,
+  QueryTypeIconComponent,
+  queryTypeKey,
+  queryTypeLabel,
+} from './lib/components/query-type-icon/query-type-icon.component';
+export {
+  QueryItemHeadingComponent,
+  formatQueryTimestamp,
+  type QueryTimestamp,
+} from './lib/queries/query-list-item/query-list-item';

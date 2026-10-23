@@ -26,6 +26,8 @@ import { Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
+import { QueryItemHeadingComponent } from '../query-list-item/query-list-item';
+import { QueryTypeIconComponent } from '../../components/query-type-icon/query-type-icon.component';
 import { IProjectRef } from '../../core/project-context';
 import { IProjItemBrief } from '../../models/definition/project';
 import {
@@ -61,6 +63,8 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   templateUrl: 'queries-tab.component.html',
   imports: [
     SqlEditorComponent,
+    QueryTypeIconComponent,
+    QueryItemHeadingComponent,
     IonItem,
     IonLabel,
     IonInput,

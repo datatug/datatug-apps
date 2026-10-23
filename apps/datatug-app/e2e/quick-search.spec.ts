@@ -148,7 +148,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     exact: true,
   });
   const overviewRows = page.locator(
-    'sneat-datatug-project:not(.ion-page-hidden) ion-card > ion-list > ion-item',
+    'sneat-datatug-project:not(.ion-page-hidden) section.overview-tab-panel > ion-list > ion-item',
   );
   await expect(overviewRows).toHaveCount(2);
   const rowBorders = await overviewRows.evaluateAll((rows) =>

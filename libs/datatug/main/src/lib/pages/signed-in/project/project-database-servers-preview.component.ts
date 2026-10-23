@@ -14,9 +14,9 @@ import { tryProjectUrl } from '../../../nav/nav-models';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { projectPageHref } from '../../../nav/project-page-href';
 import {
-  ProjectOverviewCardComponent,
+  ProjectTabPanelComponent,
   matchesOverviewFilter,
-} from './project-overview-card.component';
+} from './project-tab-panel.component';
 
 interface ServerLink {
   readonly id: string;
@@ -30,26 +30,30 @@ interface ServerLink {
 @Component({
   selector: 'sneat-datatug-project-database-servers-preview',
   standalone: true,
-  imports: [ProjectOverviewCardComponent, IonIcon, IonItem, IonLabel, IonList],
+  imports: [ProjectTabPanelComponent, IonIcon, IonItem, IonLabel, IonList],
   template: `
-    <sneat-datatug-project-overview-card
-      cardTitle="Database connections"
+    <sneat-datatug-project-tab-panel
+      panelTitle="Database connections"
       filterNoun="database connections"
-      testId="overview-databases-card"
+      testId="overview-databases-panel"
       [titleHref]="serversHref()"
       [filterable]="state() === 'ready' && servers().length > 0"
       [(filter)]="filter"
     >
       @if (state() === 'loading') {
-        <ion-item
-          ><ion-label>Loading database connections…</ion-label></ion-item
-        >
-      } @else if (state() === 'error') {
-        <ion-item>
-          <ion-label role="alert"
-            >Database connections could not be loaded.</ion-label
+        <ion-list>
+          <ion-item
+            ><ion-label>Loading database connections…</ion-label></ion-item
           >
-        </ion-item>
+        </ion-list>
+      } @else if (state() === 'error') {
+        <ion-list>
+          <ion-item>
+            <ion-label role="alert"
+              >Database connections could not be loaded.</ion-label
+            >
+          </ion-item>
+        </ion-list>
       } @else if (servers().length) {
         <ion-list>
           @for (server of filteredServers(); track server.id) {
@@ -81,13 +85,16 @@ interface ServerLink {
           }
         </ion-list>
       } @else {
-        <ion-item>
-          <ion-label
-            >No database connections are configured for this project.</ion-label
-          >
-        </ion-item>
+        <ion-list>
+          <ion-item>
+            <ion-label
+              >No database connections are configured for this
+              project.</ion-label
+            >
+          </ion-item>
+        </ion-list>
       }
-    </sneat-datatug-project-overview-card>
+    </sneat-datatug-project-tab-panel>
   `,
 })
 export class ProjectDatabaseServersPreviewComponent implements OnDestroy {

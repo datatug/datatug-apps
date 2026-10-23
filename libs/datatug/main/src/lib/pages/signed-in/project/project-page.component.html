@@ -80,7 +80,10 @@
   }
 
   @if (project()?.ref; as projectRef) {
-    <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
+    <sneat-datatug-github-reauthorization-banner
+      [projectRef]="projectRef"
+      [publicRepository]="project()?.brief?.access === 'public'"
+    />
   }
 
   @if (sandboxHref(); as href) {
@@ -88,9 +91,8 @@
       class="sandbox-summary"
       cardTitle="Private DemoDB sandbox"
       testId="overview-sandbox-summary"
-      [filterable]="false"
     >
-      <ion-card-content>
+      <ion-card-content class="card-message-row">
         @if (signedIn()) {
           <p>
             Create a private, writable clone of six sample databases for your
@@ -102,13 +104,11 @@
             for your registered account.
           </p>
         }
-        <div class="card-actions">
-          <ion-button fill="outline" [routerLink]="href">{{
-            signedIn()
-              ? 'Set up private sandbox'
-              : 'Sign in to use a private sandbox'
-          }}</ion-button>
-        </div>
+        <ion-button fill="outline" [routerLink]="href">{{
+          signedIn()
+            ? 'Set up private sandbox'
+            : 'Sign in to use a private sandbox'
+        }}</ion-button>
       </ion-card-content>
     </sneat-datatug-project-overview-card>
   }
@@ -257,20 +257,25 @@
     </ion-card>
   } @else if (activeTab() === 'boards') {
     @if (projectAssetsUnsupported()) {
-      <sneat-datatug-project-overview-card
-        cardTitle="Boards"
+      <sneat-datatug-project-tab-panel
+        panelTitle="Boards"
         [titleHref]="sectionHref().boards"
         [filterable]="false"
       >
-        <ion-card-content role="status">
-          Boards are unavailable for this project connection or branch.
-        </ion-card-content>
-      </sneat-datatug-project-overview-card>
+        <ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Boards are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        >
+      </sneat-datatug-project-tab-panel>
     } @else {
-      <sneat-datatug-project-overview-card
-        cardTitle="Boards"
+      <sneat-datatug-project-tab-panel
+        panelTitle="Boards"
         filterNoun="boards"
-        testId="overview-boards-card"
+        testId="overview-boards-panel"
         [titleHref]="sectionHref().boards"
         [filterable]="!!boards()?.length"
         [(filter)]="boardFilter"
@@ -312,7 +317,7 @@
           } @else {
             <ion-item><ion-label>Loading boards…</ion-label></ion-item>
           }
-        </ion-list></sneat-datatug-project-overview-card
+        </ion-list></sneat-datatug-project-tab-panel
       >
     }
   } @else if (activeTab() === 'queries') {
@@ -323,14 +328,18 @@
   } @else if (activeTab() === 'databases') {
     <sneat-source-entries />
     @if (projectItemsUnsupported()) {
-      <sneat-datatug-project-overview-card
-        cardTitle="Databases"
+      <sneat-datatug-project-tab-panel
+        panelTitle="Databases"
         [titleHref]="sectionHref().servers"
         [filterable]="false"
-        ><ion-card-content role="status"
-          >Databases are unavailable for this project connection or
-          branch.</ion-card-content
-        ></sneat-datatug-project-overview-card
+        ><ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Databases are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        ></sneat-datatug-project-tab-panel
       >
     } @else if (sandboxHref()) {
       <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
@@ -341,20 +350,24 @@
     }
   } @else {
     @if (projectAssetsUnsupported()) {
-      <sneat-datatug-project-overview-card
-        cardTitle="Entities"
+      <sneat-datatug-project-tab-panel
+        panelTitle="Entities"
         [titleHref]="sectionHref().entities"
         [filterable]="false"
-        ><ion-card-content role="status"
-          >Entities are unavailable for this project connection or
-          branch.</ion-card-content
-        ></sneat-datatug-project-overview-card
+        ><ion-list
+          ><ion-item lines="none"
+            ><ion-label role="status"
+              >Entities are unavailable for this project connection or
+              branch.</ion-label
+            ></ion-item
+          ></ion-list
+        ></sneat-datatug-project-tab-panel
       >
     } @else {
-      <sneat-datatug-project-overview-card
-        cardTitle="Entities"
+      <sneat-datatug-project-tab-panel
+        panelTitle="Entities"
         filterNoun="entities"
-        testId="overview-entities-card"
+        testId="overview-entities-panel"
         [titleHref]="sectionHref().entities"
         [filterable]="!!entities()?.length"
         [(filter)]="entityFilter"
@@ -403,7 +416,7 @@
             <ion-item><ion-label>Loading entities…</ion-label></ion-item>
           }
         </ion-list>
-      </sneat-datatug-project-overview-card>
+      </sneat-datatug-project-tab-panel>
     }
   }
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->

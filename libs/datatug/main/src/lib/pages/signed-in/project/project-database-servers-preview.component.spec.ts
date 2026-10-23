@@ -85,7 +85,7 @@ describe('project database connections preview', () => {
       ),
     );
     const el: HTMLElement = fixture.nativeElement;
-    const title = el.querySelector('ion-item-divider a');
+    const title = el.querySelector('.tab-panel-header a');
     expect(title?.textContent?.trim()).toBe('Database connections');
     expect(title?.getAttribute('href')).toBe(
       '/store/localhost:8989/project/project-1/servers',

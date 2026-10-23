@@ -174,9 +174,20 @@ export interface GithubProjectCreateStatusRequest {
   readonly name: string;
 }
 
+/**
+ * Why GitHub access is needed: `expired` (API code `reauthorization_required`: a stored grant stopped working),
+ * `not_connected` (API code `github_not_connected`: no grant was ever stored), or `access_denied` (a bare 401/403
+ * with no code: access was refused, with no evidence about why, so nothing claims it expired).
+ */
+export type GithubReauthorizationReason =
+  | 'expired'
+  | 'not_connected'
+  | 'access_denied';
+
 export interface GithubReauthorizationRequest {
   readonly ref: IProjectRef;
   readonly requiredScopes: readonly ('repo' | 'workflow')[];
+  readonly reason: GithubReauthorizationReason;
 }
 
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
@@ -304,8 +315,16 @@ export class ProjectQueryApiService {
             const errorCode = apiErrorCode(error);
             const isGitHub =
               ref.storeId === 'github' || ref.storeId === 'github.com';
+            const reason: GithubReauthorizationReason | undefined =
+              errorCode === 'reauthorization_required'
+                ? 'expired'
+                : errorCode === 'github_not_connected'
+                  ? 'not_connected'
+                  : [401, 403].includes(status)
+                    ? 'access_denied'
+                    : undefined;
             const requiresReauthorization =
-              errorCode === 'reauthorization_required';
+              reason === 'expired' || reason === 'not_connected';
             const denied =
               [401, 403].includes(status) ||
               (isGitHub && requiresReauthorization);
@@ -314,13 +333,11 @@ export class ProjectQueryApiService {
               (ref.projectApi === 'cloud' || isSharedProjectRef(ref))
             )
               this.deniedReads.next(ref);
-            if (
-              isGitHub &&
-              ([401, 403].includes(status) || requiresReauthorization)
-            )
+            if (isGitHub && reason)
               this.githubReauthorization.next({
                 ref,
                 requiredScopes: ['repo'],
+                reason,
               });
           },
         }),
@@ -544,9 +561,10 @@ export class ProjectQueryApiService {
   reportGithubReauthorizationRequired(
     ref: IProjectRef,
     requiredScopes: readonly ('repo' | 'workflow')[] = ['repo'],
+    reason: GithubReauthorizationReason = 'expired',
   ): void {
     this.deniedReads.next(ref);
-    this.githubReauthorization.next({ ref, requiredScopes });
+    this.githubReauthorization.next({ ref, requiredScopes, reason });
   }
 }
 
