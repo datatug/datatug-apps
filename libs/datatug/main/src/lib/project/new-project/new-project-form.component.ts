@@ -1722,6 +1722,11 @@ function githubProjectCreateFailure(error: unknown): {
         message: 'Reconnect GitHub, then try creating the project again.',
         retrySameOperation: false,
       };
+    case 'github_not_connected':
+      return {
+        message: 'Connect GitHub, then try creating the project again.',
+        retrySameOperation: false,
+      };
     case 'source_too_large':
       return {
         message: 'This private project is too large to copy through GitHub setup. Clone the repository with Git and use the DataTug CLI.',
@@ -1771,6 +1776,7 @@ function githubOAuthNeedsAuthorization(error: unknown): boolean {
   const code = githubProjectErrorCode(error);
   return (
     code === 'reauthorization_required' ||
+    code === 'github_not_connected' ||
     code === 'authorization_required' ||
     code === 'scope_required' ||
     code === 'workflow_scope_required'

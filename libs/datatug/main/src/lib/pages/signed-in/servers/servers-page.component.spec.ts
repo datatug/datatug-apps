@@ -237,7 +237,8 @@ describe('ServersPage signed-out public GitHub declarations', () => {
   });
 
   it.each([
-    ['409 reauthorization_required', { status: 409 }],
+    ['409 github_not_connected', { status: 409, error: { error: { code: 'github_not_connected' } } }],
+    ['409 reauthorization_required', { status: 409, error: { error: { code: 'reauthorization_required' } } }],
     ['503 unavailable', { status: 503 }],
     ['500', { status: 500 }],
     ['a network failure', new Error('boom')],
