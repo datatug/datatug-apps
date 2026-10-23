@@ -62,8 +62,8 @@ let current: DemoHandoff | undefined;
  * trusts, decided by `isTrustedProjectAddress` (design 3.6) on the PARSED project address or by the exact
  * historical `datatug/chinook-demo` redirect alias:
  * owner and repository ASCII-lower-cased and compared for exact equality with the compiled-in list, on its default
- * branch, that is with no `tree/<ref>` or with `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
- * `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
+ * branch, that is with no ref, `@HEAD` or the legacy `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
+ * `@<sha>`, `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
  */
 export function isTrustedHandoff(pathname: string): boolean {
   const target = handoffTargetOfPath(pathname);
@@ -77,12 +77,10 @@ export function isTrustedHandoff(pathname: string): boolean {
       (target.ref === undefined || target.ref === 'HEAD') && target.dir.length === 0) return true;
   const project = parseProjectUrl(
     `/project/github.com/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}` +
-      (target.ref === undefined
-        ? ''
-        : `/tree/${encodeURIComponent(target.ref)}`) +
+      (target.ref === undefined ? '' : `@${encodeURIComponent(target.ref)}`) +
       // Only the canonical demo-project-1 folder is trusted by isTrustedProjectAddress.
       ('dir' in target && target.dir.length > 0
-        ? '/' + target.dir.map(encodeURIComponent).join('/')
+        ? '/' + target.dir.map(encodeURIComponent).join('/') + '/-'
         : ''),
   );
   return isTrustedProjectAddress(project);

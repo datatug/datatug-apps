@@ -347,7 +347,7 @@ describe('StorePageComponent', () => {
       [
         'github.com',
         'datatug-demo-projects@datatug@demo-project-1',
-        '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
+        '/project/github.com/datatug/datatug-demo-projects/demo-project-1',
       ],
       ['firestore', 'p1', '/store/firestore/project/p1'],
       [

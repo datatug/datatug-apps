@@ -153,7 +153,7 @@ describe('EntityEditPage re-targets the back button once the project arrives (zo
     [
       'a GitHub project in a folder',
       { projectId: 'r@o@d', storeId: 'github.com' },
-      '/project/github.com/o/r/tree/HEAD/d/-/entities',
+      '/project/github.com/o/r/d/-/entities',
     ],
   ])(
     'points the back button at the entities list of %s',

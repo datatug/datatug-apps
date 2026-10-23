@@ -1,7 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
 
 const project =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 
 test('canonical public demo Sessions starts with the read-only sample journey at wide and narrow widths', async ({
   page,

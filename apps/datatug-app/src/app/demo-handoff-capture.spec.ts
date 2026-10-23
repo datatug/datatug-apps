@@ -906,6 +906,11 @@ describe('demo hand-off capture', () => {
       '/project/github.com/acme/demo/quick-search',
       '/project/github.com/acme/demo/tree/HEAD/dir/-/quick-search',
       '/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH',
+      '/project/github.com/acme/demo/dir/-/quick-search',
+      '/project/github.com/acme/demo/a/b/-/quick-search',
+      '/project/github.com/acme/demo@v1/quick-search',
+      '/project/github.com/acme/demo@feature%2Fx/dir/-/quick-search',
+      '/project/github.com/acme/demo/-/quick-search',
     ])('cold reload retains Quick Search q and removes msg only on exact page %s',path=>{
       const out=run(path,'?q=customer&msg=private&x=1');
       expect(out.replaced).toEqual([path+'?q=customer&x=1']);
@@ -916,6 +921,11 @@ describe('demo hand-off capture', () => {
       '/project/github.com/acme/repo.git.git/quick-search',
       '/project/github.com/acme/repo/quick-search//extra',
       '/project/github.com/acme/repo/tree/ref%2Fother/folder/-/quick-search',
+      '/project/github.com/acme/repo@/folder/-/quick-search',
+      '/project/github.com/acme/repo@a@b/quick-search',
+      '/project/github.com/acme/repo@x%252Fy/quick-search',
+      '/project/github.com/acme/repo@..%2Fx/quick-search',
+      '/project/github.com/acme/repo/a@b/-/quick-search',
     ])('cold reload never preserves q on a malformed locator %s',path=>{
       expect(run(path,'?q=private&msg=private').replaced).toEqual([path]);
     });
@@ -958,6 +968,27 @@ describe('demo hand-off capture', () => {
       ]) {
         expect(handoffTargetOfPath(other)).toBeUndefined();
         expect(run(other, '', '#msg=Private').stash).toBeUndefined();
+      }
+    });
+
+    it('captures the canonical shared-project start-chat fragment (…/demo-project-1/-/start-chat) and trusts it on the default branch only', () => {
+      const path = '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat';
+      const early = run(path, '', '#msg=Private+question&lang=ru');
+      expect(early.replaced).toEqual([path]);
+      expect(early.stash).toBe('?msg=Private+question&lang=ru');
+      expect(isTrustedHandoff(path)).toBe(true);
+      expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project@HEAD/demo-project-1/-/start-chat')).toBe(true);
+      const load = pageLoad(path, '', { store: early.kept, stashed: early.stash as string });
+      captureDemoHandoff(load.env);
+      expect(demoHandoff(() => load.env.storage(), path)?.question).toBe('Private question');
+      for (const other of [
+        '/project/github.com/datatug/datatug-demo-project@main/demo-project-1/-/start-chat',
+        '/project/github.com/datatug/datatug-demo-project@0123abcd/demo-project-1/-/start-chat',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-2/-/start-chat',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1/x/-/start-chat',
+      ]) {
+        expect(handoffTargetOfPath(other)?.kind, other).toBe('start-chat');
+        expect(isTrustedHandoff(other), other).toBe(false);
       }
     });
 
@@ -1033,6 +1064,20 @@ describe('demo hand-off capture', () => {
         '/project//github.com/o/r/chat',
         '/project/github.com/o/r//chat',
         '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
+        // founder 2026-10-23: `@<ref>` and the short folder form
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat',
+        '/project/github.com/o/r@v1/chat',
+        '/project/github.com/o/r@v1/dir/-/chat',
+        '/project/github.com/o/r@feature%2Fx/a/b/-/chat',
+        '/project/github.com/o/r@/chat',
+        '/project/github.com/o/r/-/chat',
+        '/project/github.com/o/r/dir/-/chat',
+        '/project/github.com/o/r/a/-/b/-/chat',
+        '/project/github.com/o/r/blob/x/-/chat',
+        '/project/github.com/o/r@v1/tree/-/chat',
+        '/project/github.com/o/r/dir/chat',
+        '/project/github.com/o/r/dir/-/start-chat',
+        '/project/github.com/o/r@HEAD/start-chat',
       ];
       // Every other address under /project/github.com loses `msg` and `q` only (review S2): nothing is stashed
       // or kept for it, and the rest of its query stays. ("Under" as the router's parser reads the path.)

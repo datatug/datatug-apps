@@ -3,6 +3,7 @@ import { convertToParamMap } from '@angular/router';
 import { readProjectApiQuery } from '../nav/project-api-routing';
 import {
   CanMatchFn,
+  RedirectCommand,
   Router,
   Routes,
   UrlMatcher,
@@ -24,7 +25,8 @@ import {
 } from '../core/datatug-routing-params';
 
 // The short project route (design `demo-as-github-project.md` 3.3, 3.4, 3.4a):
-//   /project/github.com/<owner>/<repo>[/tree/<ref>[/<dir>…]][/-/<page>…]
+//   /project/github.com/<owner>/<repo>[@<ref>][/<dir>…][/-/<page>…]
+// (founder 2026-10-23: no ref for the default branch; the legacy `…/<repo>/tree/<ref>[/<dir>…][/-/<page>…]` redirects)
 // opens the same project pages as `/store/github.com/project/<repo>@<owner>@<dir>/<page>` (which keeps working,
 // with no redirect, until the held task G-A1d). A matcher consumes the project locator and supplies the two
 // positional parameters every page and tracker already reads (`storeId`, `projectId`); the project pages are its
@@ -232,10 +234,15 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
   });
   switch (decision.kind) {
     case 'redirect': {
-      return urlTreeOfPath(
-        decision.path,
-        typed?.queryParams ?? {},
-        typed?.fragment ?? null,
+      // Another spelling of the address (a legacy `/tree/<ref>/…`, `@HEAD`, case, `.git`…) is REPLACED in the
+      // history by the canonical one: Back never returns to the old spelling.
+      return new RedirectCommand(
+        urlTreeOfPath(
+          decision.path,
+          typed?.queryParams ?? {},
+          typed?.fragment ?? null,
+        ),
+        { replaceUrl: true },
       );
     }
     case 'problem':

@@ -308,7 +308,7 @@ describe('QueriesPage back button (G-A1c)', () => {
     ['an agent project', { storeId: 'localhost:8989', projectId: 'datatug-demo-project' }, '/store/localhost:8989/project/datatug-demo-project'],
     ['an agent project given as http-localhost:8989', { storeId: 'http-localhost:8989', projectId: 'p1' }, '/store/http-localhost:8989/project/p1'],
     ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo'],
-    ['a GitHub project in a folder', { storeId: 'github.com', projectId: 'r@o@d' }, '/project/github.com/o/r/tree/HEAD/d'],
+    ['a GitHub project in a folder', { storeId: 'github.com', projectId: 'r@o@d' }, '/project/github.com/o/r/d'],
   ])('is the project overview of %s', async (_name, ref, href) => {
     expect(await backHrefOf({ ref } as IProjectContext)).toBe(href);
   });

@@ -65,7 +65,7 @@ const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
 // `datatug/datatug-demo-project`, folder `demo-project-1`, default branch (`HEAD`); its pages follow the `/-/`
 // that ends the locator. The old address of the same project, `OLD_PROJECT_URL`, keeps working.
 const PROJECT_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 const PAGES_URL = `${PROJECT_URL}/-`;
 const OLD_PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
 

@@ -4,7 +4,7 @@ import { expect, test } from './helpers/demodb-guard';
 
 const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const PROJECT_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 
 test.skip(
   !GITHUB_FAKE_DIR,

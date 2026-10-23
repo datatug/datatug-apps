@@ -1477,7 +1477,7 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       'a GitHub project (in a folder) with a host and a port',
       oldDemo,
       withHostAndPort,
-      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlserver/localhost%3A1433',
+      '/project/github.com/datatug/datatug-demo-projects/demo-project-1/-/servers/db/sqlserver/localhost%3A1433',
     ],
     [
       'an agent project with a host and a port (unchanged)',

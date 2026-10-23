@@ -11,9 +11,9 @@ import {
 //
 // What each hand-off address gets (datatug-app-routes.ts), see handoffDecision():
 //   - `/demo` (and `/Demo`, …): the holding page, always. There is nothing else at that address.
-//   - `…/start-chat`, `…/tree/<ref>[/<dir>…]/-/start-chat` (founder ruling 2026-10-03): the confirmation page,
+//   - `…/start-chat`, `…/<repo>[@<ref>]/<dir>…/-/start-chat`, legacy `…/tree/<ref>[/<dir>…]/-/start-chat` (founder ruling 2026-10-03): the confirmation page,
 //     always. It is a page of its own: with a question (kept from the fragment `#msg=…`) or without.
-//   - the OLD hand-off address, the project chat (`…/chat`, `…/tree/<ref>/-/chat`): only when it arrived with a
+//   - the OLD hand-off address, the project chat (`…/chat`, `…/<dir>…/-/chat`, legacy `…/tree/<ref>/-/chat`): only when it arrived with a
 //     question (`msg`, or the old `q`), and then it is MOVED to the start-chat page of the same project. The same
 //     address without a question is the project's own chat page, as for every other page of a project opened at
 //     its short address; the chat page never reads a question.

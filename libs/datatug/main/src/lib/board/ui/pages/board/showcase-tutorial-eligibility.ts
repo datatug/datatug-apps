@@ -6,5 +6,5 @@ import { projectPageHref } from '../../../../nav/project-page-href';
 export function isShowcaseTutorialBoard(ref: IProjectRef | undefined, board: Board | undefined): boolean {
   return !!ref && !!board && !ref.spaceID &&
     projectPageHref(ref, ['board', board.id]) ===
-      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
 }

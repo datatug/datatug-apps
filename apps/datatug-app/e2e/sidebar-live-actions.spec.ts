@@ -1,7 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
 
 const project =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 
 test('project sidebar offers active queries and a working saved-query path at wide and narrow widths', async ({
   page,

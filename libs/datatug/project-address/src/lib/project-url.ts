@@ -14,7 +14,7 @@ import {
   IGithubProjectId,
   isSafePathSegment,
   isValidGithubFolder,
-  isValidGithubRef,
+  isValidGithubRefName,
   readGithubProjectId,
 } from './github-project-address';
 
@@ -46,7 +46,8 @@ export const DEMO_PROJECT_REF: IProjectRef = {
 // Project addresses (design `demo-as-github-project.md` 3.1, 3.3, 3.4, 3.4a)
 //
 // Two shapes of a project path exist, and these functions are the one place that knows them:
-//   - GitHub projects: `/project/github.com/<owner>/<repo>[/tree/<ref>[/<dir>…]][/-/<page>…]` (canonical);
+//   - GitHub projects: `/project/github.com/<owner>/<repo>[@<ref>][/<dir>…][/-/<page>…]` (canonical; the legacy
+//     `…/<repo>/tree/<ref>[/<dir>…][/-/<page>…]` is read and redirects to it);
 //   - every store, GitHub included for as long as it is accepted: `/store/<storeId>/project/<projectId>[/<page>…]`.
 // Both are paths (a `Location.pathname`), never a path with a query string or a fragment.
 //
@@ -142,7 +143,7 @@ export interface IProjectUrlParts {
   readonly shape: 'short' | 'legacy' | 'space';
   /** The one address of this project and page (design 3.4a), `rest` kept. */
   readonly canonicalPath: string;
-  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `tree/HEAD`, a `blob/` link, the legacy GitHub shape). Always true for a non-GitHub store (one shape, left as typed). */
+  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `@HEAD`, a legacy `tree/<ref>` or `blob/` link, the legacy `/store/…` shape). Always true for a non-GitHub store (one shape, left as typed). */
   readonly isCanonical: boolean;
   /**
    * For a GitHub project: its parts, so that no caller splits the id again. `ref` is the typed branch, tag or
@@ -223,19 +224,105 @@ function pageSegmentsOf(
   return typed ? typed.split('/') : [];
 }
 
-/** The canonical short path of a valid (strictly read) GitHub project and a checked `rest`. */
+/**
+ * The first segment of every page of a project (the project routes' own first segments, `start-chat` included).
+ * At the root of a repository, on an address with no `/-/`, a first segment that is one of these (any letter case)
+ * is a page of the root project, as it has always been (`…/<repo>/chat`); every other first segment is a folder.
+ * A folder whose first segment is one of these is therefore written with a closing `/-` (`…/<repo>/chat/-`).
+ * The datatug-main route table is checked against this list by a spec, so a new page cannot be missed.
+ */
+export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
+  'board',
+  'boards',
+  'browser-db',
+  'card',
+  'cards',
+  'chat',
+  'checks',
+  'composer',
+  'dbmodel',
+  'dbmodels',
+  'demo-db-sandbox',
+  'detective',
+  'diff',
+  'entities',
+  'entity',
+  'env',
+  'environments',
+  'incidents',
+  'invoice-explorer',
+  'invoice-overview',
+  'meanings',
+  'new-entity',
+  'overview',
+  'project',
+  'public-data',
+  'queries',
+  'query',
+  'quick-search',
+  'resources',
+  'search-schema',
+  'server',
+  'servers',
+  'sessions',
+  'shipping',
+  'sources',
+  'start-chat',
+  'tags',
+  'variables',
+  'widgets',
+]);
+
+/** Whether a (raw or decoded, ASCII) segment names a project page. */
+function isPageName(segment: string | undefined): boolean {
+  return (
+    segment !== undefined && GITHUB_PROJECT_PAGE_NAMES.has(asciiLowerCase(segment))
+  );
+}
+
+/** The first segments the legacy `…/<repo>/tree/<ref>/…` and `…/<repo>/blob/<ref>/…` shapes are read from. */
+function isLegacyLocatorWord(segment: string | undefined): boolean {
+  return (
+    segment !== undefined &&
+    (asciiLowerCase(segment) === 'tree' || asciiLowerCase(segment) === 'blob')
+  );
+}
+
+/**
+ * The canonical path of a valid (strictly read) GitHub project and a checked `rest` (founder 2026-10-23):
+ *   `/project/github.com/<owner>/<repo>[@<ref>][/<folder…>][/-/<page…>]`
+ * - the default branch has no ref; any other branch, tag or commit is `@<ref>`, percent-encoded as ONE segment
+ *   (`@feature%2Fx`);
+ * - `/-/` ends the folder when a page follows it. At the root, a page whose first segment is a page name
+ *   ({@link GITHUB_PROJECT_PAGE_NAMES}) and that holds no `-` segment needs no `/-` (`…/<repo>/chat`);
+ * - a folder whose first segment is a page name is closed with `/-` even with no page (`…/<repo>/chat/-`), and one
+ *   whose first segment is `tree` or `blob` (the legacy shapes) is written with an explicit `@HEAD`.
+ */
 function shortGithubPath(project: IGithubProjectId, rest: string): string {
-  const base = `/project/${GITHUB_STORE_ID}/${project.org}/${project.repo}`;
-  // A page that starts with `tree`, `blob` or `-` would read as part of the locator: spell the tree form out.
-  const ambiguous = /^\/(?:tree|blob|-)(?:\/|$)/.test(rest);
-  if (project.ref === undefined && project.folder === '' && !ambiguous) {
-    return base + rest;
+  const dirs = project.folder ? project.folder.split('/') : [];
+  const ref =
+    project.ref !== undefined
+      ? project.ref
+      : isLegacyLocatorWord(dirs[0])
+        ? GITHUB_DEFAULT_BRANCH_REF
+        : undefined;
+  const locator = `/project/${GITHUB_STORE_ID}/${project.org}/${project.repo}${
+    ref !== undefined ? '@' + encodeURIComponent(ref) : ''
+  }`;
+  if (dirs.length === 0) {
+    if (rest === '') {
+      return locator;
+    }
+    const pages = rest.slice(1).split('/');
+    return isPageName(pages[0]) && !pages.includes('-')
+      ? locator + rest
+      : `${locator}/-${rest}`;
   }
-  const ref = encodeURIComponent(project.ref ?? GITHUB_DEFAULT_BRANCH_REF);
-  const dir = project.folder
-    ? `/${encodeSegments(project.folder.split('/'))}`
-    : '';
-  return `${base}/tree/${ref}${dir}${rest ? '/-' + rest : ''}`;
+  const dir = `/${encodeSegments(dirs)}`;
+  if (rest) {
+    return `${locator}${dir}/-${rest}`;
+  }
+  return isPageName(dirs[0]) ? `${locator}${dir}/-` : locator + dir;
 }
 
 function githubParts(project: IGithubProjectId): IGithubProjectParts {
@@ -468,7 +555,22 @@ function parseShortGithubPath(
     return { ok: false, reason: 'not-a-project-address' };
   }
   const owner = decodeLocatorSegment(raw[0]);
-  let repo = decodeLocatorSegment(raw[1]);
+  // `<repo>` or `<repo>@<ref>`: a repository name never holds `@`, so the first one starts the ref. The segment is
+  // decoded first (a router hands it over decoded and encodes it again: `@` as `%40`, a `/` of the ref as `%2F`).
+  // This is the address's own `@`; it is never read as a part of a project id (`readGithubProjectId`).
+  const repoSegment = decodeSegment(raw[1]);
+  const at = repoSegment === undefined ? -1 : repoSegment.indexOf('@');
+  let repo =
+    repoSegment === undefined
+      ? undefined
+      : at < 0
+        ? repoSegment
+        : repoSegment.slice(0, at);
+  const atRef =
+    repoSegment !== undefined && at >= 0 ? repoSegment.slice(at + 1) : undefined;
+  if (repo !== undefined && !isSafePathSegment(repo)) {
+    repo = undefined;
+  }
   if (
     repo !== undefined &&
     repo.length >= 4 &&
@@ -488,10 +590,25 @@ function parseShortGithubPath(
   }
   const after = raw.slice(2);
   let ref: string | undefined;
-  const dirs: string[] = [];
-  let restSegments: string[] = after;
+  let dirSegments: string[] = [];
+  let restSegments: string[] = [];
 
-  if (after[0] === 'tree' || after[0] === 'blob') {
+  if (atRef !== undefined) {
+    if (atRef === '') {
+      return { ok: false, reason: 'missing-ref' };
+    }
+    if (atRef.includes('@')) {
+      return { ok: false, reason: 'at-sign-not-supported' };
+    }
+    if (!isValidGithubRefName(atRef)) {
+      return { ok: false, reason: 'invalid-path-segment' };
+    }
+    ref = atRef;
+  }
+
+  if (atRef === undefined && (after[0] === 'tree' || after[0] === 'blob')) {
+    // The legacy shapes: `tree/<ref>[/<dir>…][/-/<page>…]` and a pasted link to the project file,
+    // `blob/<ref>/<dir>/datatug-project.json`. Both are read, and redirect to the canonical address.
     const isBlob = after[0] === 'blob';
     if (after[1] === undefined) {
       return { ok: false, reason: isBlob ? 'file-link' : 'missing-ref' };
@@ -505,9 +622,7 @@ function parseShortGithubPath(
     }
     ref = refSegment;
     let tail = after.slice(2);
-    restSegments = [];
     if (isBlob) {
-      // A pasted link to the project file itself: `blob/<ref>/<dir>/datatug-project.json`.
       if (tail[tail.length - 1] !== PROJECT_FILE_NAME) {
         return { ok: false, reason: 'file-link' };
       }
@@ -519,21 +634,34 @@ function parseShortGithubPath(
         tail = tail.slice(0, dash);
       }
     }
-    for (const segment of tail) {
-      const dir = decodeLocatorSegment(segment);
-      if (dir === undefined) {
-        return { ok: false, reason: 'invalid-path-segment' };
-      }
-      if (dir === '-') {
-        return { ok: false, reason: 'dash-directory-not-supported' };
-      }
-      if (dir.includes('@')) {
-        return { ok: false, reason: 'at-sign-not-supported' };
-      }
-      dirs.push(dir);
+    dirSegments = tail;
+  } else {
+    // `[/<folder…>][/-/<page…>]`: the first `-` ends the folder. With no `-`, a first segment that names a page is
+    // a page of the root project (`…/<repo>/chat`, as it has always been); anything else is the folder.
+    const dash = after.indexOf('-');
+    if (dash !== -1) {
+      dirSegments = after.slice(0, dash);
+      restSegments = after.slice(dash + 1);
+    } else if (isPageName(after[0])) {
+      restSegments = after;
+    } else {
+      dirSegments = after;
     }
-  } else if (after[0] === '-') {
-    return { ok: false, reason: 'invalid-path-segment' };
+  }
+
+  const dirs: string[] = [];
+  for (const segment of dirSegments) {
+    const dir = decodeLocatorSegment(segment);
+    if (dir === undefined) {
+      return { ok: false, reason: 'invalid-path-segment' };
+    }
+    if (dir === '-') {
+      return { ok: false, reason: 'dash-directory-not-supported' };
+    }
+    if (dir.includes('@')) {
+      return { ok: false, reason: 'at-sign-not-supported' };
+    }
+    dirs.push(dir);
   }
 
   const rest = restOf(restSegments);
@@ -545,7 +673,7 @@ function parseShortGithubPath(
     ref !== undefined && ref !== GITHUB_DEFAULT_BRANCH_REF ? ref : undefined;
   if (
     !isValidGithubFolder(folder) ||
-    (named !== undefined && !isValidGithubRef(named))
+    (named !== undefined && !isValidGithubRefName(named))
   ) {
     return { ok: false, reason: 'invalid-path-segment' };
   }

@@ -129,7 +129,7 @@ describe('BoardWidgetComponent', () => {
     });
 
     expect(renderedQueryLink()).toBe(
-      '/project/github.com/o/r/tree/v1.0.0/-/query/demodb%2Fchinook-top-customer-spend?id=demodb%2Fchinook-top-customer-spend&runtime=project',
+      '/project/github.com/o/r@v1.0.0/query/demodb%2Fchinook-top-customer-spend?id=demodb%2Fchinook-top-customer-spend&runtime=project',
     );
   });
 
@@ -147,7 +147,7 @@ describe('BoardWidgetComponent', () => {
     fixture.componentRef.setInput('boardContext', { environment: 'dev' });
 
     expect(renderedQueryLink()).toBe(
-      '/project/github.com/o/r/tree/feature/-/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq&env=dev&runtime=project',
+      '/project/github.com/o/r@feature/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq&env=dev&runtime=project',
     );
   });
 

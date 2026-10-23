@@ -90,6 +90,40 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
 
+## GitHub project addresses
+
+A project stored in a GitHub repository opens at (founder 2026-10-23; the grammar lives in
+`libs/datatug/project-address/src/lib/project-url.ts`, `parseProjectUrl` and `projectUrl`):
+
+```
+/project/github.com/<owner>/<repo>[@<ref>][/<project-folder…>][/-/<page…>][?query]
+```
+
+| Address | Project |
+|---|---|
+| `/project/github.com/datatug/datatug-demo-project/demo-project-1` | folder `demo-project-1`, default branch |
+| `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase?mode=tutorial` | the same project, page `board/showcase` |
+| `/project/github.com/o/r` and `/project/github.com/o/r/chat` | the project at the repository root, and its chat |
+| `/project/github.com/o/r@feature%2Fx/demo-project-1` | branch `feature/x` (a `/` in a ref is written `%2F`) |
+| `/project/github.com/o/r@8d2809f5/demo-project-1` | a commit |
+
+- The default branch has no ref. `@HEAD` is accepted and redirects to the address without it.
+- `/-/` ends the folder when a page follows it. At the repository root it is left out when the page starts with a
+  project page name (`chat`, `queries`, …, `GITHUB_PROJECT_PAGE_NAMES`).
+- The legacy `…/<repo>/tree/<ref>/<folder…>[/-/<page…>]` (and `…/blob/<ref>/…/datatug-project.json`) still opens and
+  is replaced in the history by the canonical address, inner page and query kept: `tree/HEAD` drops the ref,
+  `tree/<ref>` becomes `@<ref>`.
+- Reserved first folder segments: a root-level folder literally named `tree` or `blob` is written with an explicit
+  `@HEAD` (`/project/github.com/o/r@HEAD/tree/…`), because without `@` those words start the legacy shape. A folder
+  whose first segment is a project page name is written with a closing `/-` (`/project/github.com/o/r/chat/-`).
+- A ref `@` is the address's own separator: it is never read as a part of the internal project id
+  (`<repo>@<owner>@<folder>@<ref>`).
+- Hosting: Workers Assets answers a path that is not a file with a 307 to a normalised path, which decodes `%2F`
+  into `/` (and writes `@` as `%40`). So `wrangler.jsonc` runs `apps/datatug-app/worker/project-shell.mjs` first for
+  `/project/*`: it serves the SPA shell for the address exactly as typed, and a cold load of
+  `…/<repo>@feature%2Fx/<folder>` keeps its ref (checked with `wrangler dev`, 2026-10-23;
+  `scripts/wrangler-routes.test.mjs`).
+
 ## DataTug API failover
 
 `DatatugApiService` (`libs/datatug/main/src/lib/services/base/`) can send one DataTug API

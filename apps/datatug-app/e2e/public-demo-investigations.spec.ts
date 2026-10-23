@@ -1,7 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
 
 const project =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 const sessionExample = 'customer-coverage-investigation';
 
 for (const width of [1440, 900, 390]) {

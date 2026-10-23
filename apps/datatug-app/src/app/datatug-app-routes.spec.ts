@@ -230,7 +230,7 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug/chinook-demo',
       );
       expect(root.url).toBe(
-        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1',
       );
       expect(root.component).toBe(ProjectStub);
       for (const url of [
@@ -238,6 +238,8 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug-other/chinook-demo',
         '/project/github.com/datatug/chinook-demo/tree/abc/-/chat',
         '/project/github.com/datatug/chinook-demo/tree/head/-/chat',
+        '/project/github.com/datatug/chinook-demo@head/chat',
+        '/project/github.com/datatug/chinook-demo@abc/chat',
         '/project/github.com/datatug/chinooK-demo/chat',
       ]) {
         TestBed.resetTestingModule();
@@ -246,18 +248,26 @@ describe('DataTug app routes', () => {
       }
     });
 
-    it('redirects the exact shared-project short folder and start-chat addresses', async () => {
-      const short =
-        '/project/github.com/datatug/datatug-demo-project/demo-project-1';
+    it('opens the canonical short folder address, and redirects the historical folder/start-chat alias', async () => {
       const canonical =
-        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
-      const root = await visit('datatug.app', short);
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1';
+      const root = await visit('datatug.app', canonical);
       expect(root.url).toBe(canonical);
       expect(root.component).toBe(ProjectStub);
       TestBed.resetTestingModule();
-      const handoff = await visit('datatug.app', short + '/start-chat');
+      const handoff = await visit('datatug.app', canonical + '/start-chat');
       expect(handoff.url).toBe(canonical + '/-/start-chat');
       expect(handoff.component).toBe(HandoffStub);
+      for (const alias of [
+        '/project/github.com/datatug/chinook-demo@HEAD',
+        '/project/github.com/datatug/chinook-demo@HEAD/-/chat',
+      ]) {
+        TestBed.resetTestingModule();
+        const result = await visit('datatug.app', alias);
+        expect(result.url).toBe(
+          canonical + (alias.endsWith('chat') ? '/-/chat' : ''),
+        );
+      }
     });
 
     it('does not promote lookalike folders, owners, refs, or encoded separators to the shared demo', () => {
@@ -294,7 +304,15 @@ describe('DataTug app routes', () => {
         'datatug',
         'datatug-demo-project',
         'demo-project-1',
+        'start-chat',
       ];
+      // The canonical folder address itself is a project address, not the alias.
+      const folder = exact
+        .slice(0, 5)
+        .map((part) => new UrlSegment(part, {}));
+      expect(
+        canonicalDemoShortMatcher(folder, new UrlSegmentGroup(folder, {})),
+      ).toBeNull();
       const segments = exact.map((part) => new UrlSegment(part, {}));
       expect(
         canonicalDemoShortMatcher(
@@ -446,7 +464,7 @@ describe('DataTug app routes', () => {
             // their original project address with only chat changed to start-chat.
             expect(result.url).toBe(
               url.toLowerCase().includes('/datatug/chinook-demo/')
-                ? '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat'
+                ? '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat'
                 : url.includes('chat')
                   ? url
                       .replace(/^\/*\(?\/*/, '/')
@@ -536,7 +554,7 @@ describe('DataTug app routes', () => {
         const result = await visit('datatug.app', url);
         expect(result.component).toBe(HandoffStub);
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
       });
 
@@ -545,7 +563,7 @@ describe('DataTug app routes', () => {
         async (page) => {
           const oldPath = `/project/github.com/datatug/chinook-demo/${page}`;
           const canonical =
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat';
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat';
           window.sessionStorage.setItem(
             DEMO_HANDOFF_KEY,
             oldPath + '?msg=Hello&lang=ru',
@@ -583,7 +601,7 @@ describe('DataTug app routes', () => {
         );
         const result = await visit('datatug.app', upper);
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         expect(window.sessionStorage.getItem(DEMO_HANDOFF_KEY)).toBe(
           lower + '?msg=NotForHEAD',
@@ -600,10 +618,10 @@ describe('DataTug app routes', () => {
           '/project/github.com/datatug/chinook-demo/chat;x=1',
         );
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         expect(TestBed.inject(Location).path()).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         // one entry, not two: the chat address is not left behind for Back to return to
         TestBed.inject(Location).back();
@@ -654,7 +672,7 @@ describe('DataTug app routes', () => {
         it('moves the historical project address to the one shared project', async () => {
           const url = '/project/github.com/datatug/chinook-demo/start-chat';
           expect((await visit('datatug.app', url)).url).toBe(
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
           );
         });
 

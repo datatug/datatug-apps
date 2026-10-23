@@ -56,7 +56,7 @@ export function messageForUnsupported(
     case 'missing-ref':
       return {
         heading: UNSUPPORTED_HEADING,
-        paragraphs: ['Name a branch, a tag or a commit after "/tree/".'],
+        paragraphs: ['Name a branch, a tag or a commit after "@".'],
       };
     default:
       return {
@@ -82,13 +82,18 @@ export function messageForNotFound(
       repo,
     };
   }
-  if (problem.ref !== undefined && problem.folder !== '') {
+  if (
+    problem.ref !== undefined &&
+    problem.folder !== '' &&
+    !problem.ref.includes('/')
+  ) {
+    // A legacy `…/tree/feature/x/<folder>` reads as ref `feature` and folder `x/<folder>`: say how to write it.
     return {
       heading: 'No DataTug project here',
       paragraphs: [
         `No DataTug project at "${problem.folder}" on "${problem.ref}".`,
-        'If the branch name contains "/", open it by its commit instead: datatug.app/project/github.com/' +
-          `${repo}/tree/<commit>/${problem.folder}`,
+        'If the branch name contains "/", write it as %2F after "@": datatug.app/project/github.com/' +
+          `${repo}@${problem.ref}%2F<rest of the name>/<folder>`,
       ],
       repo,
     };

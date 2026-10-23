@@ -214,7 +214,7 @@ describe('ProjectPage', () => {
       projectId: 'datatug-demo-project@datatug@demo-project-1',
     });
     expect(page.sandboxHref()).toBe(
-      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/demo-db-sandbox',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/demo-db-sandbox',
     );
     expect(page.activeTab()).toBe('queries');
     page.setProjRef({
@@ -273,7 +273,7 @@ describe('ProjectPage', () => {
       [
         'a GitHub project',
         { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
-        '/project/github.com/datatug/chinook-demo/entitys',
+        '/project/github.com/datatug/chinook-demo/-/entitys',
       ],
     ])('opens the folder of %s at its address', (_name, ref, address) => {
       const navController = TestBed.inject(NavController) as unknown as {

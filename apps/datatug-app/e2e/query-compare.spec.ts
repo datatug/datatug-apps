@@ -3,7 +3,7 @@ import { installPinnedChinookComparison, installPinnedChinookSqlite } from './he
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const QUERY_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-compare?id=chinook-invoice-compare&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-invoice-compare?id=chinook-invoice-compare&editor=text&env=local';
 
 test.skip(
   !DEMO_REPO,

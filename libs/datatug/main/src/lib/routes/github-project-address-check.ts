@@ -49,7 +49,16 @@ export type ShortGithubAddress =
 
 /** The encoded path of an address, as the one place that knows the shapes (`parseProjectUrl`) reads it. */
 const encodedPath = (segments: readonly string[]): string =>
-  '/' + segments.map((s) => encodeURIComponent(s)).join('/');
+  '/' +
+  segments
+    .map((s, i) =>
+      // `<repo>@<ref>`: the address's own `@` is written as it is, as `projectUrl` writes it (and the router's
+      // serializer leaves it), so a canonical `@<ref>` address reads as canonical and is not redirected to itself.
+      i === 3
+        ? encodeURIComponent(s).replace('%40', '@')
+        : encodeURIComponent(s),
+    )
+    .join('/');
 
 /** How many of the (already normalised) segments are the project locator, given what follows it. */
 const locatorLengthOf = (
@@ -80,7 +89,12 @@ export function readShortGithubAddress(
   const normalised = [...segments];
   normalised[0] = 'project';
   normalised[1] = GITHUB_STORE_ID;
-  if (normalised[4] !== undefined && asciiLowerCase(normalised[4]) === 'tree') {
+  // `tree` is a fixed word of the legacy `…/<repo>/tree/<ref>/…` shape only: after `<repo>@<ref>` it is a folder.
+  if (
+    normalised[4] !== undefined &&
+    !(normalised[3] ?? '').includes('@') &&
+    asciiLowerCase(normalised[4]) === 'tree'
+  ) {
     normalised[4] = 'tree';
   }
   let parsed = parseProjectUrl(encodedPath(normalised));

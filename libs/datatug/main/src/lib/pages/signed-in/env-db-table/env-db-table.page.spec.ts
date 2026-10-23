@@ -664,7 +664,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     [
       'a GitHub project in a folder',
       { storeId: 'github', projectId: 'r@o@d' },
-      '/project/github.com/o/r/tree/HEAD/d/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
+      '/project/github.com/o/r/d/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
     ],
   ])(
     'onOpenQuery opens the query of %s at its address',

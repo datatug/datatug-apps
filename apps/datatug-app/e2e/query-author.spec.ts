@@ -71,17 +71,17 @@ const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
 const GRAPH_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_GRAPH'] ?? DEMO_REPO;
 const AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
 const CTE_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
 const CTE_GRAPH_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 const PLAYLIST_SQL_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=dev';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=dev';
 const LEGACY_DTQL_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
 const LONG_HEADER_QUERY_TITLE =
   '請求書・顧客向けの長いタイトル — Invoice Author 🚀 東京';
 const LONG_HEADER_PROJECT_TITLE =
@@ -2342,7 +2342,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
 }) => {
   test.setTimeout(60_000);
   await page.goto(
-    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-join?id=chinook-customer-invoice-join&editor=text&env=local',
+    '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-invoice-join?id=chinook-customer-invoice-join&editor=text&env=local',
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });

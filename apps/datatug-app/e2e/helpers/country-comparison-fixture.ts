@@ -7,7 +7,7 @@ export const countryFixture = (name: string) =>
     'utf8',
   );
 export const countryBoardURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
 export const countryOrders = JSON.parse(
   countryFixture('northwind-orders-records.json'),
 ) as Record<string, unknown>[];

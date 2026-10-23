@@ -30,16 +30,16 @@ describe('one project, two spellings, one {storeId, projectId} (design 3.4 point
       '/store/github.com/project/chinook-demo@datatug@/chat',
     ],
     [
-      '/project/github.com/o/r/tree/HEAD/demo-project-1/-/queries/a',
+      '/project/github.com/o/r/demo-project-1/-/queries/a',
       '/store/github.com/project/r@o@demo-project-1/queries/a',
     ],
     [
-      '/project/github.com/o/r/tree/HEAD/datatug/-/chat',
+      '/project/github.com/o/r/datatug/-/chat',
       '/store/github.com/project/r@o/chat',
     ],
-    ['/project/github.com/o/r/tree/HEAD/datatug', '/store/github/project/r@o'],
+    ['/project/github.com/o/r/datatug', '/store/github/project/r@o'],
     [
-      '/project/github.com/o/r/tree/v1.0.0/-/chat',
+      '/project/github.com/o/r@v1.0.0/chat',
       '/store/github.com/project/r@o@@v1.0.0/chat',
     ],
   ])('%s and %s are the same project and page', (short, old) => {
