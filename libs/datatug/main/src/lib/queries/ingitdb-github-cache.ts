@@ -1,5 +1,7 @@
 // Browser cache for files read straight from GitHub, following standard HTTP
-// Cache-Control (RFC 9111) semantics as evaluated by `http-cache-semantics`.
+// Cache-Control (RFC 9111) directives with the inGitDB `cache_control` reader
+// rules (ingitdb-go spec `cache-control`; shared vectors in
+// ingitdb/ingitdb `conformance/cache-control/vectors.yaml`).
 //
 // The policy for a data file combines inGitDB's `cache_control`, the OVDB
 // descriptor's `cacheControl` and the origin's header (raw.githubusercontent.com
@@ -13,8 +15,6 @@
 // Unknown directives are ignored. The cache is a convenience, never a
 // dependency: when storage is missing, blocked or full, files are fetched as if
 // there were no cache.
-import CachePolicy from 'http-cache-semantics';
-
 export interface CachedGitFile {
   readonly text: string;
   /** Epoch milliseconds when the file was stored. */
@@ -33,68 +33,124 @@ export interface GitFilePolicy {
   readonly ttlMs: number;
 }
 
-/**
- * One year: what `immutable` without `max-age` gives a pinned read (inGitDB
- * cache-control spec). http-cache-semantics 4.2.0 compares this option with
- * seconds in maxAge(), despite documenting milliseconds, so it is given in seconds.
- */
-const IMMUTABLE_TTL_SECONDS = 31536000;
-
-function evaluate(url: string, cacheControl: string | null | undefined, immutableSeconds = 0): GitFilePolicy {
-  const policy = new CachePolicy(
-    { url, method: 'GET', headers: {} },
-    { status: 200, headers: cacheControl ? { 'cache-control': cacheControl } : {} },
-    // A private browser cache with no heuristic lifetime; `immutable` counts only where the caller allows it.
-    { shared: false, cacheHeuristic: 0, immutableMinTimeToLive: immutableSeconds },
-  );
-  return { storable: policy.storable(), ttlMs: Math.max(0, policy.timeToLive()) };
-}
-
 /** The Cache-Control values that apply to one file, besides the origin's response header. */
 export interface CacheControlLayers {
-  /** inGitDB `cache_control`: the collection's value, else the database's (`.ingitdb/settings.yaml`). */
+  /** inGitDB `cache_control`: the collection's, else the database's (`.ingitdb/settings.yaml`). */
   readonly ingitdb?: string;
   /** The OVDB descriptor's `storage.github.cacheControl`. */
   readonly descriptor?: string;
 }
 
-function tighten(a: GitFilePolicy, b: GitFilePolicy): GitFilePolicy {
-  return { storable: a.storable && b.storable, ttlMs: Math.min(a.ttlMs, b.ttlMs) };
+export interface ParsedCacheControl {
+  readonly maxAgeSeconds?: number;
+  readonly noStore: boolean;
+  readonly noCache: boolean;
+  readonly immutable: boolean;
 }
 
-/** True when the value carries `no-cache` (http-cache-semantics then reports no lifetime). */
-function hasNoCache(url: string, cacheControl: string | null | undefined): boolean {
-  if (!cacheControl) return false;
-  const probe = evaluate(url, `${cacheControl}, max-age=1`);
-  return probe.storable && probe.ttlMs === 0;
+const DELTA_SECONDS = new Set(['max-age', 's-maxage', 'stale-while-revalidate', 'stale-if-error']);
+/** RFC 9111 section 1.2.2: anything larger is treated as 2^31. */
+const MAX_DELTA_SECONDS = 2 ** 31;
+/** What `immutable` without `max-age` gives a pinned read: one year. */
+const IMMUTABLE_TTL_SECONDS = 31_536_000;
+/** Freshness assumed when the origin sends no max-age (GitHub's raw CDN uses 300). */
+export const DEFAULT_GIT_FILE_TTL_MS = 300_000;
+const TOKEN = /^[a-z0-9!#$%&'*+.^_`|~-]+$/;
+
+/** Splits on commas outside quoted strings. */
+function splitDirectives(value: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let inQuote = false;
+  let escaped = false;
+  for (const ch of value) {
+    if (escaped) escaped = false;
+    else if (inQuote && ch === '\\') escaped = true;
+    else if (ch === '"') inQuote = !inQuote;
+    else if (ch === ',' && !inQuote) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  parts.push(current);
+  return parts;
 }
 
 /**
- * The effective policy for one fetched file, matching inGitDB's `cache_control`
- * rules (ingitdb-go spec `cache-control`):
- * - the declared value is inGitDB's (the collection's, which replaces the
- *   database's whole), else the OVDB descriptor's; with both, the descriptor
- *   can only tighten. Directives are never merged across levels;
- * - it applies to data files only; metadata files follow the origin;
- * - unpinned: it may only tighten the origin (max-age capped, `immutable` ignored);
- * - pinned to a full commit SHA: its max-age and `immutable` may relax the origin
- *   (`immutable` without `max-age` gives one year);
- * - `no-store` and `no-cache` from any applicable layer always win;
- * - unknown or malformed directives are ignored.
+ * A reader's lenient parse, as the inGitDB `cache_control` spec and its shared
+ * conformance vectors require: names are case-insensitive, a malformed directive
+ * is dropped, the first of a repeated directive wins, a flag given an argument
+ * still counts, quoted `max-age="60"` is accepted, delta-seconds above 2^31 are
+ * clamped, unknown directives are ignored. Never throws.
  */
-export function gitFilePolicy(url: string, originCacheControl: string | null | undefined,
-  layers: CacheControlLayers, pinned: boolean, dataFile = true): GitFilePolicy {
-  const origin = evaluate(url, originCacheControl);
-  const declaredValue = layers.ingitdb ?? layers.descriptor;
-  if (!dataFile || !declaredValue) return origin;
-  const immutableSeconds = pinned ? IMMUTABLE_TTL_SECONDS : 0;
-  let declared = evaluate(url, declaredValue, immutableSeconds);
-  if (layers.ingitdb && layers.descriptor) declared = tighten(declared, evaluate(url, layers.descriptor, immutableSeconds));
-  if (!pinned) return tighten(origin, declared);
+export function parseCacheControl(value: string | null | undefined): ParsedCacheControl | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const directives = new Map<string, string>();
+  for (const part of splitDirectives(value)) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const eq = trimmed.indexOf('=');
+    const name = (eq === -1 ? trimmed : trimmed.slice(0, eq)).trim().toLowerCase();
+    let arg = eq === -1 ? '' : trimmed.slice(eq + 1).trim();
+    if (arg.startsWith('"')) {
+      if (arg.length < 2 || !arg.endsWith('"')) continue;
+      arg = arg.slice(1, -1).replace(/\\(.)/g, '$1');
+    }
+    if (!TOKEN.test(name) || directives.has(name)) continue;
+    if (DELTA_SECONDS.has(name)) {
+      if (!/^\d+$/.test(arg)) continue;
+      arg = String(Math.min(Number(arg), MAX_DELTA_SECONDS));
+    }
+    directives.set(name, arg);
+  }
+  if (!directives.size) return undefined;
+  const maxAge = directives.get('max-age');
   return {
-    storable: declared.storable && origin.storable,
-    ttlMs: hasNoCache(url, originCacheControl) ? 0 : declared.ttlMs,
+    ...(maxAge === undefined ? {} : { maxAgeSeconds: Number(maxAge) }),
+    noStore: directives.has('no-store'),
+    noCache: directives.has('no-cache'),
+    immutable: directives.has('immutable'),
   };
+}
+
+/**
+ * Reuse time in milliseconds (0: do not store or reuse), the inGitDB freshness
+ * rule: unpinned, the declared value may only tighten the origin's; pinned, its
+ * max-age (or `immutable` alone: one year) may relax it; `no-store` and
+ * `no-cache` on either side win; an origin without max-age counts as `defaultMs`.
+ */
+export function freshnessTtlMs(declared: string | undefined, pinned: boolean,
+  origin: string | null | undefined, defaultMs = DEFAULT_GIT_FILE_TTL_MS): number {
+  const d = parseCacheControl(declared);
+  const o = parseCacheControl(origin);
+  if (d?.noStore || d?.noCache || o?.noStore || o?.noCache) return 0;
+  const originMs = o?.maxAgeSeconds === undefined ? defaultMs : o.maxAgeSeconds * 1000;
+  const declaredMs = d?.maxAgeSeconds === undefined ? undefined : d.maxAgeSeconds * 1000;
+  if (pinned && declaredMs !== undefined) return declaredMs;
+  if (pinned && d?.immutable) return IMMUTABLE_TTL_SECONDS * 1000;
+  return declaredMs !== undefined && declaredMs < originMs ? declaredMs : originMs;
+}
+
+/**
+ * The effective policy for one fetched file. The declared value is inGitDB's
+ * (the collection's, which replaces the database's whole), else the OVDB
+ * descriptor's; with both, the descriptor can only tighten. It applies to data
+ * files only; metadata files follow the origin.
+ */
+export function gitFilePolicy(originCacheControl: string | null | undefined,
+  layers: CacheControlLayers, pinned: boolean, dataFile = true): GitFilePolicy {
+  const declared = dataFile ? layers.ingitdb ?? layers.descriptor : undefined;
+  let ttlMs = freshnessTtlMs(declared, pinned, originCacheControl);
+  const noStore = (value?: string | null) => !!parseCacheControl(value)?.noStore;
+  let storable = !noStore(originCacheControl) && !(dataFile && (noStore(layers.ingitdb) || noStore(layers.descriptor)));
+  if (dataFile && layers.ingitdb && layers.descriptor) {
+    // The descriptor only tightens an inGitDB value: evaluated as unpinned against it.
+    ttlMs = Math.min(ttlMs, freshnessTtlMs(layers.descriptor, false, `max-age=${Math.floor(ttlMs / 1000)}`));
+  }
+  if (ttlMs <= 0) storable = false;
+  return { storable, ttlMs };
 }
 
 const CACHE_NAME = 'datatug-ingitdb-github-v1';

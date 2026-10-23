@@ -552,6 +552,7 @@ import {
   type FederatedQueryResult,
 } from '../../federated-query.service';
 import { federatedVisibleMode } from '../../federated-query-executor';
+import { federationReadsOvdb } from '../../ingitdb-github-source';
 import type {
   LocalResultDescriptor,
   LocalResultRef,
@@ -2234,6 +2235,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? federatedVisibleMode(definition)
       : { supported: false, defaultMode: 'full' as const };
   });
+  /** Only a query that sends something to its OVDB server asks for an OVDB token. */
+  public readonly readsOvdb = computed(() => federationReadsOvdb(this.queryDef()?.federation));
   public readonly ovdbDestination = computed(() => {
     try {
       return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;

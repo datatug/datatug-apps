@@ -74,8 +74,9 @@ function cacheControlOf(value: unknown): string | undefined {
 function descriptorUrl(raw: string): URL | undefined {
   try {
     const url = new URL(raw);
-    return url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.search && !url.hash
-      ? url : undefined;
+    // `url.search` is empty for a bare trailing '?', so check the raw text too (as Go's ForceQuery does).
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.search && !url.hash &&
+      !/[?#]/.test(raw) ? url : undefined;
   } catch {
     return undefined;
   }
@@ -165,7 +166,7 @@ export class IngitdbGithubSources {
     const cached = await this.cache.get(url.href);
     if (cached && this.now() - cached.storedAt < cached.ttlMs) return cached.text;
     const { text, cacheControl } = await this.network(url, maxBytes, title, what, !!cached);
-    const policy = gitFilePolicy(url.href, cacheControl, layers, pinned, dataFile);
+    const policy = gitFilePolicy(cacheControl, layers, pinned, dataFile);
     if (policy.storable && policy.ttlMs > 0) await this.cache.put(url.href, text, policy.ttlMs);
     return text;
   }
@@ -297,4 +298,20 @@ export class IngitdbGithubSources {
       });
     return rows;
   }
+}
+
+/**
+ * True when a federated query sends anything to its OVDB server: a lookup, or
+ * a table whose database is not one of its inGitDB sources on GitHub. A query
+ * reading only GitHub sends no OVDB request, so it asks for no OVDB token.
+ */
+export function federationReadsOvdb(federation: {
+  readonly tables: readonly { readonly database?: string }[];
+  readonly lookups?: readonly unknown[];
+  readonly ingitdbSources?: readonly IngitdbSourceRef[];
+} | undefined): boolean {
+  if (!federation) return false;
+  if (federation.lookups?.length) return true;
+  const git = new Set((federation.ingitdbSources ?? []).map((source) => source.database));
+  return !federation.tables.length || federation.tables.some((table) => !table.database || !git.has(table.database));
 }

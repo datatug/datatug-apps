@@ -5,8 +5,10 @@
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runFederatedQuery, type FederatedQueryResult } from './federated-query-executor';
-import { IngitdbGithubSources, IngitdbSourceError } from './ingitdb-github-source';
-import { browserGitFileCache, gitFilePolicy, type CachedGitFile, type GitFileCache } from './ingitdb-github-cache';
+import { federationReadsOvdb, IngitdbGithubSources, IngitdbSourceError } from './ingitdb-github-source';
+import { browserGitFileCache, freshnessTtlMs, gitFilePolicy, parseCacheControl, type CachedGitFile, type GitFileCache } from './ingitdb-github-cache';
+import { parseYaml } from '@ingitdb/client';
+import cacheControlVectors from './fixtures/cache-control-vectors.yaml?raw';
 import type { IQueryDef } from '../models/definition/query-def';
 import descriptor from './fixtures/geo-ingitdb-github/geo-github.ovdb.yaml?raw';
 import roots from './fixtures/geo-ingitdb-github/root-collections.yaml?raw';
@@ -177,32 +179,41 @@ describe('inGitDB databases read straight from GitHub', () => {
       expect(vi.mocked(fetch).mock.calls.at(-1)?.[1]).toMatchObject({ cache: 'no-cache' });
     });
 
-    it('follows the standard semantics and precedence', () => {
-      const url = `${raw}/x`;
+    it('combines the inGitDB value, the descriptor and the origin', () => {
       const year = 31536000_000;
-      // A content-addressed revision: the descriptor may relax the origin.
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, true)).toEqual({ storable: true, ttlMs: year });
-      // A moving address: the descriptor may only tighten it.
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, false)).toEqual({ storable: true, ttlMs: 300_000 });
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'max-age=60' }, false).ttlMs).toBe(60_000);
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'no-store' }, false).storable).toBe(false);
-      expect(gitFilePolicy(url, 'no-store', {}, true).storable).toBe(false);
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'no-cache' }, false).ttlMs).toBe(0);
-      // no-store and no-cache win even on a pinned read; immutable does not relax an unpinned one.
-      expect(gitFilePolicy(url, 'no-cache', { descriptor: 'public, max-age=31536000, immutable' }, true).ttlMs).toBe(0);
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'immutable' }, false).ttlMs).toBe(0);
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'immutable' }, true).ttlMs).toBe(year);
+      // A pinned read: the declared value may relax the origin.
+      expect(gitFilePolicy('max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, true)).toEqual({ storable: true, ttlMs: year });
+      // Unpinned: it may only tighten; immutable is ignored.
+      expect(gitFilePolicy('max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, false)).toEqual({ storable: true, ttlMs: 300_000 });
+      expect(gitFilePolicy('max-age=300', { descriptor: 'immutable' }, false).ttlMs).toBe(300_000);
+      expect(gitFilePolicy('max-age=300', { descriptor: 'no-store' }, false).storable).toBe(false);
+      expect(gitFilePolicy('no-store', {}, true).storable).toBe(false);
+      expect(gitFilePolicy('max-age=300', { descriptor: 'no-cache' }, false)).toEqual({ storable: false, ttlMs: 0 });
       // Metadata files follow the origin.
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, true, false).ttlMs).toBe(300_000);
-      // A malformed directive is dropped, the rest still applies.
-      expect(gitFilePolicy(url, 'max-age=300', { descriptor: 'max-age=abc, max-age=600' }, true).ttlMs).toBe(600_000);
-      expect(gitFilePolicy(url, 'max-age=300, must-revalidate', {}, false).ttlMs).toBe(300_000);
-      expect(gitFilePolicy(url, 'max-age=300, x-unknown=1', {}, false).ttlMs).toBe(300_000);
-      expect(gitFilePolicy(url, null, {}, false).ttlMs).toBe(0);
-      // inGitDB's collection value first; the descriptor can only tighten it.
-      expect(gitFilePolicy(url, 'max-age=300', { ingitdb: 'max-age=86400, immutable', descriptor: 'public, max-age=31536000, immutable' }, true).ttlMs).toBe(86400_000);
-      expect(gitFilePolicy(url, 'max-age=300', { ingitdb: 'max-age=86400', descriptor: 'max-age=600' }, true).ttlMs).toBe(600_000);
-      expect(gitFilePolicy(url, 'max-age=300', { ingitdb: 'max-age=86400', descriptor: 'no-store' }, true).storable).toBe(false);
+      expect(gitFilePolicy('max-age=300', { descriptor: 'public, max-age=31536000, immutable' }, true, false).ttlMs).toBe(300_000);
+      // The collection's inGitDB value first; the descriptor can only tighten it.
+      expect(gitFilePolicy('max-age=300', { ingitdb: 'max-age=86400, immutable', descriptor: 'public, max-age=31536000, immutable' }, true).ttlMs).toBe(86400_000);
+      expect(gitFilePolicy('max-age=300', { ingitdb: 'max-age=86400', descriptor: 'max-age=600' }, true).ttlMs).toBe(600_000);
+      expect(gitFilePolicy('max-age=300', { ingitdb: 'max-age=86400', descriptor: 'no-store' }, true).storable).toBe(false);
+    });
+
+    describe('inGitDB shared conformance vectors', () => {
+      const vectors = parseYaml(cacheControlVectors) as {
+        parse: { input: string; maxAge: number | null; noStore: boolean; noCache: boolean; immutable: boolean }[];
+        freshness: { name: string; declared: string | null; ref: 'branch' | 'pinned' | 'unknown'; origin: string | null; default: number; expect: number }[];
+      };
+      it.each(vectors.parse)('parses $input', ({ input, maxAge, noStore, noCache, immutable }) => {
+        const parsed = parseCacheControl(input);
+        expect({
+          maxAge: parsed?.maxAgeSeconds ?? null,
+          noStore: parsed?.noStore ?? false,
+          noCache: parsed?.noCache ?? false,
+          immutable: parsed?.immutable ?? false,
+        }).toEqual({ maxAge, noStore, noCache, immutable });
+      });
+      it.each(vectors.freshness)('freshness $name', ({ declared, ref, origin, default: defaultSeconds, expect: seconds }) => {
+        expect(freshnessTtlMs(declared ?? undefined, ref === 'pinned', origin, defaultSeconds * 1000)).toBe(seconds * 1000);
+      });
     });
 
     it('does not store a no-cache file and revalidates it on every read', async () => {
@@ -228,8 +239,18 @@ describe('inGitDB databases read straight from GitHub', () => {
     });
   });
 
+  it('asks for an OVDB token only when the query sends something to OVDB', () => {
+    expect(federationReadsOvdb(worldMeta.federation)).toBe(false);
+    expect(federationReadsOvdb(chinookMeta.federation)).toBe(true);
+    expect(federationReadsOvdb({ ...worldMeta.federation, lookups: [{}] })).toBe(true);
+    expect(federationReadsOvdb({ tables: [{ name: 'x' }], ingitdbSources: worldMeta.federation.ingitdbSources })).toBe(true);
+    expect(federationReadsOvdb(undefined)).toBe(false);
+  });
+
   it('rejects a descriptor URL with a query string', () => {
     expect(() => new IngitdbGithubSources([{ database: 'geo', descriptor: `${descriptorUrl}?token=1` }], fetch))
+      .toThrow(IngitdbSourceError);
+    expect(() => new IngitdbGithubSources([{ database: 'geo', descriptor: `${descriptorUrl}?` }], fetch))
       .toThrow(IngitdbSourceError);
   });
 });
