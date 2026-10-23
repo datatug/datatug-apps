@@ -16,8 +16,9 @@ import {
  * control because the database descriptor reports none of those capabilities.
  *
  * These tests call the REAL live API (nothing replaces the OVDB server or the data), so they need the network and
- * are written to tolerate its behaviour: a cold start takes up to ~6 s and a mount that is still pending answers
- * `503 database_unavailable` for a moment (the app retries with a back-off; every wait below is long, and the
+ * are written to tolerate its behaviour: a fresh server instance answers `503 database_unavailable (pending)` until
+ * it has mounted an edition, which can take minutes, so a beforeAll waits on the server's mount report first; after
+ * that a short 503 is retried by the app with a back-off (every wait below is long, and the
  * config never retries a test: a retry is another round of live requests, and HTTP 429 stops everything). The two failure tests are the exception: they force 503 on the real
  * route to prove the retry and the friendly error, and pass everything else through.
  *
@@ -185,6 +186,74 @@ test.afterEach(async ({}, testInfo) => {
   const tripped = readBreaker();
   if (tripped) throw new Error(tripped);
   expect(budgetRefusals, `requests to ${OVDB_HOST} refused because this test spent its budget of ${OVDB_REQUEST_BUDGET}`).toBe(0);
+});
+
+/**
+ * The server's own mount report (cloud/server/native_postgres_mounts.go in openvaultdb/cloud). A Cloud Run instance
+ * that has just started (min-instances 0, so the first run after a quiet spell always meets one) takes traffic at once
+ * and mounts its PostgreSQL editions in the background, two at a time and up to 90 s each; until an edition is mounted
+ * every read of it answers `503 database_unavailable (pending)` with Retry-After 30. The app retries a 503 for ~10 s and
+ * then shows "Try again", so a test that opens an edition on a cold instance fails for a reason that is not DataTug's.
+ */
+const MOUNTS_URL = `${OVDB}/v1/demodb/postgres-mounts`;
+/** How long a cold instance may take to mount every edition (six editions, two at a time, up to 90 s each). */
+const MOUNTS_DEADLINE = 6 * 60_000;
+const MOUNTS_POLL = 10_000;
+/** States the server never leaves without a restart: waiting longer cannot help. */
+const MOUNT_TERMINAL = new Set(['misconfigured', 'not_configured']);
+
+interface MountStatus {
+  readonly id: string;
+  readonly state: string;
+  readonly reason?: string;
+}
+
+/**
+ * Waits until the live server reports every catalog edition mounted, before any test opens one. Status reads only
+ * (about one every 10 s, at most ~36), never a database read, and the first rate-limit answer trips the run's breaker.
+ */
+test.beforeAll(async () => {
+  test.setTimeout(MOUNTS_DEADLINE + 60_000);
+  const wanted = demoPostgresqlDatasetIds.map((id) => demoPostgresqlCatalog[id].databaseId as string);
+  const deadline = Date.now() + MOUNTS_DEADLINE;
+  let last = 'no answer yet';
+  for (;;) {
+    const tripped = readBreaker();
+    if (tripped) throw new Error(tripped);
+    const response = await fetch(MOUNTS_URL, { headers: { accept: 'application/json' } }).catch(
+      (err: unknown) => err as Error,
+    );
+    if (response instanceof Error) {
+      last = `request failed: ${response.message}`;
+    } else {
+      const headers = Object.fromEntries(response.headers.entries());
+      const text = await response.text();
+      if (isRateLimited(response.status, headers, text)) {
+        throw new Error(tripBreaker(rateLimitMessage(MOUNTS_URL, response.status, headers['retry-after'])));
+      }
+      if (response.ok) {
+        const mounts = (JSON.parse(text) as { mounts?: MountStatus[] }).mounts ?? [];
+        const byId = new Map(mounts.map((mount) => [mount.id, mount]));
+        const missing = wanted.filter((id) => !byId.has(id));
+        if (missing.length) throw new Error(`${MOUNTS_URL} does not list ${missing.join(', ')}`);
+        const stuck = wanted.map((id) => byId.get(id) as MountStatus).filter((m) => MOUNT_TERMINAL.has(m.state));
+        if (stuck.length) {
+          throw new Error(
+            `${MOUNTS_URL}: ${stuck.map((m) => `${m.id} ${m.state}${m.reason ? ` (${m.reason})` : ''}`).join(', ')}; the server needs a fix and a restart`,
+          );
+        }
+        const waiting = wanted.map((id) => byId.get(id) as MountStatus).filter((m) => m.state !== 'available');
+        if (!waiting.length) return;
+        last = waiting.map((m) => `${m.id} ${m.state}`).join(', ');
+      } else {
+        last = `HTTP ${response.status}`;
+      }
+    }
+    if (Date.now() + MOUNTS_POLL > deadline) {
+      throw new Error(`OpenVaultDB did not mount every PostgreSQL edition within ${MOUNTS_DEADLINE / 1000} s: ${last}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, MOUNTS_POLL));
+  }
 });
 
 const openEdition = async (page: Page, databaseId: string, path = '') => {
