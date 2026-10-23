@@ -7,6 +7,7 @@
     "types": ["node", "vitest/globals", "vitest/importMeta", "vite/client", "vitest"],
     "moduleResolution": "bundler"
   },
+  "files": ["src/test-setup.ts"],
   "include": [
     "vite.config.ts",
     "vite.config.mts",

@@ -3100,8 +3100,10 @@ select (
       'utf8',
     );
     const start = html.indexOf('@if (isQueryReadOnly() && queryDef()) {');
-    const end = html.indexOf('@if (demoDraftRecovery()');
+    const end = html.indexOf('@if (demoDraftRecovery()', start);
     expect(start).toBeGreaterThan(-1);
+    // A moved or renamed end marker must fail here, not slice an empty or truncated template.
+    expect(end).toBeGreaterThan(start);
     component = await createComponent({}, queryDef, html.slice(start, end));
     component.project = {
       ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
@@ -3119,7 +3121,7 @@ select (
     await runFixture.whenStable();
     expect(link()?.getAttribute('href')).toBe('https://tugql.org/');
     expect(link()?.getAttribute('target')).toBe('_blank');
-    expect(link()?.getAttribute('rel')).toBe('noopener');
+    expect(link()?.getAttribute('rel')).toBe('noopener noreferrer');
     component.queryDef.set({
       ...queryDef,
       request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest,

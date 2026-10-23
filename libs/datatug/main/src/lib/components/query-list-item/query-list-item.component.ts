@@ -58,7 +58,8 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
  *
  * Optional read-only preview of the query text (first 8 lines, highlighted like the query editor): after the
  * pointer rests on the row for {@link QUERY_PREVIEW_HOVER_DELAY_MS}, or when the main link/button takes keyboard
- * focus, on devices that hover. It is described by the focused element (`aria-describedby`), and Escape dismisses
+ * focus, on devices that hover. It is described by the focused element (`aria-describedby`, after the projected
+ * subtitle, which describes the row in every mode because `aria-label` replaces its content), and Escape dismisses
  * it. Leaving or blurring cancels a pending or in-flight load. Pass a loader from `QueryTextPreviewService`, which
  * caches texts per project; an empty text or a failed load shows nothing.
  *
@@ -93,7 +94,9 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [testId]="titleTestId()"
           [highlight]="highlight()"
         />
-        <ng-content select="[queryRowSubtitle]" />
+        <span class="query-row-subtitle" [id]="subtitleId"
+          ><ng-content select="[queryRowSubtitle]"
+        /></span>
       </span>
       @if (detail()) {
         <ion-icon
@@ -122,7 +125,7 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [attr.aria-selected]="optionId() ? optionActive() : null"
           [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
-          [attr.aria-describedby]="previewVisible() ? previewId : null"
+          [attr.aria-describedby]="describedBy()"
           (mousedown)="keepFieldFocus($event)"
           (click)="activated.emit()"
           (focus)="focus(true)"
@@ -138,7 +141,7 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [attr.aria-selected]="optionId() ? optionActive() : null"
           [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
-          [attr.aria-describedby]="previewVisible() ? previewId : null"
+          [attr.aria-describedby]="describedBy()"
           (mousedown)="keepFieldFocus($event)"
           (click)="opened.emit(); activated.emit()"
           (focus)="focus(true)"
@@ -195,8 +198,11 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
       flex: 1 1 auto;
       min-width: 0;
     }
+    .query-row-subtitle:empty {
+      display: none;
+    }
     /* Projected subtitles read like an ion-label paragraph. */
-    :host ::ng-deep .query-row-text > [queryrowsubtitle] {
+    :host ::ng-deep .query-row-subtitle > [queryrowsubtitle] {
       display: block;
       margin: 2px 0 0;
       color: var(--dt-text-muted);
@@ -294,11 +300,22 @@ export class QueryListItemComponent implements OnDestroy {
 
   protected readonly chevronIcon = chevronForwardOutline;
   protected readonly previewId = `query-preview-${++nextPreviewId}`;
+  /** Wraps the projected `[queryRowSubtitle]` line, which the custom accessible name would otherwise hide. */
+  protected readonly subtitleId = `${this.previewId}-subtitle`;
   private readonly active = signal(false);
   private readonly dismissed = signal(false);
   protected readonly previewText = signal<string | undefined>(undefined);
   protected readonly previewVisible = computed(
     () => this.active() && !this.dismissed() && !!this.previewText(),
+  );
+  /**
+   * The main link/button's description: the projected subtitle line (e.g. "Query · folder"), which `aria-label`
+   * replaces in the accessible name, then the preview while it shows. An empty subtitle adds nothing.
+   */
+  protected readonly describedBy = computed(() =>
+    [this.subtitleId, this.previewVisible() ? this.previewId : undefined]
+      .filter(Boolean)
+      .join(' '),
   );
   protected readonly previewTokens = computed(() =>
     tokenizeTugql(this.previewText() ?? ''),

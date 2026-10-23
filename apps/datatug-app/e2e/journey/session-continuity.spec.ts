@@ -122,6 +122,7 @@ test.describe('Session continuity with the native local CLI', () => {
     await expect(bag).toBeHidden();
     await expect(page.getByRole('button', { name: /context · 1 applied/i })).toBeVisible();
 
+    await page.getByRole('button', { name: 'Session actions', exact: true }).click();
     await page.getByRole('button', { name: 'Composer', exact: true }).click();
     const question = page.getByLabel('Question');
     await question.fill(composerDraft);
@@ -147,6 +148,7 @@ test.describe('Session continuity with the native local CLI', () => {
     await expect(reopenedBag.getByRole('checkbox', { name: 'Use Invoice', exact: true })).toBeChecked();
     await expect(reopenedBag.locator('ion-item').filter({ hasText: 'invoice → InvoiceId' })).toContainText('1');
     await reopenedBag.getByRole('button', { name: 'Done', exact: true }).click();
+    await page.getByRole('button', { name: 'Session actions', exact: true }).click();
     await page.getByRole('button', { name: 'Composer', exact: true }).click();
     await expect(page.getByLabel('Question')).toHaveValue(composerDraft);
 

@@ -59,7 +59,11 @@ describe('copied browser table query entry', () => {
     const logger = { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) };
     const dispatch = queryDispatchTestStub(fx);
     fx.dispatchStart.mockClear();
-    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+    // Never `imports: [QueryPageComponent]`: TestBed would then walk the ORIGINAL standalone component's dependency
+    // graph and JIT-compile its 2,000-line template and every child component (editors, grid, charts) that the
+    // override below discards. That once-per-worker compile is what pushed this file past the 5s test timeout
+    // under a loaded machine. createComponent() compiles only the overridden definition.
+    await TestBed.configureTestingModule({ providers: [
         { provide: ProjectMeaningsService, useValue: {} },
       { provide: ErrorLogger, useValue: logger },
       { provide: RandomIdService, useValue: { newRandomId } },

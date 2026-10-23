@@ -7,7 +7,10 @@
       </ion-button>
     </ion-buttons>
   </ion-toolbar>
-  <ion-toolbar>
+
+</ion-header>
+
+<ion-content>
     <ion-searchbar
       #searchbar
       data-testid="parameter-lookup-filter"
@@ -17,10 +20,7 @@
       [disabled]="filterDisabled()"
       (ionInput)="onFilter($any($event).detail.value)"
     />
-  </ion-toolbar>
-</ion-header>
 
-<ion-content>
   @if (sourceOptions().length > 1) {
     <ion-item lines="full">
       <ion-select

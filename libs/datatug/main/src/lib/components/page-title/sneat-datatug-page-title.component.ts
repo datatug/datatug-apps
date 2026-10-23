@@ -41,8 +41,11 @@ import { DatatugNavContextService } from '../../services/nav/datatug-nav-context
   templateUrl: './sneat-datatug-page-title.component.html',
   styles: [
     `
+      ion-title.compact { position: static; padding: 0; width: 100%; min-width: 0; }
       .dt-page-subtitle {
-        display: block;
+        display: inline;
+        margin-inline-start: .5rem;
+        white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
         font-size: 0.75rem;
@@ -63,6 +66,7 @@ export class SneatDatatugPageTitleComponent {
   /** Marks the title as the page's level-1 heading, for a page that has no
    * other title (the query page). */
   public readonly heading = input(false);
+  public readonly compact = input(false);
 
   private readonly currentProject = toSignal(this.navContext.currentProject, {
     initialValue: undefined,

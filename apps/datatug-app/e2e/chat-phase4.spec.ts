@@ -51,8 +51,8 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
     await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ tugql }) } }] } });
   });
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show 10 customers');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
+  await page.getByLabel('Ask about project data').fill('Show 10 customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('tab', { name: 'Rows 10' })).toBeVisible();
   await page.getByRole('button', { name: 'Bookmark result' }).click();
@@ -64,7 +64,7 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   await workspace.getByRole('button', { name: 'Dock' }).click();
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
   await page.reload();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
   await expect(page.getByLabel('Chat workspace').locator('.dock-item ag-grid-angular')).toBeVisible();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await workspace.getByRole('button', { name: 'Open' }).click();
@@ -151,25 +151,26 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
     return bookmark.data.id;
   });
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   const selectedBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'selection ·' });
   await selectedBookmark.getByRole('button', { name: 'Attach' }).click();
-  await page.getByLabel('Ask about Chinook data').fill('Invoices for selected bookmark cells');
+  await page.getByLabel('Ask about project data').fill('Invoices for selected bookmark cells');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows [1-9]/ })).toBeVisible();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await selectedBookmark.getByRole('button', { name: 'Detach' }).click();
   await workspace.locator('.bookmark-item').filter({ hasText: 'Show 10 customers' }).getByRole('button', { name: 'Attach' }).click();
-  await page.getByLabel('Ask about Chinook data').fill('Invoices for bookmarked customers');
+  await page.getByLabel('Ask about project data').fill('Invoices for bookmarked customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows [1-9]/ })).toBeVisible();
   expect(followupContext).toContain('columns: CustomerId');
   expect(followupContext).not.toContain('Luís');
 
-  await page.locator('.session-toolbar ion-select').click();
+  await page.locator('.chat-header-toolbar ion-select').click();
   await page.getByRole('radio', { name: 'Show 10 customers' }).click();
-  await page.locator('.session-toolbar').getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await expect(workspace.locator('.bookmark-item')).toHaveCount(3);

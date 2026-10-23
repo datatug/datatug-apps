@@ -102,12 +102,8 @@
   }
 }
 
-.session-toolbar ion-select {
-  max-width: min(45vw, 360px);
-  min-width: 160px;
-  padding-left: 1rem;
-}
-
-.session-toolbar ion-buttons {
-  flex-wrap: wrap;
-}
+.chat-header-title { display: flex; align-items: center; gap: .5rem; min-width: 0; padding-inline: .5rem; }
+.chat-header-title > sneat-datatug-page-title { flex: 0 1 45%; min-width: 4.5rem; overflow: hidden; }
+.chat-header-title ion-select { min-width: 0; flex: 1 1 auto; max-width: 360px; overflow: hidden; }
+.session-action-menu { display: flex; flex-direction: column; padding: .5rem; }
+.session-action-menu ion-button { min-height: 44px; }

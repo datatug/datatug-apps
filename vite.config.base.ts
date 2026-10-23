@@ -1,6 +1,5 @@
 import { ViteUserConfig } from 'vitest/config';
 import angular from '@analogjs/vite-plugin-angular';
-import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 import { readdirSync, readFileSync } from 'fs';
 import { join, relative } from 'path';
 
@@ -68,6 +67,7 @@ export function createBaseViteConfig(
     root: dirname,
     cacheDir: relativeToRoot,
     resolve: {
+      tsconfigPaths: true,
       dedupe: [
         '@angular/core',
         '@angular/common',
@@ -84,7 +84,6 @@ export function createBaseViteConfig(
         jit: true,
         tsconfig: './tsconfig.spec.json',
       }),
-      nxViteTsPaths(),
     ],
     test: {
       name,
