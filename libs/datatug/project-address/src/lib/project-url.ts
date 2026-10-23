@@ -241,6 +241,7 @@ export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
   'chat',
   'checks',
   'composer',
+  'data-models',
   'dbmodel',
   'dbmodels',
   'demo-db-sandbox',
