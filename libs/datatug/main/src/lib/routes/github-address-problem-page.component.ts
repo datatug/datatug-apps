@@ -56,7 +56,7 @@ export function messageForUnsupported(
     case 'missing-ref':
       return {
         heading: UNSUPPORTED_HEADING,
-        paragraphs: ['Name a branch, a tag or a commit after "@".'],
+        paragraphs: ['Name a branch, a tag or a commit in "?ref=".'],
       };
     default:
       return {
@@ -92,8 +92,8 @@ export function messageForNotFound(
       heading: 'No DataTug project here',
       paragraphs: [
         `No DataTug project at "${problem.folder}" on "${problem.ref}".`,
-        'If the branch name contains "/", write it as %2F after "@": datatug.app/project/github.com/' +
-          `${repo}@${problem.ref}%2F<rest of the name>/<folder>`,
+        'If the branch name contains "/", name it in the query: datatug.app/project/github.com/' +
+          `${repo}/<folder>?ref=${problem.ref}/<rest of the name>`,
       ],
       repo,
     };

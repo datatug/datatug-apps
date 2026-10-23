@@ -2,7 +2,6 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "datatug-apps",
   "compatibility_date": "2026-06-08",
-  "main": "./apps/datatug-app/worker/project-shell.mjs",
   "routes": [
     {
       "pattern": "datatug.app",
@@ -15,8 +14,6 @@
   ],
   "assets": {
     "directory": "./dist/apps/datatug-app/browser",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": ["/project/*"]
+    "not_found_handling": "single-page-application"
   }
 }

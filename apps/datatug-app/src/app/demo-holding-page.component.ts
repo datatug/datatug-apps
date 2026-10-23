@@ -47,7 +47,7 @@ function readView(): HoldingView {
   const handoff = demoHandoff();
   const lang = handoff?.lang ?? 'en';
   return {
-    trusted: isTrustedHandoff(window.location.pathname),
+    trusted: isTrustedHandoff(window.location.pathname, window.location.search),
     lang,
     strings: DEMO_HOLDING_STRINGS[lang],
     question: handoff?.question ?? '',

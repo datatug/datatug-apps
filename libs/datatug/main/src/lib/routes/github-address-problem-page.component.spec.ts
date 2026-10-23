@@ -30,7 +30,7 @@ describe('messageForUnsupported', () => {
       'This address is not supported',
       'named "-"',
     ],
-    ['missing-ref', 'This address is not supported', 'after "@"'],
+    ['missing-ref', 'This address is not supported', 'in "?ref="'],
     [
       'invalid-owner-or-repo',
       'This address is not supported',
@@ -102,10 +102,10 @@ describe('messageForNotFound', () => {
       problem({ ref: 'feature', folder: 'x' }),
     );
     expect(message.paragraphs[1]).toContain(
-      'If the branch name contains "/", write it as %2F after "@"',
+      'If the branch name contains "/", name it in the query',
     );
     expect(message.paragraphs[1]).toContain(
-      'datatug.app/project/github.com/o/r@feature%2F<rest of the name>/<folder>',
+      'datatug.app/project/github.com/o/r/<folder>?ref=feature/<rest of the name>',
     );
     // A ref that already holds a slash needs no such hint.
     expect(

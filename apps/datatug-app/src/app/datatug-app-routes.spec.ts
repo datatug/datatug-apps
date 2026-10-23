@@ -1,8 +1,10 @@
+import { GithubRefUrlSerializer } from './github-ref-url-serializer';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Location } from '@angular/common';
 import {
   provideRouter,
+  UrlSerializer,
   Router,
   UrlSegment,
   UrlSegmentGroup,
@@ -202,6 +204,8 @@ describe('DataTug app routes', () => {
             provide: PRODUCT_PROFILE,
             useValue: resolveProductProfile({ hostname }),
           },
+          // As main.ts: a GitHub project's `?ref=` is the repository segment's matrix parameter inside the router.
+          { provide: UrlSerializer, useClass: GithubRefUrlSerializer },
           provideRouter([
             ...routes
               .filter((r) => r.matcher)
@@ -238,8 +242,8 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug-other/chinook-demo',
         '/project/github.com/datatug/chinook-demo/tree/abc/-/chat',
         '/project/github.com/datatug/chinook-demo/tree/head/-/chat',
-        '/project/github.com/datatug/chinook-demo@head/chat',
-        '/project/github.com/datatug/chinook-demo@abc/chat',
+        '/project/github.com/datatug/chinook-demo/chat?ref=head',
+        '/project/github.com/datatug/chinook-demo/chat?ref=abc',
         '/project/github.com/datatug/chinooK-demo/chat',
       ]) {
         TestBed.resetTestingModule();
@@ -259,13 +263,13 @@ describe('DataTug app routes', () => {
       expect(handoff.url).toBe(canonical + '/-/start-chat');
       expect(handoff.component).toBe(HandoffStub);
       for (const alias of [
-        '/project/github.com/datatug/chinook-demo@HEAD',
-        '/project/github.com/datatug/chinook-demo@HEAD/-/chat',
+        '/project/github.com/datatug/chinook-demo?ref=HEAD',
+        '/project/github.com/datatug/chinook-demo/-/chat?ref=HEAD',
       ]) {
         TestBed.resetTestingModule();
         const result = await visit('datatug.app', alias);
         expect(result.url).toBe(
-          canonical + (alias.endsWith('chat') ? '/-/chat' : ''),
+          canonical + (alias.includes('/chat') ? '/-/chat' : ''),
         );
       }
     });

@@ -8,7 +8,7 @@
  */
 import { friendlyError, isGithubRateLimit } from '@datatug/friendly-error';
 import { IProjectRef } from '../core/project-context';
-import { projectPageHref } from '../nav/project-page-href';
+import { projectPageHref, withQuery } from '../nav/project-page-href';
 import { SearchDocument, searchItemHref } from './quick-search-model';
 import { fold } from '../components/query-list-item/highlight-parts';
 
@@ -230,7 +230,7 @@ export function fromSearchDocument(
 
 export function tagHref(ref: IProjectRef, name: string): string {
   const params = new URLSearchParams({ name });
-  return projectPageHref(ref, ['tags']) + '?' + params.toString();
+  return withQuery(projectPageHref(ref, ['tags']), params.toString());
 }
 
 /**

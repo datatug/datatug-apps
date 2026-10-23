@@ -604,7 +604,7 @@ test.describe('the hand-off holding page', () => {
 
     await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
     // The shared nested project, as the home page opens it.
-    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/tree\/HEAD\/demo-project-1$/);
+    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/demo-project-1$/);
     // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
     await expect(page).toHaveTitle('DataTug.app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -1042,15 +1042,15 @@ test.describe('the hand-off holding page', () => {
       '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/queries?x=1',
     ],
     [
-      '/project/github.com/datatug/datatug-demo-project@HEAD/demo-project-1?x=1',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1?ref=HEAD&x=1',
       '/project/github.com/datatug/datatug-demo-project/demo-project-1?x=1',
     ],
     [
       '/project/github.com/acme/demo/tree/0123abcd4567ef89/dir/-/queries?x=1',
-      '/project/github.com/acme/demo@0123abcd4567ef89/dir/-/queries?x=1',
+      '/project/github.com/acme/demo/dir/-/queries?x=1&ref=0123abcd4567ef89',
     ],
   ]) {
-    test(`a legacy tree/<ref> or @HEAD address (${legacy}) is replaced by the short canonical one, page and query kept`, async ({
+    test(`a legacy tree/<ref> or ?ref=HEAD address (${legacy}) is replaced by the short canonical one, page and query kept`, async ({
       page,
       context,
       baseURL,
@@ -1241,9 +1241,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
       [`${TRUSTED_ROOT}/tree/0123abcd4567ef89/-/start-chat`, false],
       [`${TRUSTED_ROOT}/tree/HEAD/some/dir/-/start-chat`, false],
       [`${OTHER_ROOT}/tree/HEAD/dir/-/start-chat`, false],
-      [`${TRUSTED_ROOT}@0123abcd4567ef89/start-chat`, false],
+      [`${TRUSTED_ROOT}/start-chat?ref=0123abcd4567ef89`, false],
       [`${OTHER_ROOT}/dir/-/start-chat`, false],
-      ['/project/github.com/datatug/datatug-demo-project@main/demo-project-1/-/start-chat', false],
+      ['/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat?ref=main', false],
       ['/project/github.com/datatug/chinook-demo-evil/start-chat', false],
     ] as const) {
       await page.goto(`${path}#msg=${enc}`);

@@ -97,7 +97,7 @@ test('cross-database comparison runs one native server query and displays source
   });
   const revision = process.env['DATATUG_E2E_SERVER_SHOWCASE_REF'] || 'HEAD';
   await page.goto(
-    `/project/github.com/datatug/datatug-demo-project@${revision}/demo-project-1/-/board/showcase`,
+    `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase?ref=${revision}`,
   );
   if (localProxy) {
     const race = page.locator('ion-card').filter({ hasText: 'Where Northwind orders shipped' }).first();

@@ -83,36 +83,3 @@ test('.wasm assets are never given a Content-Type other than application/wasm', 
     }
   }
 });
-
-test('a project address is served the SPA shell as typed, so its %2F is never decoded by the assets (founder 2026-10-23)', async () => {
-  const config = JSON.parse(await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
-  assert.equal(config.main, './apps/datatug-app/worker/project-shell.mjs');
-  assert.equal(config.assets.binding, 'ASSETS');
-  assert.deepEqual(config.assets.run_worker_first, ['/project/*']);
-  assert.equal(config.assets.not_found_handling, 'single-page-application');
-
-  const { default: worker } = await import('../apps/datatug-app/worker/project-shell.mjs');
-  const asked = [];
-  const env = {
-    ASSETS: {
-      fetch: async (request) => {
-        asked.push(request.method + ' ' + request.url);
-        return new Response('<!doctype html>shell', { status: 200, headers: { 'content-type': 'text/html' } });
-      },
-    },
-  };
-  for (const path of [
-    '/project/github.com/o/r@feature%2Fx/demo-project-1',
-    '/project/github.com/o/r/d/-/query/a%2Fb?id=a%2Fb',
-  ]) {
-    asked.length = 0;
-    const response = await worker.fetch(new Request('https://datatug.app' + path), env);
-    assert.equal(response.status, 200, path);
-    assert.equal(await response.text(), '<!doctype html>shell');
-    // The shell is asked for, never the typed path, so nothing is normalised or redirected.
-    assert.deepEqual(asked, ['GET https://datatug.app/']);
-  }
-  asked.length = 0;
-  await worker.fetch(new Request('https://datatug.app/project/x', { method: 'POST', body: 'x' }), env);
-  assert.deepEqual(asked, ['POST https://datatug.app/project/x']);
-});

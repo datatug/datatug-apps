@@ -102,7 +102,7 @@ import {
   equalProjectRef,
   isSharedProjectRef,
 } from '../core/project-context';
-import { projectPageHref } from '../nav/project-page-href';
+import { projectPageHref, withQuery } from '../nav/project-page-href';
 import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
@@ -1230,10 +1230,10 @@ export class QuickSearchPageComponent {
     this.hostedItems.set(undefined);
     const ref = this.project();
     if (!ref) return;
-    const params = q.trim() ? '?' + new URLSearchParams({ q: q.trim() }) : '';
+    const params = q.trim() ? String(new URLSearchParams({ q: q.trim() })) : '';
     // Keep the address shareable without stacking a history entry per pause in typing.
     void this.router
-      .navigateByUrl(projectPageHref(ref, ['quick-search']) + params, {
+      .navigateByUrl(withQuery(projectPageHref(ref, ['quick-search']), params), {
         replaceUrl: true,
       })
       .catch(() => undefined);

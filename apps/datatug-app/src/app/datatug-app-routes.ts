@@ -45,10 +45,10 @@ import recordsetcompareLock from '../../recordsetcompare-lock.json';
 //
 // What each address gets (demo-handoff-asked.ts decides, from what index.html kept of the query):
 //   - `/demo`: the page, always.
-//   - `/project/github.com/<owner>/<repo>[@<ref>][/<dir>…/-]/start-chat` (and the legacy
+//   - `/project/github.com/<owner>/<repo>[/<dir>…/-]/start-chat[?ref=<ref>]` (and the legacy
 //     `…/<repo>/tree/<ref>[/<dir>…]/-/start-chat`): the page, always (with a question or without: nothing to confirm
 //     is still a page that says so).
-//   - `/project/github.com/<owner>/<repo>[@<ref>][/<dir>…/-]/chat` (and the legacy `…/tree/<ref>[/<dir>…]/-/chat`) that arrived with a question (`msg`, or `q`; the old
+//   - `/project/github.com/<owner>/<repo>[/<dir>…/-]/chat[?ref=<ref>]` (and the legacy `…/tree/<ref>[/<dir>…]/-/chat`) that arrived with a question (`msg`, or `q`; the old
 //     hand-off address): moved, replacing it, to the start-chat address of the same project, with no question in it.
 //     Without a question it is the chat page of that project, opened at its short address like every other page of
 //     it (the short project route, in the datatug-main routes). `/chat` never reads a question.
@@ -76,17 +76,19 @@ export const legacyChinookDemoMatcher = (
   if (segments.some((segment) => !/^[\x20-\x7e]+$/.test(segment.path)))
     return null;
   const names = segments.map((segment) => segment.path.toLowerCase());
-  // `chinook-demo@HEAD` is the default branch spelled out, as the legacy `tree/HEAD` is (HEAD in capitals, as there).
-  const atHead = segments[3]?.path.slice(-5) === '@HEAD';
   if (
     names[0] !== 'project' ||
     names[1] !== 'github.com' ||
     names[2] !== 'datatug' ||
-    !(names[3] === 'chinook-demo' || (atHead && names[3] === 'chinook-demo@head'))
+    names[3] !== 'chinook-demo'
   )
     return null;
+  // A `?ref=` (inside the router, the repository segment's matrix parameter `ref`) other than the default branch is
+  // another version of that repository, never the alias; `?ref=HEAD` is the default branch spelled out.
+  const ref = segments[3].parameters['ref'];
+  if (ref !== undefined && ref !== 'HEAD') return null;
   const rest = names.slice(4);
-  if (!atHead && rest[0] === 'tree' && segments[5]?.path !== 'HEAD') return null;
+  if (rest[0] === 'tree' && segments[5]?.path !== 'HEAD') return null;
   if (
     !(
       rest.length === 0 ||
@@ -94,9 +96,8 @@ export const legacyChinookDemoMatcher = (
       (rest.length === 2 &&
         rest[0] === '-' &&
         (rest[1] === 'chat' || rest[1] === 'start-chat')) ||
-      (!atHead && rest.length === 2 && rest[0] === 'tree' && rest[1] === 'head') ||
-      (!atHead &&
-        rest.length === 4 &&
+      (rest.length === 2 && rest[0] === 'tree' && rest[1] === 'head') ||
+      (rest.length === 4 &&
         rest[0] === 'tree' &&
         rest[1] === 'head' &&
         rest[2] === '-' &&
@@ -203,7 +204,6 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
           stored.length === names.length &&
           stored.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
           (names[4]?.toLowerCase() !== 'tree' || stored[5] === 'HEAD') &&
-          (!names[3]?.includes('@') || stored[3]?.slice(-5) === '@HEAD') &&
           stored.map((part) => part.toLowerCase()).join('/') ===
             names.map((part) => part.toLowerCase()).join('/')
         ) {

@@ -441,7 +441,7 @@ describe('demo hand-off capture', () => {
       captureDemoHandoff(f.env);
       expect(f.replaced).toEqual([path]);
       expect(demoHandoff(undefined, path)?.question).toBe(
-        isTrustedHandoff(path) ? 'Which countries' : '',
+        isTrustedHandoff(path, '') ? 'Which countries' : '',
       );
     });
 
@@ -656,12 +656,12 @@ describe('demo hand-off capture', () => {
         '/project/github.com/datatug/chinook-demo/tree/HEAD/sub/-/start-chat',
       ]) {
         resetDemoHandoffForTests();
-        expect(isTrustedHandoff(path), path).toBe(false);
+        expect(isTrustedHandoff(path, ''), path).toBe(false);
         const f = pageLoad(path, '', { hash: '#msg=Hello' });
         captureDemoHandoff(f.env);
         expect(demoHandoff(undefined, path)?.question, path).toBe('');
       }
-      expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat')).toBe(true);
+      expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat', '')).toBe(true);
     });
 
     it('a reload shows the same question from the tab store; a fresh visit to the bare address shows none', () => {
@@ -720,7 +720,7 @@ describe('demo hand-off capture', () => {
       '/PROJECT/GITHUB.COM/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/CHAT',
       '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat;x=1',
     ])('%s is trusted', (path) => {
-      expect(isTrustedHandoff(path)).toBe(true);
+      expect(isTrustedHandoff(path, '')).toBe(true);
     });
 
     it.each([
@@ -743,7 +743,7 @@ describe('demo hand-off capture', () => {
       '/demo/other',
       '/',
     ])('%s is not trusted', (path) => {
-      expect(isTrustedHandoff(path)).toBe(false);
+      expect(isTrustedHandoff(path, '')).toBe(false);
     });
 
     // Issue #180: `toLowerCase()` turns the Kelvin sign U+212A into the ASCII `k`, so a trust decision on the
@@ -766,7 +766,7 @@ describe('demo hand-off capture', () => {
         `/project/github.com/datatug/chinook-demo${KELVIN}/chat`,
       ])('%s is not trusted', (path) => {
         expect(isHandoffPath(path)).toBe(true);
-        expect(isTrustedHandoff(path)).toBe(false);
+        expect(isTrustedHandoff(path, '')).toBe(false);
       });
 
       it('drops the question of such an address, keeps the language, and still strips the address bar', () => {
@@ -783,8 +783,8 @@ describe('demo hand-off capture', () => {
       });
 
       it('plain ASCII spellings of the same repository are still trusted', () => {
-        expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat')).toBe(true);
-        expect(isTrustedHandoff('/project/github.com/DataTug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat')).toBe(true);
+        expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat', '')).toBe(true);
+        expect(isTrustedHandoff('/project/github.com/DataTug/Datatug-Demo-Project/tree/HEAD/demo-project-1/-/chat', '')).toBe(true);
       });
     });
 
@@ -908,8 +908,6 @@ describe('demo hand-off capture', () => {
       '/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH',
       '/project/github.com/acme/demo/dir/-/quick-search',
       '/project/github.com/acme/demo/a/b/-/quick-search',
-      '/project/github.com/acme/demo@v1/quick-search',
-      '/project/github.com/acme/demo@feature%2Fx/dir/-/quick-search',
       '/project/github.com/acme/demo/-/quick-search',
     ])('cold reload retains Quick Search q and removes msg only on exact page %s',path=>{
       const out=run(path,'?q=customer&msg=private&x=1');
@@ -921,10 +919,7 @@ describe('demo hand-off capture', () => {
       '/project/github.com/acme/repo.git.git/quick-search',
       '/project/github.com/acme/repo/quick-search//extra',
       '/project/github.com/acme/repo/tree/ref%2Fother/folder/-/quick-search',
-      '/project/github.com/acme/repo@/folder/-/quick-search',
-      '/project/github.com/acme/repo@a@b/quick-search',
-      '/project/github.com/acme/repo@x%252Fy/quick-search',
-      '/project/github.com/acme/repo@..%2Fx/quick-search',
+      '/project/github.com/acme/repo@v1/quick-search',
       '/project/github.com/acme/repo/a@b/-/quick-search',
     ])('cold reload never preserves q on a malformed locator %s',path=>{
       expect(run(path,'?q=private&msg=private').replaced).toEqual([path]);
@@ -956,7 +951,7 @@ describe('demo hand-off capture', () => {
       const early = run(path, '', '#msg=Private+question&lang=ru');
       expect(early.replaced).toEqual([path]);
       expect(early.stash).toBe('?msg=Private+question&lang=ru');
-      expect(isTrustedHandoff(path)).toBe(true);
+      expect(isTrustedHandoff(path, '')).toBe(true);
       expect(handoffTargetOfPath(path)?.kind).toBe('start-chat');
       const load = pageLoad(path, '', { store: early.kept, stashed: early.stash as string });
       captureDemoHandoff(load.env);
@@ -976,20 +971,23 @@ describe('demo hand-off capture', () => {
       const early = run(path, '', '#msg=Private+question&lang=ru');
       expect(early.replaced).toEqual([path]);
       expect(early.stash).toBe('?msg=Private+question&lang=ru');
-      expect(isTrustedHandoff(path)).toBe(true);
-      expect(isTrustedHandoff('/project/github.com/datatug/datatug-demo-project@HEAD/demo-project-1/-/start-chat')).toBe(true);
+      expect(isTrustedHandoff(path, '')).toBe(true);
+      expect(isTrustedHandoff(path, '?ref=HEAD')).toBe(true);
+      expect(isTrustedHandoff(path, '?utm_source=x')).toBe(true);
       const load = pageLoad(path, '', { store: early.kept, stashed: early.stash as string });
       captureDemoHandoff(load.env);
       expect(demoHandoff(() => load.env.storage(), path)?.question).toBe('Private question');
-      for (const other of [
-        '/project/github.com/datatug/datatug-demo-project@main/demo-project-1/-/start-chat',
-        '/project/github.com/datatug/datatug-demo-project@0123abcd/demo-project-1/-/start-chat',
-        '/project/github.com/datatug/datatug-demo-project/demo-project-2/-/start-chat',
-        '/project/github.com/datatug/datatug-demo-project/demo-project-1/x/-/start-chat',
+      for (const [other, search] of [
+        [path, '?ref=main'],
+        [path, '?ref=0123abcd'],
+        [path, '?ref=HEAD&ref=main'],
+        ['/project/github.com/datatug/datatug-demo-project/demo-project-2/-/start-chat', ''],
+        ['/project/github.com/datatug/datatug-demo-project/demo-project-1/x/-/start-chat', ''],
       ]) {
-        expect(handoffTargetOfPath(other)?.kind, other).toBe('start-chat');
-        expect(isTrustedHandoff(other), other).toBe(false);
+        expect(isTrustedHandoff(other, search), other + search).toBe(false);
       }
+      // The question of an untrusted version is never shown back, whatever was captured.
+      expect(demoHandoff(() => load.env.storage(), path, '?ref=main')?.question).toBe('');
     });
 
     it('captures a no-JavaScript short-folder start-chat GET form before analytics', () => {
@@ -1066,18 +1064,12 @@ describe('demo hand-off capture', () => {
         '/project/github.com/o/r/tree/HEAD/a(b)/-/chat',
         // founder 2026-10-23: `@<ref>` and the short folder form
         '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat',
-        '/project/github.com/o/r@v1/chat',
-        '/project/github.com/o/r@v1/dir/-/chat',
-        '/project/github.com/o/r@feature%2Fx/a/b/-/chat',
-        '/project/github.com/o/r@/chat',
         '/project/github.com/o/r/-/chat',
         '/project/github.com/o/r/dir/-/chat',
         '/project/github.com/o/r/a/-/b/-/chat',
         '/project/github.com/o/r/blob/x/-/chat',
-        '/project/github.com/o/r@v1/tree/-/chat',
         '/project/github.com/o/r/dir/chat',
         '/project/github.com/o/r/dir/-/start-chat',
-        '/project/github.com/o/r@HEAD/start-chat',
       ];
       // Every other address under /project/github.com loses `msg` and `q` only (review S2): nothing is stashed
       // or kept for it, and the rest of its query stays. ("Under" as the router's parser reads the path.)

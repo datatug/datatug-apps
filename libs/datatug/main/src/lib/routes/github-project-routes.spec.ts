@@ -50,7 +50,16 @@ const segments = (path: string): UrlSegment[] =>
   path
     .split('/')
     .filter(Boolean)
-    .map((p) => new UrlSegment(decodeURIComponent(p), {}));
+    .map((p) => {
+      // `name;ref=value`: the matrix parameter the app's URL serializer makes of a GitHub project's `?ref=`.
+      const [name, ...params] = p.split(';');
+      return new UrlSegment(
+        decodeURIComponent(name),
+        Object.fromEntries(
+          params.map((kv) => kv.split('=').map(decodeURIComponent) as [string, string]),
+        ),
+      );
+    });
 
 describe('githubProjectMatcher', () => {
   const run = (path: string) =>
@@ -338,9 +347,9 @@ describe('navigating to a short address', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it.each([
-    ['/project/github.com/o/r@feature%2Fx/d', 'r@o@d@feature/x'],
-    ['/project/github.com/o/r@feature%2Fx/d/-/queries', 'r@o@d@feature/x'],
-    ['/project/github.com/o/r@v1/d', 'r@o@d@v1'],
+    ['/project/github.com/o/r;ref=feature%2Fx/d', 'r@o@d@feature/x'],
+    ['/project/github.com/o/r;ref=feature%2Fx/d/-/queries', 'r@o@d@feature/x'],
+    ['/project/github.com/o/r;ref=v1/d', 'r@o@d@v1'],
   ])('%s opens at its own address, with no redirect (founder 2026-10-23)', async (url, projectId) => {
     const result = await visit(url);
     expect(result.url).toBe(url);
@@ -349,19 +358,19 @@ describe('navigating to a short address', () => {
 
   it.each([
     [
-      '/project/github.com/datatug/datatug-demo-project@project-cards/demo-project-1/-/card/customer',
+      '/project/github.com/datatug/datatug-demo-project;ref=project-cards/demo-project-1/-/card/customer',
       'card/:cardId',
     ],
     [
-      '/project/github.com/datatug/datatug-demo-project@project-cards/demo-project-1/-/cards/new',
+      '/project/github.com/datatug/datatug-demo-project;ref=project-cards/demo-project-1/-/cards/new',
       'cards/new',
     ],
     [
-      '/project/github.com/datatug/datatug-demo-project@project-cards/demo-project-1/-/cards',
+      '/project/github.com/datatug/datatug-demo-project;ref=project-cards/demo-project-1/-/cards',
       'cards',
     ],
     [
-      '/project/github.com/datatug/datatug-demo-project@project-cards/demo-project-1/-/board/shipping',
+      '/project/github.com/datatug/datatug-demo-project;ref=project-cards/demo-project-1/-/board/shipping',
       'board/:board',
     ],
     ['/project/github.com/datatug/chinook-demo/card/customer', 'card/:cardId'],
@@ -393,7 +402,7 @@ describe('navigating to a short address', () => {
       'r@o@demo-project-1',
     ],
     ['/project/github.com/o/r/datatug', 'r@o'],
-    ['/project/github.com/o/r@v1.0.0/queries', 'r@o@@v1.0.0'],
+    ['/project/github.com/o/r;ref=v1.0.0/queries', 'r@o@@v1.0.0'],
   ])(
     '%s opens the project pages as children, with storeId and projectId %s',
     async (url, projectId) => {
@@ -465,10 +474,10 @@ describe('navigating to a short address', () => {
       ['/project/github.com/o/r', '/project/github.com/o/r'],
       [
         '/project/github.com/o/r/blob/v1/dir/datatug-project.json',
-        '/project/github.com/o/r@v1/dir',
+        '/project/github.com/o/r;ref=v1/dir',
       ],
       [
-        '/project/github.com/o/r@main/dir/-/chat?a=1&a=2#f',
+        '/project/github.com/o/r;ref=main/dir/-/chat?a=1&a=2#f',
         '/project/github.com/o/r/dir/-/chat?a=1&a=2#f',
       ],
     ])('%s -> %s', async (typed, canonical) => {
@@ -530,7 +539,7 @@ describe('navigating to a short address', () => {
 
     it('a default-branch redirect, query and fragment kept', async () => {
       const result = await visit(
-        '/project/github.com/o/r@main/a%28b%29/-/queries?x=1#f',
+        '/project/github.com/o/r;ref=main/a%28b%29/-/queries?x=1#f',
       );
       expect(result.url).toBe(
         '/project/github.com/o/r/a%28b%29/-/queries?x=1#f',
@@ -583,12 +592,12 @@ describe('navigating to a short address', () => {
     });
 
     it('no project file: "No DataTug project here"', async () => {
-      const result = await visit('/project/github.com/o/r@feature/x', {
+      const result = await visit('/project/github.com/o/r;ref=feature/x', {
         summaryResult: () =>
           throwError(() => new GithubProjectNotFoundError('x', 'missing')),
       });
       expect(result.component).toBe(ProblemStub);
-      expect(result.url).toBe('/project/github.com/o/r@feature/x');
+      expect(result.url).toBe('/project/github.com/o/r;ref=feature/x');
       expect(result.problem).toEqual({
         kind: 'not-found',
         owner: 'o',
@@ -601,10 +610,10 @@ describe('navigating to a short address', () => {
   });
 
   it('a refused default-branch lookup leaves the address as typed, tells the visit, and opens the project', async () => {
-    const result = await visit('/project/github.com/o/r@main/dir/-/chat', {
+    const result = await visit('/project/github.com/o/r;ref=main/dir/-/chat', {
       lookup: { kind: 'refused' },
     });
-    expect(result.url).toBe('/project/github.com/o/r@main/dir/-/chat');
+    expect(result.url).toBe('/project/github.com/o/r;ref=main/dir/-/chat');
     expect(result.component).toBe(PageStub);
     expect(result.projectId).toBe('r@o@dir@main');
     expect(notice).toHaveBeenCalledWith('o', 'r', 'main');
@@ -617,7 +626,7 @@ describe('navigating to a short address', () => {
         '/project/github.com/acme/demo/quick-search?q=customer',
       ],
       [
-        '/project/github.com/acme/demo@main/dir/-/quick-search?q=customer',
+        '/project/github.com/acme/demo;ref=main/dir/-/quick-search?q=customer',
         '/project/github.com/acme/demo/dir/-/quick-search?q=customer',
       ],
       [
@@ -724,7 +733,7 @@ describe('navigating to a short address', () => {
         '/project/github.com/acme/demo/queries#f',
       ],
       [
-        '/project/github.com/acme/demo@main/dir/-/queries?msg=Q',
+        '/project/github.com/acme/demo;ref=main/dir/-/queries?msg=Q',
         '/project/github.com/acme/demo/dir/-/queries',
       ],
       // an address that says there is a problem
@@ -747,7 +756,7 @@ describe('navigating to a short address', () => {
 
     it('asks GitHub nothing before the question is out of the address', async () => {
       const result = await visit(
-        '//project/github.com/acme/demo@main/dir/-/queries?msg=Q',
+        '//project/github.com/acme/demo;ref=main/dir/-/queries?msg=Q',
       );
       expect(result.url).toBe(
         '/project/github.com/acme/demo/dir/-/queries',

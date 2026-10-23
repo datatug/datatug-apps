@@ -39,7 +39,7 @@ describe('one project, two spellings, one {storeId, projectId} (design 3.4 point
     ],
     ['/project/github.com/o/r/datatug', '/store/github/project/r@o'],
     [
-      '/project/github.com/o/r@v1.0.0/chat',
+      '/project/github.com/o/r/chat?ref=v1.0.0',
       '/store/github.com/project/r@o@@v1.0.0/chat',
     ],
   ])('%s and %s are the same project and page', (short, old) => {

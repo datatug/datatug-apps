@@ -86,19 +86,19 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
     ],
     [
       'a tag at the root',
-      '/project/github.com/o/r@v1.0.0',
+      '/project/github.com/o/r?ref=v1.0.0',
       'r@o@@v1.0.0',
       '',
     ],
     [
       'a tag, with a page',
-      '/project/github.com/datatug/chinook-demo@v1.0.0/chat',
+      '/project/github.com/datatug/chinook-demo/chat?ref=v1.0.0',
       'chinook-demo@datatug@@v1.0.0',
       '/chat',
     ],
     [
       'a commit with a directory',
-      `/project/github.com/o/r@${SHA}/dir`,
+      `/project/github.com/o/r/dir?ref=${SHA}`,
       `r@o@dir@${SHA}`,
       '',
     ],
@@ -116,7 +116,7 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
     ],
     [
       'the folder "datatug" on a tag',
-      '/project/github.com/o/r@v2/datatug',
+      '/project/github.com/o/r/datatug?ref=v2',
       'r@o@datatug@v2',
       '',
     ],
@@ -127,26 +127,26 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
       '',
     ],
     [
-      'a branch with a slash, written %2F inside the ref',
-      '/project/github.com/o/r@feature%2Fx/demo-project-1',
+      'a branch with a slash, written plainly in the query',
+      '/project/github.com/o/r/demo-project-1?ref=feature/x',
       'r@o@demo-project-1@feature/x',
       '',
     ],
     [
       'a branch with a slash, with a page',
-      '/project/github.com/o/r@feature%2Fx/demo-project-1/-/queries',
+      '/project/github.com/o/r/demo-project-1/-/queries?ref=feature/x',
       'r@o@demo-project-1@feature/x',
       '/queries',
     ],
     [
       'a branch at the root, with a page',
-      '/project/github.com/o/r@main/queries/q1',
+      '/project/github.com/o/r/queries/q1?ref=main',
       'r@o@@main',
       '/queries/q1',
     ],
     [
-      'a ref with a character that is not safe in a path',
-      '/project/github.com/o/r@rel%201/d',
+      'a ref with a character that is percent-encoded',
+      '/project/github.com/o/r/d?ref=rel%201',
       'r@o@d@rel 1',
       '',
     ],
@@ -157,15 +157,27 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
       '',
     ],
     [
-      'a directory named tree (the legacy word) on the default branch',
-      '/project/github.com/o/r@HEAD/tree/x',
+      'a directory named tree (the legacy word) keeps the long legacy form',
+      '/project/github.com/o/r/tree/HEAD/tree/x',
       'r@o@tree/x',
       '',
     ],
     [
       'a directory named tree on a branch',
-      '/project/github.com/o/r@v1/tree',
+      '/project/github.com/o/r/tree/v1/tree',
       'r@o@tree@v1',
+      '',
+    ],
+    [
+      'the default branch, a nested folder and a page',
+      '/project/github.com/o/r/a/b/-/queries/x',
+      'r@o@a/b',
+      '/queries/x',
+    ],
+    [
+      'a commit at the root',
+      `/project/github.com/o/r?ref=${SHA}`,
+      `r@o@@${SHA}`,
       '',
     ],
     [
@@ -256,13 +268,13 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     [
       'a link to the project file',
       '/project/github.com/o/r/blob/v1/dir/datatug-project.json',
-      '/project/github.com/o/r@v1/dir',
+      '/project/github.com/o/r/dir?ref=v1',
       'r@o@dir@v1',
     ],
     [
       'a link to the project file, at the root',
       '/project/github.com/o/r/blob/v1/datatug-project.json',
-      '/project/github.com/o/r@v1',
+      '/project/github.com/o/r?ref=v1',
       'r@o@@v1',
     ],
     [
@@ -274,7 +286,7 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     [
       'a nested link to the project file',
       '/project/github.com/o/r/blob/v1/a/b/datatug-project.json',
-      '/project/github.com/o/r@v1/a/b',
+      '/project/github.com/o/r/a/b?ref=v1',
       'r@o@a/b@v1',
     ],
     [
@@ -298,38 +310,44 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     [
       'legacy tree/<branch>',
       '/project/github.com/o/r/tree/main/demo-project-1',
-      '/project/github.com/o/r@main/demo-project-1',
+      '/project/github.com/o/r/demo-project-1?ref=main',
       'r@o@demo-project-1@main',
     ],
     [
       'legacy tree/<sha> with a page',
       `/project/github.com/o/r/tree/${SHA}/d/-/queries`,
-      `/project/github.com/o/r@${SHA}/d/-/queries`,
+      `/project/github.com/o/r/d/-/queries?ref=${SHA}`,
       `r@o@d@${SHA}`,
     ],
     [
       'legacy tree/<tag> at the root with a page',
       '/project/github.com/datatug/chinook-demo/tree/v1.0.0/-/chat',
-      '/project/github.com/datatug/chinook-demo@v1.0.0/chat',
+      '/project/github.com/datatug/chinook-demo/chat?ref=v1.0.0',
       'chinook-demo@datatug@@v1.0.0',
     ],
     [
-      'an explicit @HEAD',
-      '/project/github.com/o/r@HEAD/demo-project-1',
+      'an explicit ?ref=HEAD',
+      '/project/github.com/o/r/demo-project-1?ref=HEAD',
       '/project/github.com/o/r/demo-project-1',
       'r@o@demo-project-1',
     ],
     [
-      'an explicit @HEAD at the root, with a page',
-      '/project/github.com/o/r@HEAD/chat',
+      'an explicit ?ref=HEAD at the root, with a page',
+      '/project/github.com/o/r/chat?ref=HEAD',
       '/project/github.com/o/r/chat',
       'r@o@',
     ],
     [
-      'an encoded @ before the ref',
-      '/project/github.com/o/r%40v1/d',
-      '/project/github.com/o/r@v1/d',
-      'r@o@d@v1',
+      'tree/HEAD with a page and a ref-less query (the page keeps its own parameters)',
+      '/project/github.com/o/r/tree/HEAD/d/-/quick-search?q=x',
+      '/project/github.com/o/r/d/-/quick-search',
+      'r@o@d',
+    ],
+    [
+      'legacy blob/HEAD (default branch)',
+      '/project/github.com/o/r/blob/HEAD/datatug-project.json',
+      '/project/github.com/o/r',
+      'r@o@',
     ],
     [
       'a root page after a needless -',
@@ -344,10 +362,10 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
       'r@o@',
     ],
     [
-      'a mixed-case folder named like the legacy word',
-      '/project/github.com/o/r/Tree',
-      '/project/github.com/o/r@HEAD/Tree',
-      'r@o@Tree',
+      'a mixed-case legacy word',
+      '/project/github.com/o/r/Tree/v1/d',
+      '/project/github.com/o/r/d?ref=v1',
+      'r@o@d@v1',
     ],
   ])('%s is rewritten', (_name, path, canonicalPath, projectId) => {
     const result = parsed(path);
@@ -364,7 +382,7 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
 
   it('reports a named ref, so the caller can ask GitHub whether it is the default branch', () => {
     expect(
-      parsed('/project/github.com/o/r@main/demo-project-1'),
+      parsed('/project/github.com/o/r/demo-project-1?ref=main'),
     ).toMatchObject({
       projectId: 'r@o@demo-project-1@main',
       github: { owner: 'o', repo: 'r', folder: 'demo-project-1', ref: 'main' },
@@ -395,24 +413,46 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     expect(parsed('/store/localhost:8989/project/p1').github).toBeUndefined();
   });
 
-  it('reads a legacy branch with a slash as ref and directory (the legacy shape cannot hold one; @feature%2Fx can)', () => {
+  it('reads a legacy branch with a slash as ref and directory (the legacy shape cannot hold one; ?ref=feature/x can)', () => {
     expect(parsed('/project/github.com/o/r/tree/feature/x')).toMatchObject({
       projectId: 'r@o@x@feature',
       github: { owner: 'o', repo: 'r', folder: 'x', ref: 'feature' },
     });
-    expect(parsed('/project/github.com/o/r@feature%2Fx')).toMatchObject({
+    expect(parsed('/project/github.com/o/r?ref=feature/x')).toMatchObject({
       projectId: 'r@o@@feature/x',
       github: { owner: 'o', repo: 'r', folder: '', ref: 'feature/x' },
       isCanonical: true,
     });
+    expect(parsed('/project/github.com/o/r?ref=feature%2Fx')).toMatchObject({
+      projectId: 'r@o@@feature/x',
+      canonicalPath: '/project/github.com/o/r?ref=feature/x',
+      isCanonical: true,
+    });
   });
 
-  it('keeps the address @ apart from the id @: a ref never adds a part to the id', () => {
+  it('reads ref beside the page\'s own query parameters, and only ref', () => {
+    expect(
+      parsed('/project/github.com/o/r/d/-/quick-search?q=Customer&ref=v1&x=1#f'),
+    ).toMatchObject({
+      projectId: 'r@o@d@v1',
+      rest: '/quick-search',
+      canonicalPath: '/project/github.com/o/r/d/-/quick-search?ref=v1',
+      isCanonical: true,
+    });
+    expect(
+      parsed('/project/github.com/o/r/d/-/quick-search?q=Customer'),
+    ).toMatchObject({ projectId: 'r@o@d', isCanonical: true });
+    expect(
+      parsed('/project/github.com/o/r/d?ref=HEAD&q=x'),
+    ).toMatchObject({ projectId: 'r@o@d', canonicalPath: '/project/github.com/o/r/d', isCanonical: false });
+  });
+
+  it('keeps URL parsing apart from the id format: a ref never adds a part to the id', () => {
     // The id `repo@org@folder@ref` is built from parsed parts, never from the address text.
     for (const path of [
-      '/project/github.com/o/r@v1',
-      '/project/github.com/o/r@v1/d',
-      '/project/github.com/o/r@feature%2Fx/a/b/-/queries',
+      '/project/github.com/o/r?ref=v1',
+      '/project/github.com/o/r/d?ref=v1',
+      '/project/github.com/o/r/a/b/-/queries?ref=feature/x',
     ]) {
       const result = parsed(path);
       const reading = readGithubProjectId(result.projectId);
@@ -421,8 +461,12 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
       expect(reading.ok && reading.id.repo).toBe('r');
       expect(reading.ok && reading.id.org).toBe('o');
     }
-    // An `@` anywhere but right after the repository is refused, never read as an id separator.
-    expect(parseProjectUrl('/project/github.com/o/r@v1@x')).toEqual({
+    // An `@` is never read as an id separator: not in the repository, a folder or a ref.
+    expect(parseProjectUrl('/project/github.com/o/r@v1')).toEqual({
+      ok: false,
+      reason: 'invalid-owner-or-repo',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r/d?ref=v1@x')).toEqual({
       ok: false,
       reason: 'at-sign-not-supported',
     });
@@ -434,12 +478,20 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
       ok: false,
       reason: 'invalid-owner-or-repo',
     });
-    expect(parseProjectUrl('/project/github.com/o/r@')).toEqual({
+    expect(parseProjectUrl('/project/github.com/o/r?ref=')).toEqual({
       ok: false,
       reason: 'missing-ref',
     });
+    expect(parseProjectUrl('/project/github.com/o/r?ref=a&ref=b')).toEqual({
+      ok: false,
+      reason: 'invalid-path-segment',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r/tree/v1/d?ref=v2')).toEqual({
+      ok: false,
+      reason: 'invalid-path-segment',
+    });
     // A ref spelled with a doubled encoding is not a ref.
-    expect(parseProjectUrl('/project/github.com/o/r@feature%252Fx')).toEqual({
+    expect(parseProjectUrl('/project/github.com/o/r?ref=feature%252Fx')).toEqual({
       ok: false,
       reason: 'invalid-path-segment',
     });
@@ -571,9 +623,9 @@ describe('parseProjectUrl: inputs that are not supported', () => {
     ],
     ['a dot-dot repo', '/project/github.com/o/..', 'invalid-owner-or-repo'],
     ['an @ in the owner', '/project/github.com/o@x/r', 'invalid-owner-or-repo'],
-    ['a second @ after the repo', '/project/github.com/o/r@v1@x', 'at-sign-not-supported'],
-    ['an empty ref after @', '/project/github.com/o/r@/d', 'missing-ref'],
-    ['a ref with a dot segment', '/project/github.com/o/r@a%2F..%2Fb', 'invalid-path-segment'],
+    ['an @ in the repo', '/project/github.com/o/r@v1', 'invalid-owner-or-repo'],
+    ['an empty ref', '/project/github.com/o/r/d?ref=', 'missing-ref'],
+    ['a ref with a dot segment', '/project/github.com/o/r?ref=a/../b', 'invalid-path-segment'],
     [
       'an underscore in the owner',
       '/project/github.com/o_x/r',
@@ -786,7 +838,7 @@ describe('parseProjectUrl: the old shape', () => {
       '/store/github.com/project/r@o@@v1.0.0',
       'r@o@@v1.0.0',
       '',
-      '/project/github.com/o/r@v1.0.0',
+      '/project/github.com/o/r?ref=v1.0.0',
     ],
   ])(
     '%s resolves to the same project as its short address',
@@ -876,17 +928,17 @@ describe('projectUrl', () => {
     [
       { storeId: 'github.com', projectId: 'r@o@@v1.0.0' },
       'chat',
-      '/project/github.com/o/r@v1.0.0/chat',
+      '/project/github.com/o/r/chat?ref=v1.0.0',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@d@feature/x' },
       'queries',
-      '/project/github.com/o/r@feature%2Fx/d/-/queries',
+      '/project/github.com/o/r/d/-/queries?ref=feature/x',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@@rel 1' },
       undefined,
-      '/project/github.com/o/r@rel%201',
+      '/project/github.com/o/r?ref=rel%201',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@d@HEAD' },
@@ -1115,13 +1167,20 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
       projectId: 'r@o@@x',
       rest: '',
       isCanonical: false,
-      canonicalPath: '/project/github.com/o/r@x',
+      canonicalPath: '/project/github.com/o/r?ref=x',
     });
-    // The legacy word is only reserved without @: after it, `tree` is a folder.
-    expect(parsed('/project/github.com/o/r@v1/tree/x')).toMatchObject({
+    // A folder that starts with the legacy word keeps the long legacy form, which is then canonical.
+    expect(parsed('/project/github.com/o/r/tree/v1/tree/x')).toMatchObject({
       projectId: 'r@o@tree/x@v1',
       isCanonical: true,
     });
+    expect(projectUrl({ storeId: 'github.com', projectId: 'r@o@tree/x' })).toBe(
+      '/project/github.com/o/r/tree/HEAD/tree/x',
+    );
+    // …and cannot hold a ref with a slash: no address.
+    expect(
+      tryProjectUrl({ storeId: 'github.com', projectId: 'r@o@tree/x@feature/x' }),
+    ).toMatchObject({ ok: false });
   });
 
   // The property: for every accepted {store, id, page}, parseProjectUrl(projectUrl(x)) is x (the id in its

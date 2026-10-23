@@ -26,7 +26,7 @@ describe('projectPageHref (G-A1c)', () => {
       'github.com',
       'r@o@@v1.0.0',
       ['query', 'a/b'],
-      '/project/github.com/o/r@v1.0.0/query/a%2Fb',
+      '/project/github.com/o/r/query/a%2Fb?ref=v1.0.0',
     ],
     ['localhost:8989', 'p1', undefined, '/store/localhost:8989/project/p1'],
     [

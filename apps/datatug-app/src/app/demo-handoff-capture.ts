@@ -62,11 +62,12 @@ let current: DemoHandoff | undefined;
  * trusts, decided by `isTrustedProjectAddress` (design 3.6) on the PARSED project address or by the exact
  * historical `datatug/chinook-demo` redirect alias:
  * owner and repository ASCII-lower-cased and compared for exact equality with the compiled-in list, on its default
- * branch, that is with no ref, `@HEAD` or the legacy `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
- * `@<sha>`, `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
+ * branch, that is with no ref, `?ref=HEAD` or the legacy `tree/HEAD`. Anything else, however similar (`chinook-demo-evil`,
+ * `?ref=<sha>`, `tree/<sha>`, a look-alike letter such as the Kelvin sign U+212A that `toLowerCase()` would turn into `k`), is not.
  */
-export function isTrustedHandoff(pathname: string): boolean {
-  const target = handoffTargetOfPath(pathname);
+export function isTrustedHandoff(pathname: string, search: string): boolean {
+  // The query too: a project's ref is its `ref` parameter, and only the default branch is trusted.
+  const target = handoffTargetOfPath(pathname, search);
   if (!target) return false;
   if (target.kind === 'demo') return true;
   // The former first-party repository is an exact, default-branch alias during
@@ -77,11 +78,11 @@ export function isTrustedHandoff(pathname: string): boolean {
       (target.ref === undefined || target.ref === 'HEAD') && target.dir.length === 0) return true;
   const project = parseProjectUrl(
     `/project/github.com/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repo)}` +
-      (target.ref === undefined ? '' : `@${encodeURIComponent(target.ref)}`) +
       // Only the canonical demo-project-1 folder is trusted by isTrustedProjectAddress.
       ('dir' in target && target.dir.length > 0
         ? '/' + target.dir.map(encodeURIComponent).join('/') + '/-'
-        : ''),
+        : '') +
+      (target.ref === undefined ? '' : `?ref=${encodeURIComponent(target.ref)}`),
   );
   return isTrustedProjectAddress(project);
 }
@@ -267,7 +268,7 @@ export function captureDemoHandoff(env: CaptureEnv = defaultEnv()): void {
   }
   if (search) {
     const parsed = parseHandoffSearch(search);
-    const trusted = isTrustedHandoff(loc.pathname);
+    const trusted = isTrustedHandoff(loc.pathname, loc.search);
     // Not trusted: only the language survives, for the neutral page. The question is dropped here, not hidden later.
     current = trusted
       ? parsed
@@ -321,10 +322,11 @@ function samePath(kept: string, pathname: string): boolean {
 export function demoHandoff(
   storage: () => Storage = () => window.sessionStorage,
   pathname: string = window.location.pathname,
+  search: string = pathname === window.location.pathname ? window.location.search : '',
 ): DemoHandoff | undefined {
   // Whatever was captured, the question is only ever returned for an address that may show it.
   const forPath = (handoff: DemoHandoff): DemoHandoff =>
-    isTrustedHandoff(pathname)
+    isTrustedHandoff(pathname, search)
       ? handoff
       : { question: '', lang: handoff.lang, truncated: false };
   if (current) return forPath(current);

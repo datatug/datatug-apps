@@ -12,7 +12,11 @@ import {
   projectApiQuery,
   readProjectApiQuery,
 } from '../nav/project-api-routing';
-import { projectPageHref } from '../nav/project-page-href';
+import {
+  projectPageHref,
+  projectRouterCommands,
+  type ProjectRouterCommand,
+} from '../nav/project-page-href';
 import { parseProjectUrl } from '../nav/nav-models';
 
 const INCIDENT_PATH = /^\/incidents(?:\/|$)/;
@@ -35,7 +39,8 @@ export function incidentProjectRouteScope(
     ].some((key) => url.searchParams.getAll(key).length > 1)
   )
     return undefined;
-  const parsed = parseProjectUrl(url.pathname);
+  // With its query: a GitHub project's `?ref=` is part of its address.
+  const parsed = parseProjectUrl(url.pathname + url.search);
   if (!parsed.ok) return undefined;
   const segments = parsed.rest.split('/');
   const incidentStoreId = segments[3]
@@ -68,9 +73,8 @@ export function incidentProjectRefFromUrl(
   const withoutFragment =
     hashIndex < 0 ? currentUrl : currentUrl.slice(0, hashIndex);
   const queryIndex = withoutFragment.indexOf('?');
-  const path =
-    queryIndex < 0 ? withoutFragment : withoutFragment.slice(0, queryIndex);
-  const parsed = parseProjectUrl(path);
+  // With its query: a GitHub project's `?ref=` is part of which project the address names.
+  const parsed = parseProjectUrl(withoutFragment);
   if (!parsed.ok || !INCIDENT_PATH.test(parsed.rest)) {
     return undefined;
   }
@@ -91,13 +95,12 @@ export function incidentProjectRefFromUrl(
 export function incidentPageCommands(
   currentUrl: string,
   tail: readonly string[] = [],
-): readonly string[] {
+): readonly ProjectRouterCommand[] {
   const project = incidentProjectRefFromUrl(currentUrl);
   if (!project) {
     return ['/incidents', ...tail];
   }
-  const href = projectPageHref(project, ['incidents', ...tail]);
-  return [href.split('?')[0]];
+  return projectRouterCommands(projectPageHref(project, ['incidents', ...tail]));
 }
 
 /**
