@@ -60,11 +60,30 @@ export function agentBaseUrlOfPath(pathname: string): string {
     : `${getStoreUrl(storeId)}/datatug`;
 }
 
-/** The loopback agent named by an explicit `/store/<id>` route; unlike the API base fallback, this never guesses. */
+/**
+ * The store an incident address names in its `agent` query parameter (`/incidents[/…]?agent=<store id>&…`, the
+ * incident pages' own agent selector, libs/.../incident-route-context.ts), or none.
+ */
+function storeIdOfIncidentAddress(
+  pathname: string,
+  search: string,
+): string | undefined {
+  if (firstSegmentOf(pathname) !== 'incidents') {
+    return undefined;
+  }
+  return new URLSearchParams(search).get('agent') || undefined;
+}
+
+/**
+ * The loopback agent named by an explicit `/store/<id>` route, or by the `agent` parameter of an incident address;
+ * unlike the API base fallback, this never guesses. The session token goes only to this origin.
+ */
 export function explicitAgentOriginOfPath(
   pathname: string,
+  search = '',
 ): string | undefined {
-  const storeId = storeIdOfStorePath(pathname);
+  const storeId =
+    storeIdOfStorePath(pathname) ?? storeIdOfIncidentAddress(pathname, search);
   if (!storeId || GITHUB_STORE_IDS.includes(storeId)) return undefined;
   let url: URL;
   try {

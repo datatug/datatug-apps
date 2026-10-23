@@ -518,9 +518,28 @@ async function startAgent(
     }
     sessionToken = await exchangeCode(origin, code);
     await Promise.all(
-      [...liveContexts].map((context) =>
-        installTokens(context, { [origin]: sessionToken }).catch(() => undefined),
-      ),
+      [...liveContexts].map(async (context) => {
+        await installTokens(context, { [origin]: sessionToken }).catch(
+          () => undefined,
+        );
+        // A restart ends the old session: pages that are already open must not keep sending the dead token.
+        await Promise.all(
+          context.pages().map((page) =>
+            page
+              .evaluate(
+                ({ key, token }) => {
+                  try {
+                    localStorage.setItem(key, token);
+                  } catch {
+                    /* about:blank */
+                  }
+                },
+                { key: SESSION_TOKEN_KEY_PREFIX + origin, token: sessionToken },
+              )
+              .catch(() => undefined),
+          ),
+        );
+      }),
     );
   };
   const launch = async (): Promise<void> => {

@@ -526,10 +526,11 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
     expect(rejectedBody.replayed).toBe(false);
 
     const replay = await page.evaluate(
-      async ({ url, body }) => {
+      async ({ url, body, auth }) => {
         const response = await fetch(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          // A raw page fetch is not the app's HttpClient: it carries the agent's session token itself.
+          headers: { 'content-type': 'application/json', ...auth },
           body: JSON.stringify(body),
         });
         return {
@@ -540,7 +541,11 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
           },
         };
       },
-      { url: rejectResponse.url(), body: rejectRequest },
+      {
+        url: rejectResponse.url(),
+        body: rejectRequest,
+        auth: incidentAgentServer.authHeaders(),
+      },
     );
     expect(replay.status).toBe(200);
     expect(replay.body).toMatchObject({
