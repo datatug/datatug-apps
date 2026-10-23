@@ -35,6 +35,16 @@ describe('application-owned public OVDB development transport', () => {
     expect(fetcher).toHaveBeenLastCalledWith(url, protectedHeaders);
   });
 
+  it('accepts the datatug.localhost dev host as its loopback origin and still refuses other hosts', () => {
+    const fetcher = vi.fn<typeof fetch>();
+    expect(() =>
+      createPublicOvdbDevFetch(PUBLIC_OVDB_LOOPBACK_MODE, fetcher, 'http://datatug.localhost:4388'),
+    ).not.toThrow();
+    expect(() =>
+      createPublicOvdbDevFetch(PUBLIC_OVDB_LOOPBACK_MODE, fetcher, 'http://evil.localhost:4388'),
+    ).toThrow(/loopback origin/);
+  });
+
   it('preserves the effective Request body, init overrides and abort signal', async () => {
     const controller = new AbortController();
     let forwarded!: Request;

@@ -1,4 +1,5 @@
 import { test as base, expect } from '../../helpers/demodb-guard';
+import type { APIRequestContext, Browser, BrowserContext } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -27,13 +28,20 @@ import * as path from 'node:path';
 export interface AgentServer {
   readonly host: string;
   readonly port: number;
-  /** `host:port`, usable directly as a DataTug web-app storeId (`/store/<storeId>/...`). */
+  /** `http-<host>:<port>`, usable directly as a DataTug web-app storeId (`/store/<storeId>/...`). The app sends the
+   * session token only to an explicit `http-` loopback store (agent-access.interceptor.ts), so the bare `host:port`
+   * form of earlier agents no longer authenticates. */
   readonly storeId: string;
   readonly demoDir: string;
   /** Absolute path to the captured stdout+stderr log file (kept as a CI artifact). */
   readonly logFile: string;
   /** In-memory snapshot of everything the agent has printed so far. */
   readLog(): string;
+  /** The session token this agent issued for the harness's one-time code (datatug-cli v0.85.0+ session exchange).
+   * `restart()` re-exchanges, so call this at use time rather than caching the value. */
+  sessionToken(): string;
+  /** `Authorization: Bearer <session token>` for a direct request (APIRequestContext, node fetch, page fetch). */
+  authHeaders(): Record<string, string>;
   /** Restart the same real agent on the same URL and repository. A restart
    * rotates datatug-cli's server-issued securityContextId, so journeys can
    * exercise STALE_CONTEXT recovery without intercepting a request. */
@@ -102,6 +110,60 @@ interface JourneyWorkerFixtures {
 }
 
 const PING_TIMEOUT_MS = 20_000;
+
+/**
+ * datatug-cli v0.85.0+ refuses every route (ping included) without a session token. `datatug serve` prints a one-time
+ * `#code=` link; the harness exchanges that code once (`POST /datatug/session/exchange`, the call the app makes itself
+ * in AgentAccessService) and keeps the token. The browser gets the same token in localStorage under the key the app
+ * reads (`datatug.agent-session:<origin>`), and direct APIRequestContext calls get it as a Bearer header, so specs
+ * keep addressing the agent as they always did.
+ */
+const SESSION_TOKEN_KEY_PREFIX = 'datatug.agent-session:';
+const agentTokens = new Map<string, () => string>();
+const liveContexts = new Set<BrowserContext>();
+
+function tokenSnapshot(): Record<string, string> {
+  const tokens: Record<string, string> = {};
+  for (const [origin, token] of agentTokens) tokens[origin] = token();
+  return tokens;
+}
+
+async function installTokens(
+  context: BrowserContext,
+  tokens: Record<string, string>,
+): Promise<void> {
+  if (Object.keys(tokens).length === 0) return;
+  await context.addInitScript(
+    ({ prefix, entries }) => {
+      try {
+        for (const [origin, token] of Object.entries(entries)) {
+          localStorage.setItem(prefix + origin, token);
+        }
+      } catch {
+        /* storage unavailable on this origin (about:blank) */
+      }
+    },
+    { prefix: SESSION_TOKEN_KEY_PREFIX, entries: tokens },
+  );
+}
+
+async function exchangeCode(origin: string, code: string): Promise<string> {
+  const response = await fetch(`${origin}/datatug/session/exchange`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `POST ${origin}/datatug/session/exchange answered HTTP ${response.status}`,
+    );
+  }
+  const body = (await response.json()) as { token?: unknown };
+  if (typeof body.token !== 'string' || !body.token) {
+    throw new Error(`${origin} session exchange returned no token`);
+  }
+  return body.token;
+}
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 
 /** Walk up from `startDir` to the nearest ancestor holding `nx.json` (the datatug-apps repo/worktree root). */
@@ -269,7 +331,8 @@ async function waitForPing(url: string, timeoutMs: number): Promise<void> {
   while (Date.now() < deadline) {
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(1_000) });
-      if (res.ok) {
+      // A session-protected agent (v0.85.0+) answers 401 until the code is exchanged: alive is enough here.
+      if (res.ok || res.status === 401) {
         return;
       }
       lastError = new Error(`HTTP ${res.status} ${res.statusText}`);
@@ -433,7 +496,54 @@ async function startAgent(
   let childExitPromise: Promise<void> | undefined;
   let stopChildPromise: Promise<void> | undefined;
   const pingUrl = `http://${host}:${port}/datatug/ping`;
+  const origin = `http://${host}:${port}`;
+  let sessionToken = '';
+  agentTokens.set(origin, () => sessionToken);
+  /** Waits for the one-time code this launch printed, exchanges it, and hands the token to open browser contexts. */
+  const authenticate = async (logStart: number): Promise<void> => {
+    const deadline = Date.now() + PING_TIMEOUT_MS;
+    let code: string | undefined;
+    while (!code && Date.now() < deadline) {
+      const printed = logBuffer
+        .slice(logStart)
+        .replaceAll(String.fromCharCode(27), ' ');
+      code = printed.match(/#code=([A-Za-z0-9._~-]+)/)?.[1];
+      if (!code) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!code) {
+      throw new Error(
+        `datatug serve printed no one-time #code= link within ${PING_TIMEOUT_MS}ms.\n` +
+          `--- captured log (${logFile}) ---\n${logBuffer || '(empty)'}`,
+      );
+    }
+    sessionToken = await exchangeCode(origin, code);
+    await Promise.all(
+      [...liveContexts].map(async (context) => {
+        await installTokens(context, { [origin]: sessionToken }).catch(
+          () => undefined,
+        );
+        // A restart ends the old session: pages that are already open must not keep sending the dead token.
+        await Promise.all(
+          context.pages().map((page) =>
+            page
+              .evaluate(
+                ({ key, token }) => {
+                  try {
+                    localStorage.setItem(key, token);
+                  } catch {
+                    /* about:blank */
+                  }
+                },
+                { key: SESSION_TOKEN_KEY_PREFIX + origin, token: sessionToken },
+              )
+              .catch(() => undefined),
+          ),
+        );
+      }),
+    );
+  };
   const launch = async (): Promise<void> => {
+    const logStart = logBuffer.length;
     exited = undefined;
     stopChildPromise = undefined;
     const launched = spawn(binResult.value, args, {
@@ -471,6 +581,7 @@ async function startAgent(
     });
     try {
       await Promise.race([waitForPing(pingUrl, PING_TIMEOUT_MS), spawnError]);
+      await Promise.race([authenticate(logStart), spawnError]);
     } catch (err) {
       if (!exited) {
         launched.kill('SIGKILL');
@@ -548,10 +659,12 @@ async function startAgent(
   const server: AgentServer = {
     host,
     port,
-    storeId: `${host}:${port}`,
+    storeId: `http-${host}:${port}`,
     demoDir,
     logFile,
     readLog: () => logBuffer,
+    sessionToken: () => sessionToken,
+    authHeaders: () => ({ authorization: `Bearer ${sessionToken}` }),
     restart: async () => {
       await stopChild();
       appendLog('\n--- restarting real datatug agent on the same URL ---\n');
@@ -563,6 +676,7 @@ async function startAgent(
   const stop = async (): Promise<void> => {
     try {
       await stopChild();
+      agentTokens.delete(origin);
     } finally {
       logStream.end();
       if (isolatedProjectRoot) {
@@ -579,6 +693,41 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
   // This lane only talks to a local agent: count and detect DemoDB requests but install no route, for the tests of THIS fixture
   // only (see `demodbPassive` in helpers/demodb-guard.ts).
   demodbPassive: [true, { option: true }] as never,
+  // Every browser context of this lane starts with the session tokens of the agents that are up, and gets the token of
+  // an agent that starts (or restarts) later through `liveContexts`.
+  context: async ({ context }, use) => {
+    await installTokens(context, tokenSnapshot());
+    liveContexts.add(context);
+    try {
+      await use(context);
+    } finally {
+      liveContexts.delete(context);
+    }
+  },
+  // Direct `request.get/post(...)` calls to an agent carry that agent's session token, like the browser's do.
+  request: async ({ request }, use) => {
+    const methods = new Set(['get', 'post', 'put', 'patch', 'delete', 'head', 'fetch']);
+    const authenticated = new Proxy(request, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, target) as unknown;
+        if (typeof property !== 'string' || !methods.has(property) || typeof value !== 'function') {
+          return typeof value === 'function' ? value.bind(target) : Reflect.get(target, property, receiver);
+        }
+        return (url: string, options: { headers?: Record<string, string> } = {}) => {
+          let origin = '';
+          try { origin = new URL(url).origin; } catch { /* a Request object: pass through */ }
+          const token = agentTokens.get(origin)?.();
+          const call = value as (u: string, o: object) => Promise<unknown>;
+          return call.call(
+            target,
+            url,
+            token ? { ...options, headers: { authorization: `Bearer ${token}`, ...options.headers } } : options,
+          );
+        };
+      },
+    }) as APIRequestContext;
+    await use(authenticated);
+  },
   agentServer: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use, workerInfo) => {
@@ -670,5 +819,18 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
     { scope: 'worker' },
   ],
 });
+
+/**
+ * A separate browser session (`browser.newContext()`) that still holds the agents' session tokens. A raw
+ * `browser.newContext()` has no token and every agent route answers 401, so journeys that model "a colleague on a
+ * fresh browser" open theirs here.
+ */
+export async function newAgentContext(browser: Browser): Promise<BrowserContext> {
+  const context = await browser.newContext();
+  await installTokens(context, tokenSnapshot());
+  liveContexts.add(context);
+  context.once('close', () => liveContexts.delete(context));
+  return context;
+}
 
 export { expect };

@@ -169,7 +169,7 @@ bootstrapApplication(DatatugAppComponent, {
     {
       provide: AGENT_ACTIVE_ORIGIN,
       useValue: (): string | undefined =>
-        explicitAgentOriginOfPath(location.pathname),
+        explicitAgentOriginOfPath(location.pathname, location.search),
     },
     provideAgentAccessForModuleClients(),
     provideLinkTelemetryPrivacy(),

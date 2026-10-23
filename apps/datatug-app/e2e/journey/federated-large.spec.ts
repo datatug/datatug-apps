@@ -22,7 +22,8 @@ function startOvdb(): Promise<{
 }> {
   const counts = { invoices: 0, countries: 0, closed: 0 };
   let countryName = 'Alpha';
-  const origin = `http://localhost:${process.env['DATATUG_E2E_PORT'] || '4200'}`;
+  // The journey project's page origin (playwright.config.ts): the one dev host a v0.110.0 agent answers.
+  const origin = `http://datatug.localhost:${process.env['DATATUG_E2E_PORT'] || '4200'}`;
   const headers = {
     'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -129,9 +130,9 @@ test('pages a cross-database join on demand and stores the full result', async (
       JSON.stringify({
         id: queryId,
         title: 'Large invoices joined to countries',
-        // The journey's pinned agent (DATATUG_CLI_REF, ci.yml) predates the TugQL rename and reads only the legacy
-        // `DTQL` type and `<id>.query.dtql` body; the app reads both forms. Switch with the CLI pin bump.
-        type: 'DTQL',
+        // datatug-cli v0.110.0 rejects a query definition without its creation instant.
+        createdAt: '2026-10-23T00:00:00Z',
+        type: 'TugQL',
         federation: {
           ovdbBaseUrl: `http://127.0.0.1:${ovdb.port}`,
           tables: [
@@ -160,7 +161,7 @@ test('pages a cross-database join on demand and stores the full result', async (
       }),
     );
     writeFileSync(
-      join(queryDir, `${queryId}.query.dtql`),
+      join(queryDir, `${queryId}.query.tugql.yaml`),
       `from:
   database: orders
   name: Invoice
