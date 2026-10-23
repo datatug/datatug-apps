@@ -168,6 +168,8 @@ export class HttpQueryEditorComponent {
   readonly boardValues = input<Readonly<Record<string, unknown>> | undefined>(undefined);
   /** Applied session context bag entries. */
   readonly bagEntries = input<readonly HttpBagEntry[]>([]);
+  /** False when the page offers the one primary Run (the semantic path): this editor then only authors the request. */
+  readonly showRun = input(true);
 
   /** Columns picked in the run panel by parameter id (this run only). */
   protected readonly pickedColumns = signal<Readonly<Record<string, string>>>({});

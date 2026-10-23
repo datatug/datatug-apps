@@ -3031,6 +3031,48 @@ select (
     expect(component.localOvdbNeeded()).toBeUndefined();
   });
 
+  describe('HTTP query bound from an Investigation Context selection', () => {
+    const countryBinding = (origin: 'selection' | 'context' | 'default', blocked?: 'ambiguous') =>
+      ({
+        parameterId: 'name',
+        meta: { entity: 'Country', field: 'Name' },
+        value: { type: 'string', value: 'Canada' },
+        origin,
+        ...(blocked ? { blocked } : {}),
+      }) as never;
+
+    it('offers the resolved selection and context bindings to the HTTP editor, and a single semantic Run', async () => {
+      component = await createComponent();
+      (component as unknown as { queryState: { queryType: string } }).queryState = {
+        ...(component as unknown as { queryState: object }).queryState,
+        queryType: 'HTTP',
+      } as never;
+      expect(component.httpSemanticRun()).toBe(false);
+      component.bindings.set([countryBinding('selection')]);
+      expect(component.httpBagEntries()).toEqual([
+        { entity: 'Country', field: 'Name', kind: 'scalar', value: 'Canada' },
+      ]);
+      expect(component.httpSemanticRun()).toBe(true);
+    });
+
+    it('never offers a blocked or default-origin value, and a non-HTTP query keeps its own Run', async () => {
+      component = await createComponent();
+      component.bindings.set([countryBinding('selection', 'ambiguous'), countryBinding('default')]);
+      expect(component.httpBagEntries()).toEqual([]);
+      (component as unknown as { queryState: { queryType: string } }).queryState = {
+        ...(component as unknown as { queryState: object }).queryState,
+        queryType: 'HTTP',
+      } as never;
+      component.bindings.set([countryBinding('default')]);
+      expect(component.httpSemanticRun()).toBe(false);
+      (component as unknown as { queryState: { queryType: string } }).queryState = {
+        ...(component as unknown as { queryState: object }).queryState,
+        queryType: 'SQL',
+      } as never;
+      expect(component.httpSemanticRun()).toBe(false);
+    });
+  });
+
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
     component.project = {

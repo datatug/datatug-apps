@@ -324,6 +324,22 @@ describe('HttpQueryEditorComponent', () => {
     expect(emitted.at(-1)?.url).toBe('https://x.test/a?b=1&c=v');
   });
 
+  it('offers no Run of its own when the page offers the semantic Run (showRun = false)', async () => {
+    fixture = TestBed.createComponent(HttpQueryEditorComponent);
+    fixture.componentRef.setInput('request', baseRequest);
+    fixture.componentRef.setInput('showRun', false);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(el().querySelector('ion-button[color="primary"]')).toBeNull();
+    expect(el().querySelector('ion-segment[aria-label="Run via"]')).toBeNull();
+  });
+
+  it('offers Run and Run via by default', async () => {
+    await create();
+    expect(el().querySelector('ion-button[color="primary"]')).not.toBeNull();
+    expect(el().querySelector('ion-segment[aria-label="Run via"]')).not.toBeNull();
+  });
+
   describe('parameters (http-query-parameters)', () => {
     const carrier: IHttpQueryRequest = {
       queryType: QueryType.HTTP,

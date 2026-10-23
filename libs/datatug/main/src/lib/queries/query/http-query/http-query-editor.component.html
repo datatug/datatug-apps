@@ -18,14 +18,16 @@
       placeholder="https://api.example.com/path"
       [value]="url()"
       (ionInput)="onUrl($event)"
-      (keyup.enter)="run()"
+      (keyup.enter)="showRun() && run()"
     />
-    <ion-buttons slot="end">
-      <ion-button color="primary" [disabled]="!canRun()" (click)="run()">
-        <ion-icon slot="start" name="play-circle-outline" />
-        {{ running() ? 'Running…' : 'Run' }}
-      </ion-button>
-    </ion-buttons>
+    @if (showRun()) {
+      <ion-buttons slot="end">
+        <ion-button color="primary" [disabled]="!canRun()" (click)="run()">
+          <ion-icon slot="start" name="play-circle-outline" />
+          {{ running() ? 'Running…' : 'Run' }}
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-item>
   @if (urlProblem(); as problem) {
     <ion-item lines="none">
@@ -34,6 +36,7 @@
       }}</ion-note>
     </ion-item>
   }
+  @if (showRun()) {
   <ion-item lines="full">
     <ion-label color="medium">Run via</ion-label>
     <ion-segment
@@ -45,6 +48,7 @@
       <ion-segment-button value="server">DataTug server</ion-segment-button>
     </ion-segment>
   </ion-item>
+  }
   @if (browserForbidden().length) {
     <ion-item lines="none">
       <ion-note class="http-forbidden-note ion-text-wrap"

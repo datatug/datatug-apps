@@ -600,6 +600,7 @@
         (parametersChange)="httpParametersChanged($event)"
         [rowBinding]="httpRowBinding()"
         [bagEntries]="httpBagEntries()"
+        [showRun]="!httpSemanticRun()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -1445,7 +1446,7 @@
         }
       }
   </ng-template>
-  @if (!isTextQueryWorkspace() && queryState.queryType !== 'HTTP') {
+  @if ((!isTextQueryWorkspace() && queryState.queryType !== 'HTTP') || httpSemanticRun()) {
     <ion-card>
       <ng-container *ngTemplateOutlet="nativeParameters" />
       <ng-container *ngTemplateOutlet="executionRuntime" />

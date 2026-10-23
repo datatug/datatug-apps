@@ -641,6 +641,7 @@ import { HttpRowActionComponent } from '../../http-row-action/http-row-action.co
 import { HttpRowBindingStore } from '../../http-row-action/http-row-binding.store';
 import {
   bagEntriesFromSnapshot,
+  type HttpBagEntry,
   type HttpRowBinding,
 } from '../../http-parameter-binding';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -4488,12 +4489,51 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
-  public readonly httpBagEntries = computed(() => {
+  public readonly httpBagEntries = computed<HttpBagEntry[]>(() => {
     const id = this.contextSessionId();
-    return bagEntriesFromSnapshot(
+    const fromSession = bagEntriesFromSnapshot(
       id ? this.sessionWorkspace?.snapshotFor(id) : undefined,
     );
+    // The Investigation Context selection and context bindings resolve through the same precedence engine as a
+    // SQL/DTQL parameter (`bindings`); an unblocked value wins over the session snapshot's entry for its field.
+    const resolved: HttpBagEntry[] = this.effectiveBindings().flatMap(
+      (binding) =>
+        binding.meta &&
+        binding.value &&
+        (binding.origin === 'selection' || binding.origin === 'context')
+          ? [
+              {
+                entity: binding.meta.entity,
+                field: binding.meta.field,
+                kind: 'scalar' as const,
+                value: displayTypedValue(binding.value),
+              },
+            ]
+          : [],
+    );
+    const taken = new Set(resolved.map((e) => `${e.entity}.${e.field}`));
+    return [
+      ...resolved,
+      ...fromSession.filter((e) => !taken.has(`${e.entity}.${e.field}`)),
+    ];
   });
+
+  /**
+   * An HTTP query opened with an Investigation Context selection or context binding for its parameters runs through
+   * the semantic path (result provenance, the explicit recorded-snapshot fallback): one primary Run action, the
+   * Parameters card's. The HTTP editor stays for authoring, without its own Run.
+   */
+  public httpSemanticRun(): boolean {
+    return (
+      this.queryState.queryType === QueryType.HTTP &&
+      this.visibleBindings().some(
+        (binding) =>
+          binding.origin === 'selection' ||
+          binding.origin === 'context' ||
+          !!binding.blocked,
+      )
+    );
+  }
 
   /** The result row an HTTP run was launched from (Run HTTP query action). */
   public readonly httpRowBinding = signal<HttpRowBinding | undefined>(undefined);
