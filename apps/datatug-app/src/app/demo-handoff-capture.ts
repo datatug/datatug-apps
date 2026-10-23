@@ -92,8 +92,16 @@ export function isTrustedHandoff(pathname: string, search: string): boolean {
  * router reads as `/project/…`) is, to replaceState, an address on another host: it needs its origin.
  */
 function withoutQuery(loc: Location): string {
+  // `?ref=` is part of which project the address names (founder 2026-10-23): it stays, every other key goes.
+  const refs = loc.search
+    .slice(1)
+    .split('&')
+    .filter((pair) => pair && keyOfPair(pair) === 'ref');
   return (
-    (loc.pathname.startsWith('//') ? loc.origin : '') + loc.pathname + loc.hash
+    (loc.pathname.startsWith('//') ? loc.origin : '') +
+    loc.pathname +
+    (refs.length ? '?' + refs.join('&') : '') +
+    loc.hash
   );
 }
 

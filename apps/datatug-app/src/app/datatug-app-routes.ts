@@ -182,16 +182,25 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
     page === 'chat' || page === 'start-chat'
       ? ['-', asked ? 'start-chat' : page]
       : [];
-  const destination = urlTreeOfSegments([
-    'project',
-    'github.com',
-    'datatug',
-    'datatug-demo-project',
-    'demo-project-1',
-    ...suffix,
-  ]);
+  // The folder/start-chat alias is of this same repository: its `?ref=` (the repository segment's matrix parameter)
+  // names the version and is carried over (review of eb9f5b26, 2). The Chinook alias never has one other than HEAD.
+  const ref = segments[3]?.parameters['ref'];
+  const destination = urlTreeOfSegments(
+    [
+      'project',
+      'github.com',
+      'datatug',
+      'datatug-demo-project',
+      'demo-project-1',
+      ...suffix,
+    ],
+    ref !== undefined && ref !== 'HEAD' ? ref : undefined,
+  );
   if (suffix.length) {
-    const canonicalPath = inject(Router).serializeUrl(destination);
+    // The key is the path alone: a `?ref=` stays in the address, not in the kept question.
+    const canonicalPath = inject(Router)
+      .serializeUrl(destination)
+      .split('?')[0];
     let search = (window as unknown as Record<string, unknown>)[
       DEMO_HANDOFF_STASH
     ];
@@ -237,9 +246,16 @@ export const datatugProfileOnly = (): boolean =>
  * The URL tree of an address built from its decoded segments, not parsed from a string: the router's parser reads
  * `(` as the start of an outlet group and `//` as a boundary, and the serializer encodes each segment again.
  */
-function urlTreeOfSegments(segments: readonly string[]): UrlTree {
+function urlTreeOfSegments(
+  segments: readonly string[],
+  ref?: string,
+): UrlTree {
+  // `ref`: the GitHub project's `?ref=`, inside the router the repository segment's matrix parameter (index 3).
   const primary = new UrlSegmentGroup(
-    segments.map((segment) => new UrlSegment(segment, {})),
+    segments.map(
+      (segment, i) =>
+        new UrlSegment(segment, i === 3 && ref !== undefined ? { ref } : {}),
+    ),
     {},
   );
   const root = new UrlSegmentGroup([], { primary });
@@ -266,9 +282,11 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
     ),
   );
   if (decision.kind === 'move-to-start-chat')
-    return new RedirectCommand(urlTreeOfSegments(decision.segments), {
-      replaceUrl: true,
-    });
+    return new RedirectCommand(
+      // The ref names the project: it stays (review of eb9f5b26, 1).
+      urlTreeOfSegments(decision.segments, segments[3]?.parameters['ref']),
+      { replaceUrl: true },
+    );
   return decision.kind === 'page';
 };
 

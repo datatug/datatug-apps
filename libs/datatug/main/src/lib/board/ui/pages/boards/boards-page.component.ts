@@ -1,3 +1,4 @@
+import { githubRefQuery } from '@datatug/project-address';
 import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import {
   Component,
@@ -233,8 +234,13 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   };
 
   ngOnInit() {
+    // A GitHub project's `?ref=` is part of its address: the parent page keeps it.
     this.defaultHref =
-      location.pathname.split('/').slice(0, -1).join('/') + 's';
+      location.pathname.split('/').slice(0, -1).join('/') +
+      's' +
+      githubRefQuery(
+        new URLSearchParams(location.search).get('ref') ?? undefined,
+      );
   }
 
   public goBoard(item: unknown): void {

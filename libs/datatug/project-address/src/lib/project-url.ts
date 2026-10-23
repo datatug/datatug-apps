@@ -46,10 +46,11 @@ export const DEMO_PROJECT_REF: IProjectRef = {
 // Project addresses (design `demo-as-github-project.md` 3.1, 3.3, 3.4, 3.4a)
 //
 // Two shapes of a project path exist, and these functions are the one place that knows them:
-//   - GitHub projects: `/project/github.com/<owner>/<repo>[@<ref>][/<dir>…][/-/<page>…]` (canonical; the legacy
+//   - GitHub projects: `/project/github.com/<owner>/<repo>[/<dir>…][/-/<page>…][?ref=<ref>]` (canonical; the legacy
 //     `…/<repo>/tree/<ref>[/<dir>…][/-/<page>…]` is read and redirects to it);
 //   - every store, GitHub included for as long as it is accepted: `/store/<storeId>/project/<projectId>[/<page>…]`.
-// Both are paths (a `Location.pathname`), never a path with a query string or a fragment.
+// The `/store/…` shape is a path only; a GitHub address may carry `?ref=` (read by `parseProjectUrl`, the only query
+// parameter it reads). Neither takes a fragment.
 //
 // Contract: for every `{storeId, projectId}` and page that `projectUrl` accepts, `parseProjectUrl` reads the
 // returned path back as that same project (the canonical id) and page; everything else is refused, never turned
@@ -143,7 +144,7 @@ export interface IProjectUrlParts {
   readonly shape: 'short' | 'legacy' | 'space';
   /** The one address of this project and page (design 3.4a), `rest` kept. */
   readonly canonicalPath: string;
-  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `@HEAD`, a legacy `tree/<ref>` or `blob/` link, the legacy `/store/…` shape). Always true for a non-GitHub store (one shape, left as typed). */
+  /** False when the typed path is another spelling of `canonicalPath` (case, `.git`, a trailing slash, `?ref=HEAD`, `%2F` in the ref, a legacy `tree/<ref>` or `blob/` link, the legacy `/store/…` shape). Always true for a non-GitHub store (one shape, left as typed). */
   readonly isCanonical: boolean;
   /**
    * For a GitHub project: its parts, so that no caller splits the id again. `ref` is the typed branch, tag or

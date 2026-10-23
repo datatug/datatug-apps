@@ -1179,6 +1179,31 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     }
   }
 
+  // review of eb9f5b26, 1: `?ref=` names the project, so the old chat address keeps it on its way to start-chat;
+  // a ref other than the default branch is not the trusted demo, so the wording is neutral.
+  for (const [typed, landed] of [
+    [`${OTHER_ROOT}/dir/-/chat?ref=feature/x&msg=${enc}&lang=ru`, `${OTHER_ROOT}/dir/-/start-chat?ref=feature/x`],
+    [
+      `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat?msg=${enc}&ref=0123abcd&lang=ru`,
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat?ref=0123abcd',
+    ],
+  ]) {
+    test(`the old chat address with a ref (${landed}) keeps the ref, and the question is not echoed`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const watched = await openAndWatch(page, context, baseURL ?? '', typed, async () => {
+        await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+      });
+      const url = new URL(page.url());
+      expect(url.pathname + url.search + url.hash).toBe(landed);
+      await expect(page.locator('blockquote')).toHaveCount(0);
+      expect(await page.content()).not.toContain(MARKER);
+      await expectNoQuestion(page, watched, false);
+    });
+  }
+
   test('/demo?q=…&scenario=…&lang=…, the live Ask button of datatug.io, still shows the holding page and strips the question', async ({
     page,
     context,

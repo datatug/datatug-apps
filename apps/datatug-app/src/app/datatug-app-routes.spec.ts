@@ -262,6 +262,14 @@ describe('DataTug app routes', () => {
       const handoff = await visit('datatug.app', canonical + '/start-chat');
       expect(handoff.url).toBe(canonical + '/-/start-chat');
       expect(handoff.component).toBe(HandoffStub);
+      // The alias keeps the version it names (review of eb9f5b26, 2): never silently the default branch.
+      TestBed.resetTestingModule();
+      const other = await visit(
+        'datatug.app',
+        canonical + '/start-chat?ref=0123abcd',
+      );
+      expect(other.url).toBe(canonical + '/-/start-chat?ref=0123abcd');
+      expect(other.component).toBe(HandoffStub);
       for (const alias of [
         '/project/github.com/datatug/chinook-demo?ref=HEAD',
         '/project/github.com/datatug/chinook-demo/-/chat?ref=HEAD',
@@ -441,6 +449,25 @@ describe('DataTug app routes', () => {
           expect((await visit('datatug.app', url)).component, 'no query').toBe(
             ProjectStub,
           );
+        },
+      );
+
+      it.each([
+        [
+          '/project/github.com/acme/demo/dir/-/chat?ref=feature/x',
+          '/project/github.com/acme/demo/dir/-/start-chat?ref=feature/x',
+        ],
+        [
+          '/project/github.com/acme/demo/chat?ref=v1',
+          '/project/github.com/acme/demo/start-chat?ref=v1',
+        ],
+      ])(
+        '%s with a question moves to %s: the ref names the project and stays (review of eb9f5b26, 1)',
+        async (url, expected) => {
+          stash('?msg=Hello');
+          const result = await visit('datatug.app', url);
+          expect(result.component).toBe(HandoffStub);
+          expect(result.url).toBe(expected);
         },
       );
 

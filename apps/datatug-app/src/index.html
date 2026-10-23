@@ -170,7 +170,9 @@
           // So that a reload before the app has started does not lose the question.
           try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + q); } catch (e) {}
           // A browser that refuses must not stop the page: the app still reads the question from the stash.
-          try { history.replaceState(history.state, '', u + p + h); } catch (e) {}
+          // `?ref=` is part of which project the address names (founder 2026-10-23): it stays, the rest goes.
+          kept = q.slice(1).split('&').filter(function (pair) { return keyOf(pair) === 'ref'; });
+          try { history.replaceState(history.state, '', u + p + (kept.length ? '?' + kept.join('&') : '') + h); } catch (e) {}
         } else if (s[0] === 'project' && s[1] && s[1].split('(')[0] === 'github.com') {
           kept = q.slice(1).split('&').filter(function (pair) {
             var key = keyOf(pair);

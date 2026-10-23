@@ -194,9 +194,9 @@ export function isValidGithubRef(ref: unknown): ref is string {
 }
 
 /**
- * The ref of a project id or of a project address (`…/<repo>@<ref>/…`): a branch, tag or commit, whose name may
- * hold `/` (`feature/x`), each `/`-separated piece a {@link isValidGithubRef}. In an address the `/` is written
- * `%2F`, so the ref stays one path segment. Never `@`: it separates the parts of the id.
+ * The ref of a project id or of a project address (`…/<repo>[/<dir>…]?ref=<ref>`): a branch, tag or commit, whose
+ * name may hold `/` (`feature/x`), each `/`-separated piece a {@link isValidGithubRef}. In an address the `/` is
+ * written plainly in the query (`%2F` reads the same). Never `@`: it separates the parts of the id.
  */
 export function isValidGithubRefName(ref: unknown): ref is string {
   return (

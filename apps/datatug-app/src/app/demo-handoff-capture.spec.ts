@@ -345,6 +345,22 @@ describe('demo hand-off capture', () => {
       ).toBe('Hello');
     });
 
+    it('keeps ?ref= on the project chat shape: the ref names the project (review of eb9f5b26, 1)', () => {
+      const f = pageLoad(
+        '/project/github.com/acme/demo/dir/-/chat',
+        '?msg=Hello&ref=feature/x&x=1',
+      );
+      captureDemoHandoff(f.env);
+      expect(f.replaced).toEqual([
+        '/project/github.com/acme/demo/dir/-/chat?ref=feature/x',
+      ]);
+      // A ref other than the default branch is not the trusted demo: the question is not echoed.
+      expect(
+        demoHandoff(undefined, '/project/github.com/acme/demo/dir/-/chat')
+          ?.question,
+      ).toBe('');
+    });
+
     // review r2, B1: spellings of the address that the router reads as a hand-off address
     describe('an address written another way (review r2, B1)', () => {
       it.each([

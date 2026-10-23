@@ -1,3 +1,4 @@
+import { githubRefQuery } from '@datatug/project-address';
 import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
 import type { ChartSourceEdit } from '@datatug/board-models';
 import { widgetAtTabPath } from '../../components/board-widget/nested-tab-path';
@@ -1011,7 +1012,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     try {
-      this.defaultHref = location.pathname.split('/').slice(0, -1).join('/');
+      // A GitHub project's `?ref=` is part of its address: the parent page keeps it.
+      this.defaultHref =
+        location.pathname.split('/').slice(0, -1).join('/') +
+        githubRefQuery(
+          new URLSearchParams(location.search).get('ref') ?? undefined,
+        );
     } catch (e) {
       this.errorLogger.logError(e, 'Failed in BoardPage.ngOnInit()');
     }
