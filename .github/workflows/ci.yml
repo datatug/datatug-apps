@@ -305,6 +305,14 @@ jobs:
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
+      # GitHub pins (apps/datatug-app/e2e/github-pins.json): globalSetup checks them out; cached on the manifest (see e2e-app).
+      - name: Cache GitHub pin checkouts
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        uses: actions/cache@v5
+        with:
+          path: tmp/github-checkouts
+          key: github-pins-v1-${{ hashFiles('apps/datatug-app/e2e/github-pins.json', 'scripts/fetch-github-pins.mjs') }}
+
       - uses: ./.github/actions/pnpm
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
@@ -380,6 +388,14 @@ jobs:
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      # GitHub pins (apps/datatug-app/e2e/github-pins.json): globalSetup checks them out; cached on the manifest (see e2e-app).
+      - name: Cache GitHub pin checkouts
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        uses: actions/cache@v5
+        with:
+          path: tmp/github-checkouts
+          key: github-pins-v1-${{ hashFiles('apps/datatug-app/e2e/github-pins.json', 'scripts/fetch-github-pins.mjs') }}
 
       - uses: ./.github/actions/pnpm
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
@@ -776,6 +792,14 @@ jobs:
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      # GitHub pins (apps/datatug-app/e2e/github-pins.json): globalSetup checks them out; cached on the manifest (see e2e-app).
+      - name: Cache GitHub pin checkouts
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        uses: actions/cache@v5
+        with:
+          path: tmp/github-checkouts
+          key: github-pins-v1-${{ hashFiles('apps/datatug-app/e2e/github-pins.json', 'scripts/fetch-github-pins.mjs') }}
 
       - uses: ./.github/actions/pnpm
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}

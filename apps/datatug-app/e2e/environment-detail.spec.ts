@@ -12,6 +12,8 @@ for (const width of [1440, 900, 390]) {
   test(`environment connections and catalog journey at ${width}px`, async ({
     page,
   }) => {
+    // Eight cold page loads: 28-29.5s on a 4-vCPU runner, over the 30s default on the private repository's 2-vCPU runner.
+    test.setTimeout(60_000);
     await page.setViewportSize({ width, height: 900 });
     const errors: string[] = [];
     page.on('pageerror', (err) => errors.push(err.message));
