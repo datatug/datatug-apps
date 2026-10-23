@@ -41,6 +41,7 @@ runs:
         Acquire::Retries "3";
         Acquire::http::Timeout "20";
         Acquire::https::Timeout "20";
+        DPkg::Lock::Timeout "120";
         CONF
 
     # Cache hit: browsers are on disk, so only the system libraries are fetched (install-deps, no browser download).
@@ -53,16 +54,26 @@ runs:
         ATTEMPTS: ${{ inputs.attempts }}
         LIMIT_MIN: ${{ inputs.attempt-timeout-minutes }}
       run: |
-        if [ "$CACHE_HIT" = "true" ]; then cmd="install-deps"; else cmd="install --with-deps"; fi
+        if [ "$CACHE_HIT" = "true" ]; then cmd=(install-deps); else cmd=(install --with-deps); fi
+        read -ra browser_list <<< "$BROWSERS"
         start=$(date +%s)
         for i in $(seq 1 "$ATTEMPTS"); do
-          echo "Attempt $i/$ATTEMPTS: playwright $cmd $BROWSERS"
-          if timeout "${LIMIT_MIN}m" pnpm exec playwright $cmd $BROWSERS; then
+          echo "Attempt $i/$ATTEMPTS: playwright ${cmd[*]} ${browser_list[*]}"
+          if timeout "${LIMIT_MIN}m" pnpm exec playwright "${cmd[@]}" "${browser_list[@]}"; then
             echo "Playwright install ok in $(( $(date +%s) - start ))s (cache-hit=$CACHE_HIT)"
             exit 0
           fi
           echo "::warning::Playwright install attempt $i timed out or failed"
-          # timeout already killed pnpm; finish any half-configured dpkg state before the next attempt
+          # timeout runs as the runner user, so it cannot kill the root apt-get Playwright starts through sudo; that
+          # apt-get keeps the dpkg lock and the next attempt dies at once (2026-10-23, #529: "dpkg frontend lock was
+          # locked by another process"). Stop it, wait for the lock, then finish any half-configured dpkg state.
+          sudo pkill -TERM -x apt-get || true
+          sudo pkill -TERM -x dpkg || true
+          for _ in $(seq 1 30); do
+            sudo fuser /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock >/dev/null 2>&1 || break
+            sleep 2
+          done
+          sudo pkill -KILL -x apt-get || true
           sudo dpkg --configure -a || true
         done
         echo "::error::Playwright install failed after $ATTEMPTS attempts ($(( $(date +%s) - start ))s)"
