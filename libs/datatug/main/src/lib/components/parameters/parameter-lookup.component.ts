@@ -196,7 +196,7 @@ export class ParameterLookupComponent
     const bar = this.searchbar()?.nativeElement;
     if (this.filterGone || !bar) return;
     void bar.setFocus?.();
-    void bar.getInputElement?.()?.then((input) => {
+    void bar.getInputElement?.()?.then((input: HTMLInputElement) => {
       if (input.ownerDocument.activeElement !== input && attempt < 10 && !this.filterGone)
         setTimeout(() => this.focusFilter(attempt + 1), 50);
     });
