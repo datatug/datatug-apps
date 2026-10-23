@@ -196,12 +196,27 @@ function sourcesUnder(dir: string): string[] {
   return out;
 }
 
+/**
+ * Removes every `open`…`close` span in one left-to-right pass (an unclosed span runs to the end). Each span becomes
+ * a space, so text on either side can never join into a new delimiter.
+ */
+function withoutDelimited(source: string, open: string, close: string): string {
+  let out = '';
+  let from = 0;
+  for (let start = source.indexOf(open); start >= 0; start = source.indexOf(open, from)) {
+    out += source.slice(from, start) + ' ';
+    const end = source.indexOf(close, start + open.length);
+    from = end < 0 ? source.length : end + close.length;
+  }
+  return out + source.slice(from);
+}
+
 /** Comments never build a path: a line comment (after a space or at the start of the line) and a block comment. */
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/(^|\s)\/\/.*$/gm, '$1');
+  return withoutDelimited(withoutDelimited(source, '/*', '*/'), '<!--', '-->').replace(
+    /(^|\s)\/\/.*$/gm,
+    '$1',
+  );
 }
 
 function scanned(): { file: string; shapes: string[] }[] {
