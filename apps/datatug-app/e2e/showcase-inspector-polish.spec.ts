@@ -27,7 +27,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
         const path = new URL(route.request().url()).pathname.replace(cloudPrefix, '');
         if (path === '/v1/tugql' && route.request().method() === 'POST') {
           posts++;
-          expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.tugql.yaml'), 'utf8'));
+          expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.dtql'), 'utf8'));
           await route.fulfill({ json: snapshot.comparison });
         } else if (path === '/v1/databases/northwind') await route.fulfill({ json: metadata('northwind') });
         else if (path === '/v1/databases/chinook') await route.fulfill({ json: metadata('chinook') });

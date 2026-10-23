@@ -124,7 +124,7 @@ export function toProjectQueryWire(
     query['request'],
     isHttp
       ? ['queryType', 'url', 'method', 'headers', 'body']
-      : ['queryType', 'text'],
+      : ['queryType', 'text', 'representation'],
   );
   if (
     ![QueryType.SQL, QueryType.TugQL, QueryType.HTTP].includes(

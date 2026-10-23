@@ -11,7 +11,7 @@ import {
 const ordersQuery = readFileSync(
   resolve(
     process.cwd(),
-    'apps/datatug-app/e2e/fixtures/northwind-orders-query.tugql',
+    'apps/datatug-app/e2e/fixtures/northwind-orders-query.tugql.yaml',
   ),
   'utf8',
 );

@@ -271,8 +271,9 @@ const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
     'utf8',
   );
 
+// Reads the pinned demo project, which predates the TugQL cutover (`.query.dtql`); switch with the pin bump (step 9).
 const savedLegacyTugqlSource = (repository = DEMO_REPO): string =>
-  readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.tugql.yaml'), 'utf8');
+  readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.dtql'), 'utf8');
 
 const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
   if (!DEMO_REPO) throw new Error('The canonical DemoDB fixture is required');

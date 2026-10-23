@@ -199,12 +199,7 @@ export function resultEditorPlan(
     const definition: IQueryDef = {
       id: draftId,
       title: 'Query from a saved result',
-      request: {
-        queryType,
-        text: editor.text,
-        // Chat result queries are kept as the structured TugQL YAML/JSON document.
-        ...(queryType === QueryType.TugQL ? { representation: 'yaml' } : {}),
-      } as IQueryDef['request'],
+      request: { queryType, text: editor.text } as IQueryDef['request'],
       ...(parameters.length
         ? { parameters: parameters.map((p) => p.def) }
         : {}),

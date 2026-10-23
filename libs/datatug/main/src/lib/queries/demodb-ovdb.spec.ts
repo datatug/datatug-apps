@@ -17,6 +17,9 @@ describe('DemoDB OVDB host', () => {
     expect(currentDemoDbOvdbUrl(LEGACY_DEMODB_OVDB_BASE_URL)).toBe(DEMODB_OVDB_BASE_URL);
     expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdb/v1/databases/northwind/tugql'))
       .toBe('https://ovdb.demodb.dev/v1/databases/northwind/tugql');
+    // A query route published as `.../dtql` is requested as `.../tugql`.
+    expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdb/v1/databases/northwind/dtql'))
+      .toBe('https://ovdb.demodb.dev/v1/databases/northwind/tugql');
     expect(currentDemoDbOvdbUrl('https://ovdb.demodb.dev/v1/databases/pubs')).toBe('https://ovdb.demodb.dev/v1/databases/pubs');
     // Look-alikes are not the legacy base.
     expect(currentDemoDbOvdbUrl('https://demodb.dev/ovdbx')).toBe('https://demodb.dev/ovdbx');

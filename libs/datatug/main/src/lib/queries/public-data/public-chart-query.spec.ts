@@ -218,7 +218,7 @@ describe('saved public chart query adapter', () => {
       // The pin names the published (legacy) endpoint; the POST goes to the current OVDB host.
       'https://ovdb.demodb.dev/v1/databases/northwind/tugql',
     ]);
-    expect(NORTHWIND_ORDERS_PIN.endpoint).toBe('https://demodb.dev/ovdb/v1/databases/northwind/tugql');
+    expect(NORTHWIND_ORDERS_PIN.endpoint).toBe('https://demodb.dev/ovdb/v1/databases/northwind/dtql');
     expect(JSON.parse(String(source.calls[1].init?.body))).toEqual({ query });
   });
 

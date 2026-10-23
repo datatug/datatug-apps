@@ -37,6 +37,6 @@ export class DemoTableDraftService {
     const environments = declaration?.environment ? [declaration.environment] : declaration?.environments ?? [];
     if (!connection || !environments.includes(draft.environment) || !ovdbCollections(connection.descriptor).includes(draft.table) || !connection.descriptor.capabilities.tugql) throw new Error('The copied project or edited database changed. Return to your browser database and check its connection before querying.');
     return { id: '', title: `${draft.table} (browser copy)`, connectionId: declaration?.id,
-      request: { queryType: QueryType.TugQL, representation: 'yaml', text: `from:\n  name: ${JSON.stringify(draft.table)}\nlimit: 100\n` } as ITextQueryRequest };
+      request: { queryType: QueryType.TugQL, text: `from:\n  name: ${JSON.stringify(draft.table)}\nlimit: 100\n` } as ITextQueryRequest };
   }
 }

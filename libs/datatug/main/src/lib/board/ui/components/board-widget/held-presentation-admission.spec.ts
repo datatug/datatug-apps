@@ -119,7 +119,7 @@ describe('held presentation admission', () => {
         connectionId: 'northwind-sqlite',
         request: {
           queryType: QueryType.TugQL,
-          text: fixture('northwind-orders-query.tugql'),
+          text: fixture('northwind-orders-query.tugql.yaml'),
         } as ITextQueryRequest,
       },
       {

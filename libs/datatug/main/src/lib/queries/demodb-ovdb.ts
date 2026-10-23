@@ -15,11 +15,23 @@ export const DEMODB_OVDB_BASE_URL = 'https://ovdb.demodb.dev';
 /** The pre-2026-10-16 base. Recognised in published or saved data, never requested. */
 export const LEGACY_DEMODB_OVDB_BASE_URL = 'https://demodb.dev/ovdb';
 
-/** The same URL on the current OVDB host when it is under the legacy base; any other URL unchanged. */
+/**
+ * The query route as the SHA-pinned publisher evidence still names it (`.../dtql`). The
+ * servers serve `/tugql`; the evidence cannot be edited without a new publication, so
+ * only a URL read from it is mapped. Remove with the pins' next republication.
+ */
+const PUBLISHED_EVIDENCE_QUERY_ROUTE = /\/dtql$/u;
+
+/**
+ * The same URL on the current OVDB host when it is under the legacy base (a published
+ * `.../dtql` query route becomes `.../tugql`); any other URL unchanged.
+ */
 export function currentDemoDbOvdbUrl(url: string): string {
-  return url === LEGACY_DEMODB_OVDB_BASE_URL || url.startsWith(`${LEGACY_DEMODB_OVDB_BASE_URL}/`)
-    ? `${DEMODB_OVDB_BASE_URL}${url.slice(LEGACY_DEMODB_OVDB_BASE_URL.length)}`
-    : url;
+  if (url !== LEGACY_DEMODB_OVDB_BASE_URL && !url.startsWith(`${LEGACY_DEMODB_OVDB_BASE_URL}/`)) return url;
+  return `${DEMODB_OVDB_BASE_URL}${url.slice(LEGACY_DEMODB_OVDB_BASE_URL.length)}`.replace(
+    PUBLISHED_EVIDENCE_QUERY_ROUTE,
+    '/tugql',
+  );
 }
 
 /** The OVDB API URL of a DemoDB dataset on the current host. */

@@ -63,7 +63,7 @@ export function createHostedDemoDbQuery(id: string): IQueryDef {
   return {
     id,
     title: 'New DemoDB query',
-    request: { queryType: QueryType.TugQL, representation: 'yaml', text: bodyFor(source) } as ITextQueryRequest,
+    request: { queryType: QueryType.TugQL, text: bodyFor(source) } as ITextQueryRequest,
     federation: {
       ovdbBaseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL,
       tables: [{
@@ -126,7 +126,7 @@ export function withHostedDemoDbSource(
   }
   return {
     ...definition,
-    request: { queryType: QueryType.TugQL, representation: 'yaml', text: bodyFor(source) } as ITextQueryRequest,
+    request: { queryType: QueryType.TugQL, text: bodyFor(source) } as ITextQueryRequest,
     federation: {
       ovdbBaseUrl: HOSTED_DEMO_DB_OVDB_BASE_URL,
       tables: [{
