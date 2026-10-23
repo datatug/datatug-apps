@@ -1165,23 +1165,34 @@ describe('New project through authenticated common API', () => {
     h.connection.resolveOAuthRepository.mockReturnValue(
       throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
     );
-    let writes = 0;
     const originalSetItem = sessionStorage.setItem.bind(sessionStorage);
     const setItem = vi.spyOn(sessionStorage, 'setItem').mockImplementation((key, value) => {
-      writes++;
-      if (writes === 4) throw new DOMException('storage blocked', 'SecurityError');
+      // Fail the draft write that carries the returned OAuth state hash, whichever
+      // earlier storage write happened to come before it in this process.
+      if (
+        key === 'datatug:new-project:draft' &&
+        typeof value === 'string' &&
+        value.includes('"oauthStateHash"')
+      ) {
+        throw new DOMException('storage blocked', 'SecurityError');
+      }
       originalSetItem(key, value);
     });
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
     h.component.create();
     h.startResult.next({
       authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
     });
 
-    await vi.waitFor(() => expect(writes).toBe(4));
+    await vi.waitFor(() =>
+      expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect'),
+    );
     expect(h.component['isCreating']()).toBe(false);
     expect(h.component['oauthStateHash']()).toBeUndefined();
-    expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
+    expect(assign).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('datatug:new-project:draft') ?? '').not.toContain('secure-state');
     setItem.mockRestore();
+    assign.mockRestore();
   });
 
   it('stores only a hash of the OAuth state before redirecting to GitHub', async () => {
