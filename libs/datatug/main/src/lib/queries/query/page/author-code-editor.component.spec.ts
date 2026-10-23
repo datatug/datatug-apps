@@ -177,6 +177,48 @@ describe('AuthorCodeEditorComponent', () => {
     fixture.detectChanges();
   });
 
+  it('binds the actions popover to its trigger only while the host renders that trigger button', async () => {
+    fixture.componentRef.setInput('visible', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.toolsTrigger()).toBeUndefined();
+    const button = document.createElement('button');
+    button.id = fixture.componentInstance.toolsTriggerId;
+    document.body.append(button);
+    try {
+      fixture.componentRef.setInput('text', 'from: Customer');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.toolsTrigger()).toBe(
+        fixture.componentInstance.toolsTriggerId,
+      );
+    } finally {
+      button.remove();
+    }
+    fixture.componentRef.setInput('text', 'from: Invoice');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.toolsTrigger()).toBeUndefined();
+  });
+
+  it('renders no actions popover when the host has no trigger button for it', () => {
+    fixture.componentRef.setInput('visible', true);
+    fixture.componentRef.setInput('toolsMenu', false);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="author-code-tools-popover"]',
+      ),
+    ).toBeNull();
+    fixture.componentRef.setInput('toolsMenu', true);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="author-code-tools-popover"]',
+      ),
+    ).not.toBeNull();
+  });
+
   it('uses a unique actions trigger and discards stale hidden-menu actions', () => {
     fixture.componentRef.setInput('visible', false);
     fixture.detectChanges();

@@ -1056,7 +1056,7 @@
           }
           @if (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) {
             <sneat-author-code-editor class="author-code-editor" data-testid="query-body-text"
-              label="TugQL Query" [text]="queryBodyText() ?? ''" [visible]="workspaceTab() === 'tugql'"
+              label="TugQL Query" [text]="queryBodyText() ?? ''" [visible]="workspaceTab() === 'tugql'" [toolsMenu]="false"
               [disabled]="queryState.isSaving || running()" [readOnly]="queryState.saveSupported === false && !project?.ref?.spaceID"
               (textChange)="authorCodeChanged($event)" />
           }
