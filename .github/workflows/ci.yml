@@ -249,6 +249,7 @@ jobs:
         run: |
           f=coverage/libs/datatug/main/vitest-results.json
           if [ ! -f "$f" ]; then echo "no $f (datatug-main not affected)"; exit 0; fi
+          # shellcheck disable=SC2016 # the single-quoted text is JavaScript for node -e; the shell must not expand it
           node -e '
             const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).testResults;
             const rows = r.map((t) => [(t.endTime - t.startTime) / 1000, t.assertionResults.length, t.name.replace(/^.*\/src\//, "src/")]);
