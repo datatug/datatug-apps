@@ -743,9 +743,19 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // reachable here: deliverable 2, "an explicit, friendly notice [that
     // running a query needs a DataTug agent], not a thrown error" for a
     // read-only GitHub-store project.
-    await activePage(page).getByRole('button', { name: /run/i }).click();
+    // Anchored: the query's connection now shows the "Execution runtime" select, whose name also contains "run".
+    await activePage(page).getByRole('button', { name: /^run\b/i }).click();
+    // The pinned checkout's query needs an agent (the friendly notice); the live demo project's current revision
+    // declares a browser projection, so the same Run shows rows (live or its recorded snapshot). Either is a
+    // non-error Run.
     await expect(
-      activePage(page).getByText(/datatug serve --project/),
+      activePage(page)
+        .getByText(/datatug serve --project/)
+        .or(
+          page
+            .getByLabel('Result pages')
+            .filter({ hasText: /Rows 1–\d+\s+of \d+/ }),
+        ),
     ).toBeVisible({ timeout: 10_000 });
 
     // The friendly Run message is not itself an ErrorLoggerService.logError
