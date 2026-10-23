@@ -780,7 +780,7 @@ describe('strict schema inventory completeness', () => {
       ),
     ).rejects.toThrow();
   });
-  it('does not reuse a permissive listing and reuses a proven strict tree across directories', async () => {
+  it('answers the permissive and the strict listing from one call, re-checking it for the strict one', async () => {
     const { service, gh } = strictSetup();
     await first(service.listDirectory(PROJECT_ID, 'dbmodels'));
     await first(
@@ -792,7 +792,7 @@ describe('strict schema inventory completeness', () => {
       }),
     );
     expect(gh.urls().filter((url) => url.includes('/git/trees/'))).toHaveLength(
-      2,
+      1,
     );
   });
   it('accepts an explicitly complete empty tree', async () => {
