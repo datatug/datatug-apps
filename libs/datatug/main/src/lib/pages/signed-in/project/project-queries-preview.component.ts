@@ -11,9 +11,7 @@ import {
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import {
-  IonCard,
   IonButton,
-  IonButtons,
   IonIcon,
   IonItem,
   IonLabel,
@@ -32,6 +30,10 @@ import type { IProjectRef } from '../../../core/project-context';
 import type { IQueryFolder } from '../../../models/definition/query-def';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { QueriesService } from '../../../queries/queries.service';
+import {
+  ProjectOverviewCardComponent,
+  matchesOverviewFilter,
+} from './project-overview-card.component';
 
 interface QueryLink {
   readonly id: string;
@@ -95,9 +97,8 @@ function previewQueries(
     ErrorStateComponent,
     DatePipe,
     RouterLink,
-    IonCard,
+    ProjectOverviewCardComponent,
     IonButton,
-    IonButtons,
     IonIcon,
     IonItem,
     IonLabel,
@@ -106,7 +107,32 @@ function previewQueries(
     IonSegmentButton,
   ],
   template: `
-    <ion-card>
+    <sneat-datatug-project-overview-card
+      cardTitle="Queries"
+      filterNoun="queries"
+      testId="overview-queries-card"
+      [titleHref]="listHref()"
+      [filterable]="state() === 'ready'"
+      [(filter)]="filter"
+    >
+      @if (state() === 'ready') {
+        <ion-button
+          overviewCardAction
+          color="medium"
+          (click)="toggleSortDirection()"
+          [attr.aria-label]="directionLabel() + '. Reverse sort order'"
+          [attr.title]="directionLabel()"
+        >
+          <ion-icon
+            slot="start"
+            [icon]="
+              sortDirection() === 'descending' ? descendingIcon : ascendingIcon
+            "
+            aria-hidden="true"
+          />
+          {{ directionLabel() }}
+        </ion-button>
+      }
       @if (state() === 'loading') {
         <ion-item><ion-label>Loading project queries…</ion-label></ion-item>
       } @else if (state() === 'error') {
@@ -140,28 +166,10 @@ function previewQueries(
               ></ion-segment-button
             >
           </ion-segment>
-          <ion-buttons>
-            <ion-button
-              (click)="toggleSortDirection()"
-              [attr.aria-label]="directionLabel() + '. Reverse sort order'"
-              [attr.title]="directionLabel()"
-            >
-              <ion-icon
-                slot="start"
-                [icon]="
-                  sortDirection() === 'descending'
-                    ? descendingIcon
-                    : ascendingIcon
-                "
-                aria-hidden="true"
-              />
-              {{ directionLabel() }}
-            </ion-button>
-          </ion-buttons>
         </div>
-        @if (total() > queries().length) {
+        @if (matchCount() > queries().length) {
           <p class="query-limit" role="status">
-            Showing {{ queries().length }} of {{ total() }} queries.
+            Showing {{ queries().length }} of {{ matchCount() }} queries.
             <a [routerLink]="listHref()">View all queries</a>
           </p>
         }
@@ -193,32 +201,34 @@ function previewQueries(
                 </p>
               </ion-label>
             </ion-item>
+          } @empty {
+            <ion-item lines="none">
+              <ion-label color="medium"
+                >No queries match “{{ filter() }}”.</ion-label
+              >
+            </ion-item>
           }
         </ion-list>
       }
-    </ion-card>
+    </sneat-datatug-project-overview-card>
   `,
   styles: [
     `
       .query-sort-toolbar {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 4px 12px;
         padding: 8px 16px;
       }
+      /* Full width: the two sort orders share the card width evenly, so the
+         row never wraps or leaves a ragged gap; the direction toggle is a
+         header action (slot="end"). */
       .query-sort-toolbar ion-segment {
-        flex: 1 1 280px;
-        width: auto;
+        width: 100%;
       }
       .query-sort-toolbar ion-segment-button {
+        max-width: none;
         --padding-start: 6px;
         --padding-end: 6px;
         font-size: 0.75rem;
         letter-spacing: 0.02em;
-      }
-      .query-sort-toolbar ion-buttons {
-        margin-left: auto;
       }
       .query-limit {
         margin: 0 16px 12px;
@@ -259,8 +269,17 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       value === 'descending' ? 'ascending' : 'descending',
     );
   }
+  /** The quick filter typed in the card; matches a query's title, type or id. */
+  readonly filter = signal('');
+  private readonly matching = computed(() => {
+    const filter = this.filter();
+    return this.allQueries().filter((query) =>
+      matchesOverviewFilter(filter, query.title, query.type, query.id),
+    );
+  });
+  protected readonly matchCount = computed(() => this.matching().length);
   protected readonly queries = computed(() =>
-    [...this.allQueries()]
+    [...this.matching()]
       .sort((a, b) => {
         const direction = this.sortDirection() === 'ascending' ? 1 : -1;
         const comparison =
@@ -293,6 +312,7 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
     this.failure.set(undefined);
     this.allQueries.set([]);
     this.total.set(0);
+    this.filter.set('');
     this.listHref.set(
       ref ? this.router.parseUrl(projectPageHref(ref, 'queries')) : undefined,
     );

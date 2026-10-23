@@ -184,4 +184,36 @@ describe('project query overview', () => {
       fixture.nativeElement.querySelector('[role="status"]'),
     ).not.toBeNull();
   });
+
+  it('heads the card with a Queries link to the full Queries page and filters rows client-side', async () => {
+    const fixture = await create(
+      vi.fn(() =>
+        of({
+          id: '~',
+          items: [query('Chinook customers'), query('Northwind orders')],
+          folders: [{ id: 'sub', items: [query('Chinook invoices')] }],
+        }),
+      ),
+    );
+    const el: HTMLElement = fixture.nativeElement;
+    const link = el.querySelector('ion-item-divider a');
+    expect(link?.textContent?.trim()).toBe('Queries');
+    expect(link?.getAttribute('href')).toBe(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/queries',
+    );
+    el.querySelector('ion-input')?.dispatchEvent(
+      new CustomEvent('ionInput', { detail: { value: 'chinook' } }),
+    );
+    await fixture.whenStable();
+    expect(titles(el).sort()).toEqual([
+      'Chinook customers',
+      'Chinook invoices',
+    ]);
+    el.querySelector('ion-input')?.dispatchEvent(
+      new CustomEvent('ionInput', { detail: { value: 'nothing-like-this' } }),
+    );
+    await fixture.whenStable();
+    expect(titles(el)).toHaveLength(0);
+    expect(el.textContent).toContain('No queries match “nothing-like-this”.');
+  });
 });

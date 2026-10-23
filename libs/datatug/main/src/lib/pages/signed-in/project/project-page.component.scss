@@ -160,3 +160,18 @@
   vertical-align: middle;
   pointer-events: none;
 }
+
+.card-header-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+// A card's own action sits right-aligned under its message, so a long label
+// never squeezes the header title at 375px.
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}

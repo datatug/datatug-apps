@@ -1,11 +1,12 @@
 import { isDemoDbOvdbDatabaseUrl } from '../../../queries/demodb-ovdb';
 import { Component, Input, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { IonCard, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel, IonList } from '@ionic/angular';
+import { IonIcon, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
+import { ProjectOverviewCardComponent, matchesOverviewFilter } from './project-overview-card.component';
 
 const datasets = ['chinook', 'northwind', 'pubs', 'sakila', 'adventureworks', 'employees'] as const;
 type Dataset = typeof datasets[number];
@@ -108,13 +109,13 @@ function validCatalog(raw: ConnectionCatalog): boolean {
 @Component({
   selector: 'sneat-datatug-demodb-connections',
   standalone: true,
-  imports: [RouterLink, IonCard, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel, IonList],
+  imports: [RouterLink, ProjectOverviewCardComponent, IonIcon, IonItem, IonLabel, IonList],
   template: `
     @if (catalog()) {
-      <ion-card>
-        <ion-card-header><ion-card-title>Demo databases</ion-card-title></ion-card-header>
+      <sneat-datatug-project-overview-card cardTitle="Demo databases" filterNoun="demo databases"
+        testId="overview-databases-card" [titleHref]="serversHref()" [(filter)]="filter">
         <ion-list>
-          @for (group of groups(); track group.id) {
+          @for (group of filteredGroups(); track group.id) {
             <ion-item [attr.data-testid]="'dataset-' + group.id">
               <ion-icon name="server-outline" slot="start" color="medium" aria-hidden="true" />
               <ion-label>
@@ -149,11 +150,14 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                 }
               </ion-label>
             </ion-item>
+          } @empty {
+            <ion-item lines="none">
+              <ion-label color="medium">No demo databases match “{{ filter() }}”.</ion-label>
+            </ion-item>
           }
         </ion-list>
-      </ion-card>
-      <ion-card>
-        <ion-card-header><ion-card-title>BigQuery discoveries (setup planned)</ion-card-title></ion-card-header>
+      </sneat-datatug-project-overview-card>
+      <sneat-datatug-project-overview-card cardTitle="BigQuery discoveries (setup planned)" [filterable]="false">
         <ion-list>
           @for (plan of catalog()!.bigQueryPlans; track plan.id) {
             <ion-item>
@@ -163,9 +167,12 @@ function validCatalog(raw: ConnectionCatalog): boolean {
             </ion-label></ion-item>
           }
         </ion-list>
-      </ion-card>
+      </sneat-datatug-project-overview-card>
     } @else if (error()) {
-      <ion-card><ion-item><ion-label role="alert">{{ error() }}</ion-label></ion-item></ion-card>
+      <sneat-datatug-project-overview-card cardTitle="Demo databases" testId="overview-databases-card"
+        [titleHref]="serversHref()" [filterable]="false">
+        <ion-item lines="none"><ion-label role="alert">{{ error() }}</ion-label></ion-item>
+      </sneat-datatug-project-overview-card>
     }
   `,
 })
@@ -182,6 +189,14 @@ export class DemoDbConnectionsComponent {
       bigQuery: catalog.bigQueryEditions?.find((entry) => entry.dataset === id),
     }));
   });
+  /** The quick filter typed in the card; matches a dataset's name and its storage editions. */
+  readonly filter = signal('');
+  protected readonly filteredGroups = computed(() => {
+    const filter = this.filter();
+    return this.groups().filter((group) => matchesOverviewFilter(filter, this.title(group.id),
+      ...group.connections.map((edition) => this.label(edition.storage)), group.bigQuery ? 'BigQuery' : undefined));
+  });
+  protected readonly serversHref = signal<string | undefined>(undefined);
   protected readonly error = signal<string | undefined>(undefined);
   protected readonly chinookQueryHref = signal<string | undefined>(undefined);
 
@@ -190,6 +205,8 @@ export class DemoDbConnectionsComponent {
     this.catalog.set(undefined);
     this.error.set(undefined);
     this.chinookQueryHref.set(undefined);
+    this.filter.set('');
+    this.serversHref.set(ref ? projectPageHref(ref, 'servers') : undefined);
     if (ref?.storeId === 'github.com' && ref.projectId === projectId) {
       const page = projectPageHref(ref, ['query', chinookPostgresqlQueryId]);
       if (page !== '/') this.chinookQueryHref.set(`${page}?id=${encodeURIComponent(chinookPostgresqlQueryId)}`);

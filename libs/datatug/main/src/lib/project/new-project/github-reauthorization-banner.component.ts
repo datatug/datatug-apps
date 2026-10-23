@@ -1,7 +1,8 @@
 import { Component, computed, DestroyRef, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { IonButton, IonCard, IonCardContent } from '@ionic/angular';
+import { IonButton, IonCard, IonCardContent, IonIcon, IonItemDivider, IonLabel } from '@ionic/angular';
+import { warningOutline } from 'ionicons/icons';
 import { filter, switchMap, take, map } from 'rxjs';
 import { IProjectRef, equalProjectRef } from '../../core/project-context';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -23,18 +24,35 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
 
 @Component({
   selector: 'sneat-datatug-github-reauthorization-banner',
-  imports: [IonButton, IonCard, IonCardContent],
+  imports: [IonButton, IonCard, IonCardContent, IonIcon, IonItemDivider, IonLabel],
+  styles: `
+    .reauthorization-title {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    .reauthorization-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+  `,
   template: `
     @if (required()) {
-      <ion-card color="warning" data-testid="github-reauthorization">
+      <ion-card data-testid="github-reauthorization">
+        <ion-item-divider color="light">
+          <ion-icon slot="start" [icon]="warningIcon" color="warning" aria-hidden="true" />
+          <ion-label><h2 class="reauthorization-title">GitHub access expired.</h2></ion-label>
+        </ion-item-divider>
         <ion-card-content>
-          <p>GitHub access expired. Reconnect to continue. GitHub authorization applies to your account; it is not limited to this repository.</p>
+          <p>Reconnect to continue. GitHub authorization applies to your account; it is not limited to this repository.</p>
           @if (error()) {
             <p role="alert">{{ error() }}</p>
           }
-          <ion-button fill="outline" [disabled]="reconnecting()" (click)="reconnect()">
-            {{ reconnecting() ? 'Connecting…' : 'Reconnect GitHub' }}
-          </ion-button>
+          <div class="reauthorization-actions">
+            <ion-button fill="outline" [disabled]="reconnecting()" (click)="reconnect()">
+              {{ reconnecting() ? 'Connecting…' : 'Reconnect GitHub' }}
+            </ion-button>
+          </div>
         </ion-card-content>
       </ion-card>
     }
@@ -42,6 +60,7 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
 })
 export class GitHubReauthorizationBannerComponent {
   readonly projectRef = input.required<IProjectRef>();
+  protected readonly warningIcon = warningOutline;
   readonly returnUrl = input<string | undefined>();
   private readonly requiredRef = signal<IProjectRef | undefined>(undefined);
   readonly required = computed(() => {
