@@ -16,6 +16,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Verify Ubuntu mirror fallback fixtures
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 -B "$ACTION_PATH/ubuntu-mirror-test.py"
+
     - name: Resolve Playwright version
       id: version
       shell: bash
