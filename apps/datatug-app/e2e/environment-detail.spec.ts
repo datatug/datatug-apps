@@ -38,7 +38,11 @@ for (const width of [1440, 900, 390]) {
       detail.getByText('Data connections', { exact: true }),
     ).toBeVisible();
     await expect(detail.getByText('sqlite3', { exact: true })).toBeVisible();
-    await expect(detail.getByText('Sign in', { exact: true })).toHaveCount(0);
+    // A public project's environment needs no sign-in prompt in its content; the shell header's own Sign in
+    // link (one per page, #508) is outside it.
+    await expect(
+      detail.locator('ion-content').getByText('Sign in', { exact: true }),
+    ).toHaveCount(0);
     await expect(list).toBeHidden();
     await page.screenshot({
       path: `/tmp/datatug-environment-local-${width}.png`,

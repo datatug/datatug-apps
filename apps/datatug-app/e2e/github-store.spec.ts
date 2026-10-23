@@ -376,7 +376,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       });
     }
     await activePage(page).getByText('Album', { exact: true }).click();
-    await expect(activePage(page).getByText('Title')).toBeVisible({
+    await expect(activePage(page).getByText('Title', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -652,17 +652,17 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // The live header follows the selected query title while preserving the
-    // surrounding project context.
+    // The one page header (its h1) carries the selected query's title; the title input only appears for a new
+    // query (one header, #513).
     await expect
       .poll(
         () =>
           activePage(page)
-            .locator('ion-input[placeholder="Title - is required"]')
-            .evaluate((el: unknown) => (el as { value?: string }).value),
+            .getByRole('heading', { level: 1 })
+            .evaluateAll((els) => els.map((el) => el.textContent?.trim())),
         { timeout: 20_000 },
       )
-      .toBe('Customer invoices');
+      .toContain('Customer invoices');
     // The query BODY (from the .query.dtql sidecar file) — proves get_query's
     // GitHub equivalent actually read the file content, not just the
     // definition JSON (which never carries `text` for the folder-list view).
@@ -701,17 +701,16 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // See the previous test's own doc comment: the real title lives in an
-    // `ion-input [value]`, not the header's hardcoded `ion-title`.
+    // See the previous test's own doc comment: the title is the page header's h1.
     await expect
       .poll(
         () =>
           activePage(page)
-            .locator('ion-input[placeholder="Title - is required"]')
-            .evaluate((el: unknown) => (el as { value?: string }).value),
+            .getByRole('heading', { level: 1 })
+            .evaluateAll((els) => els.map((el) => el.textContent?.trim())),
         { timeout: 20_000 },
       )
-      .toBe('Albums by title');
+      .toContain('Albums by title');
     // See `getQueryBodyText()`'s own doc comment: this query type has no
     // body editor UI at all currently, so read component state instead.
     await expect
@@ -771,7 +770,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // The complex SQL has no authoritative source inventory. A display-text
     // FROM/JOIN scan must not be presented as catalog-confirmed source facts.
-    await page.getByTestId('workspace-sources-tab').click();
+    // A saved query shows Sources under More, until it is opened.
+    await page.getByTestId('workspace-more-tab').click();
+    await page.getByTestId('workspace-more-sources').click();
     await expect(page.getByTestId('workspace-sources-panel')).toContainText(
       'Authoritative source inventory is unavailable',
     );

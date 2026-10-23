@@ -2715,7 +2715,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   if (testInfo.project.use.isMobile === true) {
     const compactTitle = invoiceAuthorPage.locator('.query-mobile-title');
     await expect(compactTitle).toBeVisible();
-    expect(await compactTitle.ariaSnapshot()).toContain('Query');
+    // The compact title is the query's own name, and the page's h1 (#513).
+    expect(await compactTitle.ariaSnapshot()).toContain(`heading "${LONG_HEADER_QUERY_TITLE}" [level=1]`);
   } else {
     const initialHeaderAccessibility = await initialHeader.ariaSnapshot();
     expect(initialHeaderAccessibility).toContain(LONG_HEADER_QUERY_TITLE);
@@ -3410,28 +3411,30 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       const titleRange = document.createRange();
       if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
       const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
-      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
-        titleRight: title?.right,
-        stateLeft: state?.left,
+        // The title text is clipped to its element (ellipsis); measure the part that is drawn.
+        titleRight:
+          title && mobileTitle
+            ? Math.min(title.right, mobileTitle.getBoundingClientRect().right)
+            : undefined,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
-    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
+    // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
+    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 
   // Ionic chooses its mode during the first page bootstrap, so use a fresh
   // navigation to exercise the iOS header layout explicitly.
   await page.goto(`${AUTHOR_URL}&ionic:mode=ios`);
-  const queryToolbar = page.locator('ion-toolbar.toolbar-label');
+  const queryToolbar = activePage(page).locator('ion-toolbar:has(.query-mobile-title)');
   const authorPageTitle = activePage(page).locator('sneat-datatug-page-title');
   await expect(queryToolbar).toHaveClass(/\bios\b/u);
   for (const width of [390, 320]) {
@@ -3450,21 +3453,23 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
       const titleRange = document.createRange();
       if (mobileTitle) titleRange.selectNodeContents(mobileTitle);
       const title = mobileTitle ? titleRange.getBoundingClientRect() : undefined;
-      const state = bounds('.query-save-state');
       const end = bounds('ion-toolbar ion-buttons[slot="end"]');
       return {
         startRight: start?.right,
         titleLeft: title?.left,
-        titleRight: title?.right,
-        stateLeft: state?.left,
+        // The title text is clipped to its element (ellipsis); measure the part that is drawn.
+        titleRight:
+          title && mobileTitle
+            ? Math.min(title.right, mobileTitle.getBoundingClientRect().right)
+            : undefined,
         endLeft: end?.left,
         viewportWidth: document.documentElement.clientWidth,
         documentWidth: document.documentElement.scrollWidth,
       };
     });
     expect(header.startRight).toBeLessThanOrEqual(header.titleLeft ?? -1);
-    expect(header.titleRight).toBeLessThanOrEqual(header.stateLeft ?? -1);
-    expect(header.stateLeft).toBeLessThanOrEqual(header.endLeft ?? -1);
+    // One header (#513): the save state lives in the Save button, so the title only has to clear the end buttons.
+    expect(header.titleRight).toBeLessThanOrEqual(header.endLeft ?? -1);
     expect(header.documentWidth).toBeLessThanOrEqual(header.viewportWidth);
   }
 

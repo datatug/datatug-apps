@@ -83,18 +83,17 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await expect(card.getByRole('link', { name: 'Open saved query' })).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
     await card.getByRole('link', { name: 'Open saved query' }).click();
     await expect(page).toHaveURL(new RegExp(`runtime=${selectionId}`));
-    const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
-    await expect(queryRuntime).toHaveCount(1);
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
+    // The query page's runtime control is an Ionic select (#513), outside the editor.
+    const runtimeSelect = page.getByTestId('query-execution-runtime');
+    const selectedRuntime = () => runtimeSelect.evaluate((el) => (el as unknown as { value?: string }).value);
+    await expect(runtimeSelect.locator('ion-select-option').filter({ hasText: 'working copy' })).toHaveCount(1);
+    await expect.poll(selectedRuntime, { timeout: 20_000 }).toBe(selectionId);
     await page.getByRole('button', { name: 'Run query', exact: true }).click();
     await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
     expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
     await page.reload();
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('alert'))
-      .toContainText('selected working copy is unavailable');
+    await expect.poll(selectedRuntime, { timeout: 20_000 }).toBe(selectionId);
+    await expect(page.getByText(/selected working copy is unavailable/i).first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });

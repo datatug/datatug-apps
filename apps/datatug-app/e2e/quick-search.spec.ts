@@ -90,6 +90,10 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
       return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+    // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
+    // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
+    if (path.endsWith('/agent-info'))
+      return route.fulfill({ json: { version: '0.100.0' } });
     // Like every released `datatug serve`, this agent has no
     // environment-state/1 route: Go's router answers it with a plain-text 404.
     if (path.endsWith('/environments/state'))
