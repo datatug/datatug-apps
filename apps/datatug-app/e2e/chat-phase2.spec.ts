@@ -137,7 +137,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   expect(providerCalls).toBe(3);
 
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Rename' }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Rename' }).click();
   await page.getByLabel('Session name').fill('Invoice research');
   await page.getByRole('button', { name: 'Save name' }).click();
   await expect(page.getByRole('button', { name: /Chat session, Invoice research/ })).toBeVisible();
@@ -146,13 +146,13 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   expect(providerCalls).toBe(3);
 
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(page.locator('.turn')).toHaveCount(0);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 1, ChatQueries: 1, ChatRecordSets: 1 });
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('button', { name: /Chat session, Show 5 genres/ })).toBeVisible();
   await expect(page.locator('.question-bubble')).toHaveText('Show 5 genres');
@@ -201,7 +201,7 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   await expect(page.getByRole('button', { name: 'Retry loading chats' })).toBeVisible();
   expect(providerCalls).toBe(1);
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete' }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeHidden();
   await expect(page.getByRole('button', { name: /Chat session, New chat/ })).toBeVisible();

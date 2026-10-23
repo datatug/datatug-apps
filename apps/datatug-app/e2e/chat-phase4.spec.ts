@@ -170,7 +170,7 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   await page.locator('.chat-header-toolbar ion-select').click();
   await page.getByRole('radio', { name: 'Show 10 customers' }).click();
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await expect(workspace.locator('.bookmark-item')).toHaveCount(3);

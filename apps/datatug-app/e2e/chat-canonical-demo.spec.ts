@@ -80,8 +80,8 @@ for (const width of [1280, 375]) {
     await create.click();
     await expect(session).toHaveJSProperty('selectedText', 'New chat');
     await actions.click();
-    for (const name of ['Rename', 'Clear', 'Delete']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Rename', exact: true }).click();
+    for (const name of ['Rename', 'Clear', 'Delete']) await expect(page.locator('.session-action-menu:visible').getByRole('button', { name, exact: true })).toBeVisible();
+    await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Rename', exact: true }).click();
     await page.getByLabel('Session name').fill('A long investigation session title that must stay on one row');
     await page.getByRole('button', { name: 'Save name' }).click();
     await expect(page.getByRole('button', { name: 'Save name', exact: true })).toBeHidden();

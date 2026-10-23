@@ -191,7 +191,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
 
   await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
-  await page.getByRole('button', { name: 'Clear' }).click();
+  await page.locator('.session-action-menu:visible').getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByLabel('Attached context')).toHaveCount(0);
   await expect(workspace.locator('.dock-item')).toHaveCount(0);
