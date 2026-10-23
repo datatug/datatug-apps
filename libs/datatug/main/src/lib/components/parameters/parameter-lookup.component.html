@@ -14,7 +14,7 @@
       [placeholder]="'Filter ' + collection()"
       [attr.aria-label]="'Filter ' + collection()"
       [debounce]="250"
-      [disabled]="needsSource() || preparing() || !!noUsableSource()"
+      [disabled]="filterDisabled()"
       (ionInput)="onFilter($any($event).detail.value)"
     />
   </ion-toolbar>

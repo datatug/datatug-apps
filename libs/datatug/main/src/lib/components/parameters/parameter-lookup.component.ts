@@ -7,6 +7,7 @@ import {
   OnDestroy,
   PendingTasks,
   computed,
+  effect,
   inject,
   signal,
   viewChild,
@@ -123,6 +124,10 @@ export class ParameterLookupComponent
   readonly sourceOptions = signal<readonly ParameterLookupSourceOption[]>([]);
   readonly preparing = signal(false);
   readonly noUsableSource = signal<string | undefined>(undefined);
+  /** True once the modal's enter animation is over, so focus is not undone by the overlay. */
+  private readonly entered = signal(false);
+  private focusApplied = false;
+  private filterGone = false;
 
   private readonly pendingTasks = inject(PendingTasks);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -134,6 +139,8 @@ export class ParameterLookupComponent
   readonly meaningNote = computed(() => this.providerValue().meaningNote);
   readonly title = computed(() => `Find ${this.subject()}`);
   readonly needsSource = computed(() => this.sourceId() === undefined && !this.preparing() && !this.noUsableSource());
+  /** The filter stays disabled until a source is known; a disabled input cannot take focus. */
+  readonly filterDisabled = computed(() => this.needsSource() || this.preparing() || !!this.noUsableSource());
   readonly rows = computed(() => this.page()?.rows ?? []);
   readonly displayColumns = computed(() => this.page()?.columns ?? []);
   /** Key column first and narrower, then one equal share per display column. */
@@ -173,9 +180,31 @@ export class ParameterLookupComponent
     return 'info';
   });
 
+  constructor() {
+    super();
+    // Focus the filter once, when the dialog has entered AND the filter is enabled: a disabled
+    // input ignores focus, so a keyboard user who types straight away would otherwise miss it.
+    effect(() => {
+      if (!this.entered() || this.filterDisabled() || this.focusApplied) return;
+      this.focusApplied = true;
+      // The enabled state reaches the native input on a later render; retry until it holds focus.
+      setTimeout(() => this.focusFilter(0), 0);
+    });
+  }
+
+  private focusFilter(attempt: number): void {
+    const bar = this.searchbar()?.nativeElement;
+    if (this.filterGone || !bar) return;
+    void bar.setFocus?.();
+    void bar.getInputElement?.()?.then((input: HTMLInputElement) => {
+      if (input.ownerDocument.activeElement !== input && attempt < 10 && !this.filterGone)
+        setTimeout(() => this.focusFilter(attempt + 1), 50);
+    });
+  }
+
   ngAfterViewInit(): void {
     // After the modal's enter animation; focusing earlier is undone by the overlay's own focus handling.
-    setTimeout(() => void this.searchbar()?.nativeElement.setFocus?.(), 350);
+    setTimeout(() => this.entered.set(true), 350);
     const provider = this.providerValue();
     if (provider.prepare) void this.prepare(provider);
     else this.start(provider.sources, provider.preselectedSourceId);
@@ -213,6 +242,7 @@ export class ParameterLookupComponent
   }
 
   override ngOnDestroy(): void {
+    this.filterGone = true;
     this.controller?.abort();
     super.ngOnDestroy();
   }

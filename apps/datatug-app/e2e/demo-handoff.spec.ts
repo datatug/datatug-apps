@@ -84,6 +84,10 @@ async function stubExternal(
 const dialogRequested = (external: External[]): boolean =>
   external.some((request) => request.url.includes('/api/embed/error-page'));
 
+/** True for `domain` itself and its subdomains, never for a host that only contains it (`sentry.io.example`). */
+const isHostOrSubdomain = (host: string, domain: string): boolean =>
+  host === domain || host.endsWith(`.${domain}`);
+
 /**
  * Resolves once Sentry has sent the report of an error thrown after this call (its next request to the ingest
  * host), or after `ms` if none comes. Start it before throwing the probe: the report usually leaves within
@@ -91,7 +95,7 @@ const dialogRequested = (external: External[]): boolean =>
  */
 async function sentryReport(page: Page, ms = 3000): Promise<void> {
   await page
-    .waitForRequest((request) => new URL(request.url()).hostname.includes('sentry.io'), { timeout: ms })
+    .waitForRequest((request) => isHostOrSubdomain(new URL(request.url()).hostname, 'sentry.io'), { timeout: ms })
     .catch(() => undefined);
 }
 
@@ -302,14 +306,14 @@ async function expectDiagnosticsWithoutOptionalTracking(
   expect(
     hosts.filter(
       (host) =>
-        host.includes('google-analytics.com') ||
-        host.includes('googletagmanager.com') ||
-        host.includes('posthog.com'),
+        isHostOrSubdomain(host, 'google-analytics.com') ||
+        isHostOrSubdomain(host, 'googletagmanager.com') ||
+        isHostOrSubdomain(host, 'posthog.com'),
     ),
     'optional analytics must not start',
   ).toEqual([]);
   expect(
-    hosts.some((host) => host.includes('sentry.io')),
+    hosts.some((host) => isHostOrSubdomain(host, 'sentry.io')),
     'Sentry error probe exercises the observer',
   ).toBe(true);
 }

@@ -20,6 +20,17 @@ import { registerPosthog } from './register-posthog';
 import indexHtml from './index.html?raw';
 import mainSource from './main.ts?raw';
 
+/** The body of the first `<script>` element in `html`, found by plain string search. */
+function firstInlineScript(html: string): string | undefined {
+  const openTag = '<script>';
+  const start = html.indexOf(openTag);
+  if (start < 0) return undefined;
+  const bodyStart = start + openTag.length;
+  const end = html.indexOf('</script>', bodyStart);
+  return end < 0 ? undefined : html.slice(bodyStart, end);
+}
+
+
 const sdk = vi.hoisted(() => ({
   init: vi.fn(),
   stopSessionRecording: vi.fn(),
@@ -56,17 +67,13 @@ it.each(paths)(
     try {
       history.replaceState(null, '', path);
       const start = indexHtml.indexOf('<!-- DataTug launch:');
-      const snippet = indexHtml
-        .slice(start)
-        .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+      const snippet = firstInlineScript(indexHtml.slice(start));
       if (!snippet) throw new Error('Missing launch privacy script');
       new Function('window', 'location', snippet)(window, {
         hostname: 'datatug.app',
         search: location.search,
       });
-      const gaSnippet = indexHtml
-        .slice(indexHtml.indexOf('<!-- Google Analytics'))
-        .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+      const gaSnippet = firstInlineScript(indexHtml.slice(indexHtml.indexOf('<!-- Google Analytics')));
       if (!gaSnippet) throw new Error('Missing GA loader');
       const append = vi.fn();
       new Function('window', 'location', 'document', gaSnippet)(
@@ -74,9 +81,7 @@ it.each(paths)(
         { hostname: 'datatug.app' },
         { head: { appendChild: append } },
       );
-      const checkoutSnippet = indexHtml
-        .slice(indexHtml.indexOf('<!-- Checkout privacy'))
-        .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+      const checkoutSnippet = firstInlineScript(indexHtml.slice(indexHtml.indexOf('<!-- Checkout privacy')));
       if (!checkoutSnippet) throw new Error('Missing checkout privacy script');
       new Function('window', 'location', checkoutSnippet)(window, location);
       expect(target['ga-disable-G-DESWRP39RY']).toBe(
@@ -187,9 +192,7 @@ it.each([
   (profile) => {
     expect(withoutDataTugTracking(production, profile)).toBe(production);
     const target = {};
-    const snippet = indexHtml
-      .slice(indexHtml.indexOf('<!-- DataTug launch:'))
-      .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+    const snippet = firstInlineScript(indexHtml.slice(indexHtml.indexOf('<!-- DataTug launch:')));
     if (!snippet) throw new Error('Missing launch privacy script');
     new Function('window', 'location', snippet)(target, {
       hostname: profile.hostname,

@@ -107,7 +107,9 @@ jobs:
           key: demodb-adventureworks-fixture-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs', 'apps/datatug-app/e2e/fixtures/demodb/corpus.json') }}
 
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-install
+        with:
+          browsers: chromium
 
       - name: nx e2e-demo-sqlite-adventureworks
         env:
