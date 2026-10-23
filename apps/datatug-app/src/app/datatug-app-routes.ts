@@ -184,7 +184,6 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
       : [];
   // The folder/start-chat alias is of this same repository: its `?ref=` (the repository segment's matrix parameter)
   // names the version and is carried over (review of eb9f5b26, 2). The Chinook alias never has one other than HEAD.
-  const ref = segments[3]?.parameters['ref'];
   const destination = urlTreeOfSegments(
     [
       'project',
@@ -194,7 +193,7 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
       'demo-project-1',
       ...suffix,
     ],
-    ref !== undefined && ref !== 'HEAD' ? ref : undefined,
+    segments[3]?.parameters['ref'],
   );
   if (suffix.length) {
     // The key is the path alone: a `?ref=` stays in the address, not in the kept question.
@@ -251,10 +250,14 @@ function urlTreeOfSegments(
   ref?: string,
 ): UrlTree {
   // `ref`: the GitHub project's `?ref=`, inside the router the repository segment's matrix parameter (index 3).
+  // `HEAD` is the default branch spelled out: the address has no ref (founder 2026-10-23).
   const primary = new UrlSegmentGroup(
     segments.map(
       (segment, i) =>
-        new UrlSegment(segment, i === 3 && ref !== undefined ? { ref } : {}),
+        new UrlSegment(
+          segment,
+          i === 3 && ref !== undefined && ref !== 'HEAD' ? { ref } : {},
+        ),
     ),
     {},
   );

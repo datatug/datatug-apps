@@ -461,6 +461,11 @@ describe('DataTug app routes', () => {
           '/project/github.com/acme/demo/chat?ref=v1',
           '/project/github.com/acme/demo/start-chat?ref=v1',
         ],
+        // `?ref=HEAD` is the default branch spelled out: dropped (review of 26eb7d1b, 1).
+        [
+          '/project/github.com/acme/demo/dir/-/chat?ref=HEAD',
+          '/project/github.com/acme/demo/dir/-/start-chat',
+        ],
       ])(
         '%s with a question moves to %s: the ref names the project and stays (review of eb9f5b26, 1)',
         async (url, expected) => {
