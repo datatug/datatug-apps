@@ -11,6 +11,30 @@ import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { SearchStatus } from './quick-search-model';
+import {
+  ProjectMetadataSearchService,
+  ProjectMetadataState,
+} from './project-metadata-search.service';
+import { MetadataItem } from './project-metadata-search';
+
+const customerItems: MetadataItem[] = [
+  {
+    kind: 'query',
+    id: 'top',
+    title: 'Top customers',
+    tags: ['Customers'],
+    href: '/q/top',
+  },
+  {
+    kind: 'table',
+    id: 'm/main/Customer',
+    title: 'Customer',
+    context: 'chinook · main',
+    tags: [],
+    href: '/t/Customer',
+  },
+  { kind: 'board', id: 'sales', title: 'Sales', tags: [], href: '/b/sales' },
+];
 
 const ready: SearchStatus = {
   state: 'ready',
@@ -29,6 +53,7 @@ describe('Quick Search consent and async state', () => {
     status: 'authenticated',
     user: { uid: 'first' },
   });
+  let meta: BehaviorSubject<ProjectMetadataState>;
   let api: {
     preview: ReturnType<typeof vi.fn>;
     status: ReturnType<typeof vi.fn>;
@@ -42,8 +67,12 @@ describe('Quick Search consent and async state', () => {
     context.next({
       ref: { storeId: 'firestore', spaceID: 's', projectId: 'p' },
     });
+    meta = new BehaviorSubject<ProjectMetadataState>({
+      items: customerItems,
+      loading: false,
+    });
     api = {
-      preview: vi.fn(() => of({documents:[],sourceCoverage:[]})),
+      preview: vi.fn(() => of({ documents: [], sourceCoverage: [] })),
       status: vi.fn(() => of(ready)),
       search: vi.fn(() => of({ items: [], tags: [], itemCount: 0 })),
       enable: vi.fn(() => of(ready)),
@@ -71,6 +100,10 @@ describe('Quick Search consent and async state', () => {
         },
         { provide: QuickSearchApiService, useValue: api },
         {
+          provide: ProjectMetadataSearchService,
+          useValue: { metadata: () => meta, forget: vi.fn() },
+        },
+        {
           provide: QuickSearchSnapshotService,
           useValue: {
             preview: vi.fn(async () => ({ documents: [], sourceCoverage: [] })),
@@ -79,50 +112,185 @@ describe('Quick Search consent and async state', () => {
       ],
     });
   });
-  it('uses all canonical categories and tag names only when the authenticated status advertises preview capability',async()=>{
-    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:true}));
-    const documents=(['table','column','view','query','dashboard','check','entity','environment','tag'] as const).map(kind=>({kind,id:kind,name:'Canonical '+kind,tags:['customers'],reference:{objectId:kind}}));
-    const snapshot={documents,sourceCoverage:documents.map(d=>({kind:d.kind,status:'complete' as const,count:1}))};
+  it('uses all canonical categories and tag names only when the authenticated status advertises preview capability', async () => {
+    api.status.mockReturnValue(of({ ...ready, supportsMetadataPreview: true }));
+    const documents = (
+      [
+        'table',
+        'column',
+        'view',
+        'query',
+        'dashboard',
+        'check',
+        'entity',
+        'environment',
+        'tag',
+      ] as const
+    ).map((kind) => ({
+      kind,
+      id: kind,
+      name: 'Canonical ' + kind,
+      tags: ['customers'],
+      reference: { objectId: kind },
+    }));
+    const snapshot = {
+      documents,
+      sourceCoverage: documents.map((d) => ({
+        kind: d.kind,
+        status: 'complete' as const,
+        count: 1,
+      })),
+    };
     api.preview.mockReturnValue(of(snapshot));
-    const fixture=TestBed.createComponent(QuickSearchPageComponent),page=fixture.componentInstance;
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
     await fixture.whenStable();
-    const fallback=TestBed.inject(QuickSearchSnapshotService).preview;
+    const fallback = TestBed.inject(QuickSearchSnapshotService).preview;
     expect(api.preview).not.toHaveBeenCalled();
     await page.preview();
     expect(page.snapshot()).toBe(snapshot);
-    expect(api.preview).toHaveBeenCalledExactlyOnceWith(page.project(),undefined);
+    expect(api.preview).toHaveBeenCalledExactlyOnceWith(
+      page.project(),
+      undefined,
+    );
     expect(fallback).not.toHaveBeenCalled();
-    expect(api.enable).not.toHaveBeenCalled();expect(api.refresh).not.toHaveBeenCalled();
+    expect(api.enable).not.toHaveBeenCalled();
+    expect(api.refresh).not.toHaveBeenCalled();
   });
-  it.each([false,undefined])('keeps public legacy preview when capability is %s',async capability=>{
-    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:capability}));
-    TestBed.overrideProvider(DatatugNavContextService,{useValue:{currentProject:of({ref:{storeId:'github.com',projectId:'repo@owner@'}})}});
-    const fixture=TestBed.createComponent(QuickSearchPageComponent);
-    await fixture.whenStable();await fixture.componentInstance.preview();
-    expect(TestBed.inject(QuickSearchSnapshotService).preview).toHaveBeenCalledOnce();
-    expect(api.preview).not.toHaveBeenCalled();expect(api.enable).not.toHaveBeenCalled();
-  });
-  it('does not fall back or index after an advertised canonical preview fails',async()=>{
-    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:true}));
-    api.preview.mockReturnValue(throwError(()=>({status:403})));
-    const fixture=TestBed.createComponent(QuickSearchPageComponent);
-    await fixture.whenStable();await fixture.componentInstance.preview();
-    expect(fixture.componentInstance.snapshot()).toBeUndefined();
-    expect(fixture.componentInstance.error()).toContain('Could not read selected metadata');
-    expect(TestBed.inject(QuickSearchSnapshotService).preview).not.toHaveBeenCalled();
-    expect(api.enable).not.toHaveBeenCalled();expect(api.refresh).not.toHaveBeenCalled();
-  });
-  it('offers settings instead of a zero-result search counter while indexing is disabled',async()=>{
-    api.status.mockReturnValue(of({...ready,state:'disabled'}));
-    const fixture=TestBed.createComponent(QuickSearchPageComponent);
+  it.each([false, undefined])(
+    'keeps public legacy preview when capability is %s',
+    async (capability) => {
+      api.status.mockReturnValue(
+        of({ ...ready, supportsMetadataPreview: capability }),
+      );
+      TestBed.overrideProvider(DatatugNavContextService, {
+        useValue: {
+          currentProject: of({
+            ref: { storeId: 'github.com', projectId: 'repo@owner@' },
+          }),
+        },
+      });
+      const fixture = TestBed.createComponent(QuickSearchPageComponent);
+      await fixture.whenStable();
+      await fixture.componentInstance.preview();
+      expect(
+        TestBed.inject(QuickSearchSnapshotService).preview,
+      ).toHaveBeenCalledOnce();
+      expect(api.preview).not.toHaveBeenCalled();
+      expect(api.enable).not.toHaveBeenCalled();
+    },
+  );
+  it('does not fall back or index after an advertised canonical preview fails', async () => {
+    api.status.mockReturnValue(of({ ...ready, supportsMetadataPreview: true }));
+    api.preview.mockReturnValue(throwError(() => ({ status: 403 })));
+    const fixture = TestBed.createComponent(QuickSearchPageComponent);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('no search index yet');
-    expect(fixture.nativeElement.textContent).not.toContain('0 names');
-    const button=[...fixture.nativeElement.querySelectorAll('ion-button')].find((b:unknown)=>(b as HTMLElement).textContent?.trim()==='Open Index settings') as HTMLElement;
-    expect(button).toBeTruthy();button.click();
+    await fixture.componentInstance.preview();
+    expect(fixture.componentInstance.snapshot()).toBeUndefined();
+    expect(fixture.componentInstance.error()).toContain(
+      'Could not read selected metadata',
+    );
+    expect(
+      TestBed.inject(QuickSearchSnapshotService).preview,
+    ).not.toHaveBeenCalled();
+    expect(api.enable).not.toHaveBeenCalled();
+    expect(api.refresh).not.toHaveBeenCalled();
+  });
+  it('searches in-memory project metadata at once, with no index, consent or upload', async () => {
+    api.status.mockReturnValue(
+      of({
+        ...ready,
+        state: 'disabled',
+        canManage: false,
+        eligible: false,
+        audience: '',
+      }),
+    );
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    page.onTerm('customer');
+    await fixture.whenStable();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).not.toContain('no search index yet');
+    expect(text).toContain('Top customers');
+    expect(text).toContain('Customer');
+    expect(text).not.toContain('Sales');
+    expect(
+      [
+        ...fixture.nativeElement.querySelectorAll(
+          'ion-item-group > ion-item-divider h3',
+        ),
+      ].map((h: unknown) => (h as HTMLElement).textContent?.trim()),
+    ).toEqual(['Queries', 'Tables']);
+    expect(
+      [...fixture.nativeElement.querySelectorAll('mark')].map(
+        (m: unknown) => (m as HTMLElement).textContent,
+      ),
+    ).toEqual(['customer', 'Customer']);
+    expect(api.search).not.toHaveBeenCalled();
+    expect(api.enable).not.toHaveBeenCalled();
+    page.localKind.set('table');
+    await fixture.whenStable();
+    expect(page.resultCount()).toBe(1);
+    page.localKind.set('');
+    page.tag.set('custom');
+    await fixture.whenStable();
+    expect(page.resultMatches().map((m) => m.item.title)).toEqual([
+      'Top customers',
+    ]);
+  });
+  it('shows loading, empty and honest error states', async () => {
+    api.status.mockReturnValue(of({ ...ready, state: 'disabled' }));
+    meta.next({ items: [], loading: true });
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    page.onTerm('zzz');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Searching project metadata',
+    );
+    meta.next({ items: customerItems, loading: false });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'No matches for “zzz”.',
+    );
+    meta.next({
+      items: [],
+      loading: false,
+      error: {
+        status: 403,
+        url: 'https://api.github.com/repos/o/r/commits/HEAD?per_page=1',
+      },
+    });
+    await fixture.whenStable();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('GitHub is limiting anonymous reads');
+    expect(text).not.toContain('Check your project access');
+    expect(text).not.toContain('api.github.com');
+  });
+  it('makes Index settings an icon-only header button with a label and tooltip', async () => {
+    const fixture = TestBed.createComponent(QuickSearchPageComponent);
+    await fixture.whenStable();
+    const button = fixture.nativeElement.querySelector(
+      'ion-header ion-button.index-settings-button',
+    ) as HTMLElement;
+    const inner = button.shadowRoot?.querySelector('button');
+    expect(
+      button.getAttribute('aria-label') ?? inner?.getAttribute('aria-label'),
+    ).toBe('Index settings');
+    expect(button.getAttribute('title') ?? inner?.getAttribute('title')).toBe(
+      'Index settings',
+    );
+    expect(button.textContent?.trim()).toBe('');
+    expect(button.querySelector('ion-icon[slot=icon-only]')).toBeTruthy();
+    button.click();
     await fixture.whenStable();
     expect(fixture.componentInstance.settings()).toBe(true);
-    expect(api.enable).not.toHaveBeenCalled();
+    expect(
+      fixture.nativeElement.querySelector(
+        '#quick-search-index-settings ion-item-divider',
+      )?.textContent,
+    ).toContain('Index settings');
   });
   it('does not upload on load, preview or checkbox selection, and requires checked consent', async () => {
     api.status.mockReturnValue(
@@ -141,7 +309,12 @@ describe('Quick Search consent and async state', () => {
     page.enable();
     expect(api.enable).toHaveBeenCalledOnce();
   });
-  it('renders late status without an extra click and discards stale query responses', async () => {
+  it('merges a ready hosted index with in-memory results, discarding stale responses', async () => {
+    meta.next({
+      items: [],
+      loading: false,
+      error: new Error('API rate limit exceeded'),
+    });
     const status = new Subject<SearchStatus>();
     api.status.mockReturnValue(status);
     const fixture = TestBed.createComponent(QuickSearchPageComponent),
@@ -150,24 +323,54 @@ describe('Quick Search consent and async state', () => {
     status.next(ready);
     await fixture.whenStable();
     expect(page.status()).toEqual(ready);
-    expect(fixture.nativeElement.textContent).toContain('0 names');
     const old = new Subject<unknown>(),
       current = new Subject<unknown>();
     api.search.mockReturnValueOnce(old).mockReturnValueOnce(current);
-    page.query.set('old');
-    page.search();
-    page.query.set('new');
-    page.search();
+    page.onTerm('old');
+    await fixture.whenStable();
+    page.onTerm('new');
+    await fixture.whenStable();
     old.next({
       items: [{ kind: 'tag', id: 'old', name: 'old', tags: [], reference: {} }],
     });
-    expect(page.items()).toEqual([]);
+    expect(page.hostedItems()).toBeUndefined();
     current.next({
-      items: [{ kind: 'tag', id: 'new', name: 'new', tags: [], reference: {} }],
+      items: [
+        {
+          kind: 'query',
+          id: 'new',
+          name: 'new query',
+          tags: [],
+          reference: {},
+        },
+      ],
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('new');
-    expect(fixture.nativeElement.textContent).not.toContain('old');
+    expect(fixture.nativeElement.textContent).toContain('new query');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'GitHub is limiting',
+    );
+  });
+  it('maps a failed hosted fallback to honest words', async () => {
+    meta.next({
+      items: [],
+      loading: false,
+      error: new Error('API rate limit exceeded'),
+    });
+    api.search.mockReturnValue(
+      throwError(() => ({
+        status: 409,
+        error: { error: { code: 'quick_search_reindex_required' } },
+      })),
+    );
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    page.onTerm('customer');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('out of date');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Check your project access',
+    );
   });
   it('clears results and consent when project changes', () => {
     const fixture = TestBed.createComponent(QuickSearchPageComponent),
@@ -228,22 +431,42 @@ describe('Quick Search consent and async state', () => {
     expect(page.capacityExceeded()).toBe(true);
     expect(api.enable).not.toHaveBeenCalled();
   });
-  it('sends the selected discovery tag as a nonempty query and filter', () => {
+  it('lists items explicitly tagged with the discovery tag from in-memory metadata', async () => {
     TestBed.overrideProvider(ActivatedRoute, {
       useValue: {
         snapshot: {
           data: { discovery: true },
-          queryParamMap: convertToParamMap({ name: 'Customers' }),
+          queryParamMap: convertToParamMap({ name: 'customers' }),
           paramMap: convertToParamMap({}),
         },
       },
     });
-    TestBed.createComponent(QuickSearchPageComponent);
+    api.search.mockReturnValue(
+      of({
+        items: [
+          {
+            kind: 'dashboard',
+            id: 'crm',
+            name: 'CRM board',
+            tags: ['Customers'],
+            reference: { objectId: 'crm' },
+          },
+        ],
+        tags: [],
+        itemCount: 1,
+      }),
+    );
+    const fixture = TestBed.createComponent(QuickSearchPageComponent);
+    await fixture.whenStable();
+    // In-memory tags first; a ready hosted index adds tags only full item files carry.
+    expect(
+      fixture.componentInstance.resultMatches().map((m) => m.item.title),
+    ).toEqual(['Top customers', 'CRM board']);
     expect(api.search).toHaveBeenCalledWith(
       { storeId: 'firestore', spaceID: 's', projectId: 'p' },
-      'Customers',
+      'customers',
       [],
-      ['Customers'],
+      ['customers'],
     );
   });
   it('does not send an empty query when an enabled index opens', () => {
@@ -369,8 +592,9 @@ describe('Quick Search consent and async state', () => {
     await fixture.whenStable();
     expect(page.items().map((item) => item.name)).toEqual(['ID']);
   });
-  it('searches the overview query and observes later query changes on a reused route', () => {
-    const query = new BehaviorSubject(convertToParamMap({ q: 'Customers' }));
+  it('searches the overview query and observes later query changes on a reused route', async () => {
+    api.status.mockReturnValue(of({ ...ready, state: 'disabled' }));
+    const query = new BehaviorSubject(convertToParamMap({ q: 'Customer' }));
     TestBed.overrideProvider(ActivatedRoute, {
       useValue: {
         snapshot: {
@@ -381,22 +605,16 @@ describe('Quick Search consent and async state', () => {
         queryParamMap: query,
       },
     });
-    const page = TestBed.createComponent(
-      QuickSearchPageComponent,
-    ).componentInstance;
-    expect(api.search).toHaveBeenLastCalledWith(
-      { storeId: 'firestore', spaceID: 's', projectId: 'p' },
-      'Customers',
-      [],
-      [],
-    );
-    query.next(convertToParamMap({ q: 'Invoices' }));
-    expect(page.query()).toBe('Invoices');
-    expect(api.search).toHaveBeenLastCalledWith(
-      { storeId: 'firestore', spaceID: 's', projectId: 'p' },
-      'Invoices',
-      [],
-      [],
-    );
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    await fixture.whenStable();
+    expect(page.resultMatches().map((m) => m.item.title)).toEqual([
+      'Customer',
+      'Top customers',
+    ]);
+    query.next(convertToParamMap({ q: 'Sales' }));
+    expect(page.query()).toBe('Sales');
+    expect(page.resultMatches().map((m) => m.item.title)).toEqual(['Sales']);
+    expect(api.search).not.toHaveBeenCalled();
   });
 });
