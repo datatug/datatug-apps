@@ -6,7 +6,7 @@
  * metadata snapshot to a third-party provider, which is why it asks for consent. Searching in memory uploads nothing
  * and only shows what this viewer could already open, so it needs no consent.
  */
-import { friendlyError } from '@datatug/friendly-error';
+import { friendlyError, isGithubRateLimit } from '@datatug/friendly-error';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 import { SearchDocument, searchItemHref } from './quick-search-model';
@@ -254,6 +254,7 @@ export function tagHref(ref: IProjectRef, name: string): string {
 export function quickSearchErrorMessage(
   error: unknown,
   fallback = 'Some project metadata could not be read. Try again.',
+  viewer: { readonly signedIn?: boolean } = {},
 ): string {
   const code = hostedErrorCode(error);
   switch (code) {
@@ -269,14 +270,23 @@ export function quickSearchErrorMessage(
     case 'project_denied':
       return 'Your account cannot search this project. Sign in with an account that has access.';
   }
+  // Decided from the status, address and error code (the shared detector), never from display words.
+  if (isGithubRateLimit(error))
+    return 'GitHub is limiting anonymous reads of this project right now. Wait a few minutes, or sign in, then search again.';
+  const status =
+    error && typeof error === 'object'
+      ? (error as { status?: unknown }).status
+      : undefined;
+  if (status === 429)
+    return 'Too many requests. Wait a minute, then search again.';
   const friendly = friendlyError(error, 'this project');
   switch (friendly.kind) {
     case 'rate-limit':
-      return friendly.title.startsWith('GitHub')
-        ? 'GitHub is limiting anonymous reads of this project right now. Wait a few minutes, or sign in, then search again.'
-        : 'Too many requests. Wait a minute, then search again.';
+      return 'Too many requests. Wait a minute, then search again.';
     case 'unauthenticated':
-      return 'Your sign-in has expired. Sign in again, then search.';
+      return viewer.signedIn
+        ? 'Your sign-in has expired. Sign in again, then search.'
+        : 'Sign in to search this project.';
     case 'forbidden':
       return 'You do not have access to this project.';
     case 'not-found':
@@ -301,4 +311,19 @@ function hostedErrorCode(error: unknown): string | undefined {
       ? (inner as { code?: unknown }).code
       : (body as { code?: unknown }).code;
   return typeof code === 'string' ? code : undefined;
+}
+
+/** Whether the auth state is a signed-in person (not signed out, still signing in, or an anonymous session). */
+export function isSignedInViewer(auth: {
+  readonly status?: string;
+  readonly user?: {
+    readonly uid?: string;
+    readonly isAnonymous?: boolean;
+  } | null;
+}): boolean {
+  return (
+    auth.status === 'authenticated' &&
+    !!auth.user?.uid &&
+    auth.user.isAnonymous !== true
+  );
 }

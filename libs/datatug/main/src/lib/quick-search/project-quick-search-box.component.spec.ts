@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
-import { ReplaySubject } from 'rxjs';
+import { BehaviorSubject, ReplaySubject } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import {
   ProjectQuickSearchBoxComponent,
   QUICK_SEARCH_DEBOUNCE_MS,
@@ -39,16 +40,28 @@ const items: MetadataItem[] = [
 describe('ProjectQuickSearchBoxComponent', () => {
   let metadata: ReplaySubject<ProjectMetadataState>;
   let navigate: ReturnType<typeof vi.spyOn>;
+  let includeColumns: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     metadata = new ReplaySubject<ProjectMetadataState>(1);
+    includeColumns = vi.fn();
     TestBed.configureTestingModule({
       imports: [ProjectQuickSearchBoxComponent],
       providers: [
         provideRouter([]),
         {
           provide: ProjectMetadataSearchService,
-          useValue: { metadata: vi.fn(() => metadata), forget: vi.fn() },
+          useValue: {
+            metadata: vi.fn(() => metadata),
+            forget: vi.fn(),
+            includeColumns,
+          },
+        },
+        {
+          provide: SneatAuthStateService,
+          useValue: {
+            authState: new BehaviorSubject({ status: 'notAuthenticated' }),
+          },
         },
       ],
     });
@@ -66,7 +79,8 @@ describe('ProjectQuickSearchBoxComponent', () => {
     const type = async (text: string) => {
       input.value = text;
       input.dispatchEvent(new Event('input'));
-      await sleep(QUICK_SEARCH_DEBOUNCE_MS + 20);
+      await fixture.whenStable();
+      await sleep(QUICK_SEARCH_DEBOUNCE_MS + 40);
       await fixture.whenStable();
     };
     const key = async (name: string) => {
@@ -89,6 +103,7 @@ describe('ProjectQuickSearchBoxComponent', () => {
     expect(input.getAttribute('aria-expanded')).toBe('false');
     const listbox = el.querySelector('[role=listbox]') as HTMLElement;
     expect(input.getAttribute('aria-controls')).toBe(listbox.id);
+    metadata.next({ items, loading: false });
     await type('cust');
     expect(input.getAttribute('aria-expanded')).toBe('true');
   });
@@ -99,13 +114,16 @@ describe('ProjectQuickSearchBoxComponent', () => {
     input.dispatchEvent(new Event('input'));
     await sleep(QUICK_SEARCH_DEBOUNCE_MS / 3);
     await fixture.whenStable();
-    expect(el.querySelector('[role=listbox]')?.hasAttribute('hidden')).toBe(
-      true,
-    );
+    expect(el.querySelector('.panel')?.hasAttribute('hidden')).toBe(true);
+    expect(includeColumns).not.toHaveBeenCalled();
     await type('customer');
+    expect(includeColumns).toHaveBeenCalledWith(ref);
     expect(el.querySelector('.state')?.textContent).toContain(
       'Searching project metadata',
     );
+    // Status words are announced from a live region next to the listbox, never inside it.
+    expect(el.querySelector('[role=listbox] .state')).toBeNull();
+    expect(el.querySelector('[aria-live=polite] .state')).not.toBeNull();
     metadata.next({ items, loading: false });
     await fixture.whenStable();
     const titles = [...el.querySelectorAll('.group-title')].map((g) =>
@@ -129,6 +147,39 @@ describe('ProjectQuickSearchBoxComponent', () => {
     await fixture.whenStable();
     expect(el.querySelector('.state')?.textContent).toContain(
       'No matches for “zzz”',
+    );
+    // An empty listbox is not reported as expanded.
+    expect(el.querySelector('input')?.getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+  });
+
+  it('marks group titles as presentation inside labelled groups', async () => {
+    const { el, type } = await render();
+    metadata.next({ items, loading: false });
+    await type('Customer');
+    const group = el.querySelector('[role=group]') as HTMLElement;
+    const title = group.querySelector('.group-title') as HTMLElement;
+    expect(title.getAttribute('role')).toBe('presentation');
+    expect(group.getAttribute('aria-labelledby')).toBe(title.id);
+  });
+
+  it('never opens a stale suggestion with ArrowDown and Enter inside the debounce', async () => {
+    const { input, type, fixture } = await render();
+    metadata.next({ items, loading: false });
+    await type('Albums');
+    input.value = 'Customer';
+    input.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    for (const key of ['ArrowDown', 'Enter'])
+      input.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      );
+    await fixture.whenStable();
+    // Enter searched the typed text instead of opening "Albums".
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(String(navigate.mock.calls[0][0])).toContain(
+      'quick-search?q=Customer',
     );
   });
 
@@ -160,8 +211,12 @@ describe('ProjectQuickSearchBoxComponent', () => {
     const { input, type, fixture } = await render();
     metadata.next({ items, loading: false });
     await type('Customer');
-    (input.form as HTMLFormElement).dispatchEvent(
-      new Event('submit', { cancelable: true }),
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      }),
     );
     await fixture.whenStable();
     expect(String(navigate.mock.calls.at(-1)?.[0])).toBe(

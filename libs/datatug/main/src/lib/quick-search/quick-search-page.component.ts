@@ -35,6 +35,7 @@ import {
   IonLabel,
   IonList,
   IonBadge,
+  IonRouterLink,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
@@ -69,6 +70,7 @@ import { readGithubProjectId } from '@datatug/project-address';
 import { ErrorStateComponent } from '../components/error-state/error-state.component';
 import {
   ProjectQuickSearchBoxComponent,
+  QUICK_SEARCH_DEBOUNCE_MS,
   registerQuickSearchIcons,
 } from './project-quick-search-box.component';
 import {
@@ -84,7 +86,9 @@ import {
   metadataGroupTitles,
   metadataKinds,
   quickSearchErrorMessage,
+  isSignedInViewer,
 } from './project-metadata-search';
+import { debouncedSignal } from './debounced-signal';
 import {
   ProjectMetadataSearchService,
   ProjectMetadataState,
@@ -144,6 +148,7 @@ import {
     IonLabel,
     IonList,
     IonBadge,
+    IonRouterLink,
     ErrorStateComponent,
     ProjectQuickSearchBoxComponent,
   ],
@@ -460,11 +465,7 @@ import {
                       }}</ion-badge>
                     </ion-item-divider>
                     @for (row of group.rows; track row.key) {
-                      <ion-item
-                        [routerLink]="row.link"
-                        [detail]="!!row.link"
-                        [button]="!!row.link"
-                      >
+                      <ion-item [routerLink]="row.link" [detail]="!!row.link">
                         <ion-icon
                           slot="start"
                           [name]="row.icon"
@@ -933,7 +934,9 @@ export class QuickSearchPageComponent {
     const error = this.localState().error;
     // A failed optional index lookup is not news while the in-memory read succeeded.
     if (this.hostedItems() || error === undefined) return '';
-    return quickSearchErrorMessage(this.hostedError() ?? error);
+    return quickSearchErrorMessage(this.hostedError() ?? error, undefined, {
+      signedIn: this.signedIn(),
+    });
   });
   readonly statusErrorText = computed(() => {
     const code = this.status()?.error;
@@ -943,9 +946,18 @@ export class QuickSearchPageComponent {
       'The hosted index reported a problem. Refresh it, or disable and delete it.',
     );
   });
+  /** Status, preview and index mutations share this fence; hosted search has its own, so typing never aborts them. */
   private generation = 0;
   private readonly authKey = signal<string | undefined>(undefined);
+  readonly signedIn = signal(false);
   private request?: Subscription;
+  private searchGeneration = 0;
+  private searchRequest?: Subscription;
+  /** The tag filter reaches the hosted index only after typing pauses (local filtering is instant). */
+  private readonly debouncedTag = debouncedSignal(
+    this.tag,
+    QUICK_SEARCH_DEBOUNCE_MS,
+  );
   constructor() {
     addIcons({
       'pricetag-outline': pricetagOutline,
@@ -965,15 +977,21 @@ export class QuickSearchPageComponent {
     registerQuickSearchIcons();
     // Ask a ready hosted index too (see search()).
     effect(() => {
-      this.query();
-      this.tag();
+      const q = this.query();
+      this.debouncedTag.value();
       this.status();
-      untracked(() => this.search());
+      untracked(() => {
+        const ref = this.project();
+        if (ref && q.trim() && !this.schemaDetail && !this.checkDetail())
+          this.metadataService.includeColumns(ref);
+        this.search();
+      });
     });
     this.auth.authState.pipe(takeUntilDestroyed()).subscribe((auth) => {
       const key = JSON.stringify([auth.status, auth.user?.uid]);
       if (key === this.authKey()) return;
       this.authKey.set(key);
+      this.signedIn.set(isSignedInViewer(auth));
       this.invalidateSearch();
       this.status.set(undefined);
       this.snapshot.set(undefined);
@@ -1046,14 +1064,15 @@ export class QuickSearchPageComponent {
       }
       const query = params.get(this.discovery ? 'name' : 'q') || '';
       if (!this.schemaDetail && !this.checkDetail() && this.query() !== query) {
+        // The effect asks the hosted index; never fence status, preview or index changes for a new query.
         this.query.set(query);
-        this.invalidateSearch();
-        this.search();
+        this.cancelHostedSearch();
       }
     });
     this.destroy.onDestroy(() => {
       this.generation++;
       this.request?.unsubscribe();
+      this.cancelHostedSearch();
     });
   }
   ionViewWillEnter(): void {
@@ -1084,6 +1103,11 @@ export class QuickSearchPageComponent {
     this.items.set([]);
     this.busy.set(false);
     this.searched.set(false);
+    this.cancelHostedSearch();
+  }
+  cancelHostedSearch() {
+    this.searchGeneration++;
+    this.searchRequest?.unsubscribe();
     this.hostedBusy.set(false);
   }
   loadStatus() {
@@ -1104,7 +1128,7 @@ export class QuickSearchPageComponent {
           void this.checkMetadata();
           return;
         }
-        if (!this.schemaDetail && status.state === 'ready') this.search();
+        // A ready status reaches search() through the effect, which watches status().
         if (this.schemaDetail) void this.schemaPreview();
       },
       error: (error: unknown) => {
@@ -1114,6 +1138,7 @@ export class QuickSearchPageComponent {
             quickSearchErrorMessage(
               error,
               'Could not load the hosted index status. Try again.',
+              { signedIn: this.signedIn() },
             ),
           );
           this.busy.set(false);
@@ -1132,19 +1157,21 @@ export class QuickSearchPageComponent {
     // A ready index adds what in-memory inventories lack (Checks, tags kept only in full item files),
     // and answers when an in-memory source could not be read. Without one, nothing is asked.
     if (!q || this.status()?.state !== 'ready') {
+      this.cancelHostedSearch();
       this.hostedItems.set(undefined);
       this.hostedError.set(undefined);
       return;
     }
-    const generation = ++this.generation;
-    this.request?.unsubscribe();
+    this.cancelHostedSearch();
+    const generation = this.searchGeneration;
+    const tag = this.debouncedTag.value().trim();
     this.hostedBusy.set(true);
     this.hostedError.set(undefined);
-    this.request = this.api
-      .search(ref, q, [], this.discovery ? [q] : this.tag() ? [this.tag()] : [])
+    this.searchRequest = this.api
+      .search(ref, q, [], this.discovery ? [q] : tag ? [tag] : [])
       .subscribe({
         next: (result) => {
-          if (generation !== this.generation) return;
+          if (generation !== this.searchGeneration) return;
           this.hostedItems.set(
             result.items
               .map((doc) => fromSearchDocument(ref, doc))
@@ -1153,7 +1180,7 @@ export class QuickSearchPageComponent {
           this.hostedBusy.set(false);
         },
         error: (error: unknown) => {
-          if (generation !== this.generation) return;
+          if (generation !== this.searchGeneration) return;
           this.hostedItems.set(undefined);
           this.hostedError.set(error);
           this.hostedBusy.set(false);

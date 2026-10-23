@@ -167,6 +167,13 @@ describe('quickSearchErrorMessage', () => {
           }),
         ),
       ),
+    ).toContain('Sign in to search this project');
+    expect(
+      quickSearchErrorMessage(
+        new HttpErrorResponse({ status: 401 }),
+        undefined,
+        { signedIn: true },
+      ),
     ).toContain('sign-in has expired');
     expect(
       safe(quickSearchErrorMessage(new Error('boom at https://x.test/a?b=c'))),

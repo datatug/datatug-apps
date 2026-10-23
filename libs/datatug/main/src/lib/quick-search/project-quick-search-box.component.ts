@@ -1,7 +1,6 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
   ElementRef,
   booleanAttribute,
   computed,
@@ -33,7 +32,9 @@ import {
   serverOutline,
   arrowForwardOutline,
 } from 'ionicons/icons';
-import { combineLatest, filter, of, switchMap } from 'rxjs';
+import { combineLatest, filter, map, of, switchMap } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { debouncedSignal } from './debounced-signal';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 import {
@@ -43,6 +44,7 @@ import {
   highlightParts,
   matchMetadata,
   secondaryLines,
+  isSignedInViewer,
   quickSearchErrorMessage,
 } from './project-metadata-search';
 import {
@@ -118,7 +120,7 @@ let nextBoxId = 0;
           enterkeyhint="search"
           [attr.role]="suggestions() ? 'combobox' : null"
           [attr.aria-autocomplete]="suggestions() ? 'list' : null"
-          [attr.aria-expanded]="suggestions() ? open() : null"
+          [attr.aria-expanded]="suggestions() ? hasOptions() : null"
           [attr.aria-controls]="suggestions() ? listboxId : null"
           [attr.aria-activedescendant]="activeOptionId()"
           [placeholder]="placeholder()"
@@ -140,96 +142,106 @@ let nextBoxId = 0;
         }
       </div>
       @if (suggestions()) {
-        <div
-          class="panel"
-          [id]="listboxId"
-          role="listbox"
-          [attr.aria-label]="label() + ' suggestions'"
-          [hidden]="!open()"
-        >
-          @if (open()) {
-            @for (view of groupViews(); track view.group.kind) {
-              <div
-                class="group"
-                role="group"
-                [attr.aria-labelledby]="view.headingId"
-              >
-                <div class="group-title" [id]="view.headingId">
-                  {{ view.group.title }}
-                  <span class="count">{{ view.group.total }}</span>
-                </div>
-                @for (option of view.options; track option.id) {
-                  <a
-                    class="option"
-                    role="option"
-                    [id]="option.id"
-                    [class.active]="option.id === activeOptionId()"
-                    [attr.aria-selected]="option.id === activeOptionId()"
-                    [routerLink]="option.link"
-                    tabindex="-1"
-                    (mousedown)="$event.preventDefault()"
-                    (click)="close()"
+        <div class="panel" [hidden]="!open()">
+          <div
+            class="listbox"
+            [id]="listboxId"
+            role="listbox"
+            [attr.aria-label]="label() + ' suggestions'"
+          >
+            @if (open()) {
+              @for (view of groupViews(); track view.group.kind) {
+                <div
+                  class="group"
+                  role="group"
+                  [attr.aria-labelledby]="view.headingId"
+                >
+                  <div
+                    class="group-title"
+                    role="presentation"
+                    [id]="view.headingId"
                   >
-                    <ion-icon [name]="option.icon" aria-hidden="true" />
-                    <span class="text">
-                      <span class="title">
-                        @for (part of option.title; track $index) {
-                          @if (part.hit) {
-                            <mark>{{ part.text }}</mark>
-                          } @else {
-                            <span>{{ part.text }}</span>
+                    {{ view.group.title }}
+                    <span class="count">{{ view.group.total }}</span>
+                  </div>
+                  @for (option of view.options; track option.id) {
+                    <a
+                      class="option"
+                      role="option"
+                      [id]="option.id"
+                      [class.active]="option.id === activeOptionId()"
+                      [attr.aria-selected]="option.id === activeOptionId()"
+                      [routerLink]="option.link"
+                      tabindex="-1"
+                      (mousedown)="$event.preventDefault()"
+                      (click)="close()"
+                    >
+                      <ion-icon [name]="option.icon" aria-hidden="true" />
+                      <span class="text">
+                        <span class="title">
+                          @for (part of option.title; track $index) {
+                            @if (part.hit) {
+                              <mark>{{ part.text }}</mark>
+                            } @else {
+                              <span>{{ part.text }}</span>
+                            }
                           }
-                        }
+                        </span>
+                        <span class="secondary">{{ option.secondary }}</span>
                       </span>
-                      <span class="secondary">{{ option.secondary }}</span>
-                    </span>
-                  </a>
-                }
-              </div>
-            }
-            @if (total()) {
-              <a
-                class="option see-all"
-                role="option"
-                [id]="seeAllId"
-                [class.active]="seeAllId === activeOptionId()"
-                [attr.aria-selected]="seeAllId === activeOptionId()"
-                [routerLink]="seeAllLink()"
-                tabindex="-1"
-                (mousedown)="$event.preventDefault()"
-                (click)="close()"
-              >
-                <span class="text"
-                  ><span class="title"
-                    >See all {{ total() }}
-                    {{ total() === 1 ? 'result' : 'results' }}</span
-                  ></span
+                    </a>
+                  }
+                </div>
+              }
+              @if (total()) {
+                <a
+                  class="option see-all"
+                  role="option"
+                  [id]="seeAllId"
+                  [class.active]="seeAllId === activeOptionId()"
+                  [attr.aria-selected]="seeAllId === activeOptionId()"
+                  [routerLink]="seeAllLink()"
+                  tabindex="-1"
+                  (mousedown)="$event.preventDefault()"
+                  (click)="close()"
                 >
-                <ion-icon name="arrow-forward-outline" aria-hidden="true" />
-              </a>
-            } @else if (state().loading) {
-              <div class="state" role="status">
-                <ion-spinner name="dots" aria-hidden="true" />
-                Searching project metadata…
-              </div>
-            } @else {
-              <div class="state" role="status">
-                No matches for “{{ term() }}”.
-                <span class="secondary"
-                  >Try part of a query, table, column or tag name.</span
-                >
-              </div>
+                  <span class="text"
+                    ><span class="title"
+                      >See all {{ total() }}
+                      {{ total() === 1 ? 'result' : 'results' }}</span
+                    ></span
+                  >
+                  <ion-icon name="arrow-forward-outline" aria-hidden="true" />
+                </a>
+              }
             }
-            @if (total() && state().loading) {
-              <div class="state small" role="status">
-                <ion-spinner name="dots" aria-hidden="true" /> Still reading
-                project metadata…
-              </div>
+          </div>
+          <!-- Status words live outside the listbox, in one region that stays in the DOM so changes are announced. -->
+          <div class="states" aria-live="polite" aria-atomic="true">
+            @if (open()) {
+              @if (!total() && state().loading) {
+                <div class="state">
+                  <ion-spinner name="dots" aria-hidden="true" />
+                  Searching project metadata…
+                </div>
+              } @else if (!total()) {
+                <div class="state">
+                  No matches for “{{ term() }}”.
+                  <span class="secondary"
+                    >Try part of a query, table, column or tag name.</span
+                  >
+                </div>
+              } @else if (state().loading) {
+                <div class="state small">
+                  <ion-spinner name="dots" aria-hidden="true" /> Still reading
+                  project metadata…
+                </div>
+              }
+              @if (errorText(); as text) {
+                <div class="state small warning">{{ text }}</div>
+              }
             }
-            @if (errorText(); as text) {
-              <div class="state small warning" role="status">{{ text }}</div>
-            }
-          }
+          </div>
         </div>
       }
     </form>
@@ -424,15 +436,23 @@ export class ProjectQuickSearchBoxComponent {
   readonly listboxId = `${this.inputId}-listbox`;
   readonly seeAllId = `${this.inputId}-all`;
 
+  private readonly debounce = debouncedSignal(
+    this.query,
+    QUICK_SEARCH_DEBOUNCE_MS,
+  );
   /** The query after the debounce; what is actually matched. */
-  readonly term = signal('');
+  readonly term = this.debounce.value;
   readonly expanded = signal(false);
   readonly activeIndex = signal(-1);
   /** Metadata is read on first focus or input, so an untouched box costs no request. */
   private readonly activated = signal(false);
-  private timer?: ReturnType<typeof setTimeout>;
-  /** True between a keystroke and the end of its debounce. */
-  private readonly typing = signal(false);
+  private readonly signedIn = toSignal(
+    inject(SneatAuthStateService).authState.pipe(
+      map((auth) => isSignedInViewer(auth)),
+    ),
+    { initialValue: false },
+  );
+  private lastTerm = '';
 
   readonly state = toSignal(
     combineLatest([
@@ -484,37 +504,42 @@ export class ProjectQuickSearchBoxComponent {
   readonly open = computed(
     () => this.suggestions() && this.expanded() && !!this.term().trim(),
   );
+  /** `aria-expanded`: true only while the listbox shows options. */
+  readonly hasOptions = computed(
+    () => this.open() && this.optionIds().length > 0,
+  );
   readonly seeAllLink = computed(() => this.resultsLink(this.term()));
   readonly errorText = computed(() => {
     const error = this.state().error;
-    return error === undefined ? '' : quickSearchErrorMessage(error);
+    return error === undefined
+      ? ''
+      : quickSearchErrorMessage(error, undefined, {
+          signedIn: this.signedIn(),
+        });
   });
 
   constructor() {
     registerQuickSearchIcons();
-    // An initial or externally set query is matched at once, without the typing debounce.
     effect(() => {
-      const query = this.query();
+      const term = this.term();
+      const ref = this.projectRef();
       untracked(() => {
-        if (!this.typing() && query !== this.term()) this.term.set(query);
+        // Column files are the one costly source: read them only once someone searches.
+        if (ref && term.trim() && this.suggestions())
+          this.metadataService.includeColumns(ref);
+        if (term !== this.lastTerm) {
+          this.lastTerm = term;
+          this.termChange.emit(term);
+        }
       });
     });
-    inject(DestroyRef).onDestroy(() => clearTimeout(this.timer));
   }
 
   onInput(event: Event): void {
-    const value = (event.target as HTMLInputElement).value;
-    this.query.set(value);
+    this.query.set((event.target as HTMLInputElement).value);
     this.activated.set(true);
     this.expanded.set(true);
     this.activeIndex.set(-1);
-    clearTimeout(this.timer);
-    this.typing.set(true);
-    this.timer = setTimeout(() => {
-      this.typing.set(false);
-      this.term.set(value);
-      this.termChange.emit(value);
-    }, QUICK_SEARCH_DEBOUNCE_MS);
   }
 
   onFocus(): void {
@@ -523,12 +548,15 @@ export class ProjectQuickSearchBoxComponent {
   }
 
   onKeydown(event: KeyboardEvent): void {
+    // Within the debounce the shown suggestions belong to the previous text: never highlight or open them.
+    const stale = this.debounce.pending();
     const count = this.optionIds().length;
     switch (event.key) {
       case 'ArrowDown':
       case 'ArrowUp': {
         if (!this.suggestions()) return;
         event.preventDefault();
+        if (stale) return;
         if (!this.open()) {
           this.expanded.set(true);
           return;
@@ -554,9 +582,12 @@ export class ProjectQuickSearchBoxComponent {
         }
         return;
       case 'Enter': {
-        const active = this.activeOptionId();
-        if (!active) return; // the form's submit handles a plain Enter
         event.preventDefault();
+        const active = stale ? undefined : this.activeOptionId();
+        if (!active) {
+          this.submit();
+          return;
+        }
         const link =
           active === this.seeAllId
             ? this.seeAllLink()
@@ -572,11 +603,14 @@ export class ProjectQuickSearchBoxComponent {
 
   onSubmit(event: Event): void {
     event.preventDefault();
+    this.submit();
+  }
+
+  /** Searches the typed text now: the results page, or `submitted` for a host that shows results itself. */
+  submit(): void {
     const q = this.query().trim();
     if (!q) return;
-    clearTimeout(this.timer);
-    this.typing.set(false);
-    this.term.set(this.query());
+    this.debounce.flush();
     this.close();
     this.submitted.emit(q);
     const link = this.navigateOnSubmit() ? this.resultsLink(q) : undefined;
@@ -589,11 +623,8 @@ export class ProjectQuickSearchBoxComponent {
   }
 
   clear(input: HTMLInputElement): void {
-    clearTimeout(this.timer);
-    this.typing.set(false);
     this.query.set('');
-    this.term.set('');
-    this.termChange.emit('');
+    this.debounce.flush();
     this.close();
     input.focus();
   }

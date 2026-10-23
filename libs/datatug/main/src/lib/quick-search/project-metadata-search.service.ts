@@ -1,6 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import {
   Observable,
+  ReplaySubject,
   catchError,
   combineLatest,
   defer,
@@ -55,6 +56,15 @@ export interface ProjectMetadataState {
 const SOURCE_TIMEOUT_MS = 30_000;
 /** Column files are read only for this many tables, so a huge catalog never floods the file host. */
 export const MAX_COLUMN_TABLES = 120;
+
+const cacheKey = (ref: IProjectRef) =>
+  JSON.stringify([
+    ref.storeId,
+    ref.projectId,
+    ref.spaceID,
+    ref.branch,
+    ref.projectApi,
+  ]);
 
 const isGithub = (ref: IProjectRef) =>
   ['github', 'github.com'].includes(ref.storeId) && !ref.projectApi;
@@ -212,6 +222,7 @@ export class ProjectMetadataSearchService {
   private readonly auth = inject(SneatAuthStateService);
   private readonly cache = new Map<string, Observable<ProjectMetadataState>>();
   private viewer?: string;
+  private readonly wanted = new Map<string, ReplaySubject<true>>();
 
   /**
    * The metadata of `ref` as the current viewer may read it. A sign-in, sign-out or account switch drops everything
@@ -230,17 +241,12 @@ export class ProjectMetadataSearchService {
         if (viewer !== this.viewer) {
           this.viewer = viewer;
           this.cache.clear();
+          this.wanted.clear();
         }
-        const key = JSON.stringify([
-          ref.storeId,
-          ref.projectId,
-          ref.spaceID,
-          ref.branch,
-          ref.projectApi,
-        ]);
+        const key = cacheKey(ref);
         let state = this.cache.get(key);
         if (!state) {
-          state = this.read(ref).pipe(
+          state = this.read(ref, key).pipe(
             shareReplay({ bufferSize: 1, refCount: true }),
           );
           this.cache.set(key, state);
@@ -250,13 +256,30 @@ export class ProjectMetadataSearchService {
     );
   }
 
+  /** Starts reading column files for `ref` (once): call it when someone actually searches. */
+  includeColumns(ref: IProjectRef): void {
+    this.columnsWanted(cacheKey(ref)).next(true);
+  }
+
+  private columnsWanted(key: string) {
+    let wanted = this.wanted.get(key);
+    if (!wanted) {
+      wanted = new ReplaySubject<true>(1);
+      this.wanted.set(key, wanted);
+    }
+    return wanted;
+  }
+
   /** Drops what was read for `ref`, so Retry reads again. */
   forget(ref: IProjectRef): void {
     for (const key of this.cache.keys())
       if (key.includes(JSON.stringify(ref.projectId))) this.cache.delete(key);
   }
 
-  private read(ref: IProjectRef): Observable<ProjectMetadataState> {
+  private read(
+    ref: IProjectRef,
+    key: string,
+  ): Observable<ProjectMetadataState> {
     const summary$ = this.projects.watchProjectSummary(ref).pipe(
       filter((summary): summary is IProjectSummary => !!summary),
       take(1),
@@ -277,8 +300,17 @@ export class ProjectMetadataSearchService {
         asSource(
           tables$.pipe(map((tables) => tables.map((t) => tableItem(ref, t)))),
         ),
-        asSource(
-          tables$.pipe(switchMap((tables) => this.githubColumns(ref, tables))),
+        // Column files are new reads (one per table), so they start only after the first search.
+        this.columnsWanted(key).pipe(
+          take(1),
+          switchMap(() =>
+            asSource(
+              tables$.pipe(
+                switchMap((tables) => this.githubColumns(ref, tables)),
+              ),
+            ),
+          ),
+          startWith<MetadataSourceState>({ status: 'ready', items: [] }),
         ),
       );
     }
@@ -370,17 +402,18 @@ export class ProjectMetadataSearchService {
     return from(tables.slice(0, MAX_COLUMN_TABLES)).pipe(
       mergeMap(async (t) => {
         const category = t.view ? 'views' : 'tables';
-        const raw = await firstValueFrom(
-          this.github.getRawJson<unknown>(
-            ref.projectId,
-            `dbmodels/${t.dbModel}/${t.schema}/${category}/${t.name}/${t.schema}.${t.name}.columns.json`,
-          ),
-        );
-        if (!raw) return [];
         let columns;
         try {
+          const raw = await firstValueFrom(
+            this.github.getRawJson<unknown>(
+              ref.projectId,
+              `dbmodels/${t.dbModel}/${t.schema}/${category}/${t.name}/${t.schema}.${t.name}.columns.json`,
+            ),
+          );
+          if (!raw) return [];
           columns = schemaTableMetadata(t.name, raw).Columns || [];
         } catch {
+          // One unreadable or malformed file drops that table's columns, never the whole group.
           return [];
         }
         return columns.map(

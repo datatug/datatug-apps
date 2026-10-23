@@ -123,7 +123,10 @@ describe('pending authenticated cloud preview fences', () => {
           },
           {
             provide: ProjectMetadataSearchService,
-            useValue: { metadata: () => of({ items: [], loading: false }) },
+            useValue: {
+              metadata: () => of({ items: [], loading: false }),
+              includeColumns: () => undefined,
+            },
           },
         ],
       });
@@ -149,8 +152,14 @@ describe('pending authenticated cloud preview fences', () => {
       pending.next({ documents: [], sourceCoverage: [] });
       pending.complete();
       await preview;
+      if (change === 'query') {
+        // A new search text is not a new scope: it must never abort a metadata preview.
+        expect(page.snapshot()).toEqual({ documents: [], sourceCoverage: [] });
+        expect(page.busy()).toBe(false);
+        return;
+      }
       expect(page.snapshot()).toBeUndefined();
-      if (change !== 'query') expect(page.consent()).toBe(false);
+      expect(page.consent()).toBe(false);
     },
   );
 });

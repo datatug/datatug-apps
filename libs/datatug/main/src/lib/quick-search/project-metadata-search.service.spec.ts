@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, filter, of, NEVER } from 'rxjs';
+import { firstValueFrom, filter, of, NEVER, throwError } from 'rxjs';
 import {
   ProjectMetadataSearchService,
   mergeSources,
@@ -97,7 +97,10 @@ describe('ProjectMetadataSearchService', () => {
     const tree: Record<string, { name: string; type: 'dir' | 'file' }[]> = {
       dbmodels: [{ name: 'chinook', type: 'dir' }],
       'dbmodels/chinook': [{ name: 'main', type: 'dir' }],
-      'dbmodels/chinook/main/tables': [{ name: 'Customer', type: 'dir' }],
+      'dbmodels/chinook/main/tables': [
+        { name: 'Broken', type: 'dir' },
+        { name: 'Customer', type: 'dir' },
+      ],
       'dbmodels/chinook/main/views': [],
     };
     TestBed.configureTestingModule({
@@ -129,27 +132,46 @@ describe('ProjectMetadataSearchService', () => {
           provide: GithubProjectReaderService,
           useValue: {
             listDirectory: (_: string, path: string) => of(tree[path] || []),
-            getRawJson: () =>
-              of({
-                columns: [
-                  { name: 'CustomerId' },
-                  { name: 'Email', tags: ['pii'] },
-                ],
-              }),
+            getRawJson: vi.fn((_: string, path: string) =>
+              path.includes('/Broken/')
+                ? throwError(() => new Error('unreadable'))
+                : of({
+                    columns: [
+                      { name: 'CustomerId' },
+                      { name: 'Email', tags: ['pii'] },
+                    ],
+                  }),
+            ),
           },
         },
       ],
     });
     const service = TestBed.inject(ProjectMetadataSearchService);
-    const state = await firstValueFrom(
+    const before = await firstValueFrom(
       service.metadata(ref).pipe(filter((s) => !s.loading)),
     );
+    // Column files are read only once someone searches.
+    expect(before.items.some((i) => i.kind === 'column')).toBe(false);
+    const reader = TestBed.inject(GithubProjectReaderService) as unknown as {
+      getRawJson: ReturnType<typeof vi.fn>;
+    };
+    expect(reader.getRawJson).not.toHaveBeenCalled();
+    service.includeColumns(ref);
+    const state = await firstValueFrom(
+      service
+        .metadata(ref)
+        .pipe(
+          filter((s) => !s.loading && s.items.some((i) => i.kind === 'column')),
+        ),
+    );
+    // One unreadable columns file drops only that table's columns.
     expect(state.error).toBeUndefined();
     expect(state.items.map((i) => `${i.kind}:${i.title}`).sort()).toEqual([
       'board:Customers board',
       'column:CustomerId',
       'column:Email',
       'query:Top customers',
+      'table:Broken',
       'table:Customer',
       'tag:pii',
     ]);

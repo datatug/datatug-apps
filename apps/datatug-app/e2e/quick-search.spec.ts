@@ -235,6 +235,17 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     .getByRole('button', { name: 'Enable and index', exact: true })
     .click();
   await expect.poll(() => uploads).toBe(1);
+  // The ready index adds the Northwind table; every result row is a real link.
+  const northwind = results.getByRole('link', {
+    name: /Customers Table · Northwind · dbo/,
+  });
+  await expect(northwind).toBeVisible();
+  await expect(
+    results.locator('ion-item', { hasText: 'Table · Northwind · dbo' }),
+  ).toHaveAttribute(
+    'href',
+    /search-schema\/Northwind\?schema=dbo&table=Customers/,
+  );
   await page.screenshot({
     path: testInfo.outputPath('quick-search-grouped-desktop.png'),
     fullPage: true,
@@ -250,7 +261,13 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await chinookTable.click();
+  // Keyboard: focus a result row and open it with Enter.
+  const chinookLink = results.getByRole('link', {
+    name: /Customers Table · Chinook · dbo/,
+  });
+  await chinookLink.focus();
+  await expect(chinookLink).toBeFocused();
+  await chinookLink.press('Enter');
   await expect(page).toHaveURL(
     /search-schema\/Chinook\?schema=dbo&table=Customers/,
   );

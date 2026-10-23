@@ -101,7 +101,11 @@ describe('Quick Search consent and async state', () => {
         { provide: QuickSearchApiService, useValue: api },
         {
           provide: ProjectMetadataSearchService,
-          useValue: { metadata: () => meta, forget: vi.fn() },
+          useValue: {
+            metadata: () => meta,
+            forget: vi.fn(),
+            includeColumns: vi.fn(),
+          },
         },
         {
           provide: QuickSearchSnapshotService,
@@ -350,6 +354,63 @@ describe('Quick Search consent and async state', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'GitHub is limiting',
     );
+  });
+  it('never aborts Preview, Refresh or deletion when the person types or filters by tag', async () => {
+    const preview = new Subject<{
+      documents: never[];
+      sourceCoverage: never[];
+    }>();
+    const refresh = new Subject<SearchStatus>();
+    api.preview.mockReturnValue(preview);
+    api.refresh.mockReturnValue(refresh);
+    api.status.mockReturnValue(of({ ...ready, supportsMetadataPreview: true }));
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    await fixture.whenStable();
+    const pending = page.preview();
+    page.onTerm('x');
+    page.tag.set('y');
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await fixture.whenStable();
+    preview.next({ documents: [], sourceCoverage: [] });
+    preview.complete();
+    await pending;
+    expect(page.snapshot()).toEqual({ documents: [], sourceCoverage: [] });
+    expect(page.busy()).toBe(false);
+    page.refresh();
+    expect(page.busy()).toBe(true);
+    page.onTerm('xy');
+    page.tag.set('yz');
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    refresh.next({ ...ready, revision: 2 });
+    await fixture.whenStable();
+    expect(page.status()?.revision).toBe(2);
+    expect(page.busy()).toBe(false);
+    // The tag filter reaches the hosted index after the pause.
+    expect(api.search.mock.calls.map((c) => c[3])).toContainEqual(['yz']);
+    page.disable();
+    expect(api.disable).toHaveBeenCalledOnce();
+    await fixture.whenStable();
+    expect(page.busy()).toBe(false);
+  });
+  it('asks the hosted index once per ready status, not twice', async () => {
+    api.status.mockReturnValue(of(ready));
+    const query = new BehaviorSubject(convertToParamMap({ q: 'customer' }));
+    TestBed.overrideProvider(ActivatedRoute, {
+      useValue: {
+        snapshot: {
+          data: {},
+          paramMap: convertToParamMap({}),
+          queryParamMap: query.value,
+        },
+        queryParamMap: query,
+      },
+    });
+    const fixture = TestBed.createComponent(QuickSearchPageComponent);
+    await fixture.whenStable();
+    expect(api.search).toHaveBeenCalledOnce();
   });
   it('maps a failed hosted fallback to honest words', async () => {
     meta.next({
