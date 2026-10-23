@@ -242,7 +242,7 @@ describe('DataTug app routes', () => {
       ]) {
         TestBed.resetTestingModule();
         const result = await visit('datatug.app', url);
-        expect(result.url).toBe(url.replace('K', '%E2%84%AA'));
+        expect(result.url).toBe(url.replaceAll('K', '%E2%84%AA'));
       }
     });
 

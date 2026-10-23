@@ -5,6 +5,7 @@ import { AgGridAngular } from 'ag-grid-angular';
 import { ValidationRunResultsComponent } from './validation-run-results.component';
 import { ValidatorGridRow, ValidationRowSelection } from './detective-forms';
 import { CheckRun, CheckStepResult, DetectiveExecutionRef } from './models';
+import { renderedText } from '../testing/rendered-text.spec-helper';
 
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
@@ -57,8 +58,8 @@ async function setup(value: CheckRun = run(), root: { execution?: DetectiveExecu
   fixture.detectChanges();
   await fixture.whenStable();
   const el = fixture.nativeElement as HTMLElement;
-  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so read the markup instead.
-  const text = () => el.innerHTML.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so walk the text nodes instead.
+  const text = () => renderedText(el);
   const items = (): HTMLElement[] => Array.from(el.querySelectorAll('ion-item'));
   const grid = () => fixture.debugElement.query(By.directive(GridStubComponent))?.componentInstance as GridStubComponent | undefined;
   const toggle = () => el.querySelector('ion-button') as HTMLElement | null;

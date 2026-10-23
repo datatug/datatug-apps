@@ -22,6 +22,10 @@ import {
   safeGitHubReconnectReturnUrl,
   type PendingGithubReconnect,
 } from './github-reauthorization-banner.component';
+import {
+  hashReturnedOAuthState,
+  isOAuthStateHash,
+} from './oauth-state-hash';
 
 declare global {
   interface Window {
@@ -68,6 +72,8 @@ export class GithubAuthorizationPageComponent {
   readonly reconnectReturnUrl = signal<string | undefined>(undefined);
   private readonly boundUserID = signal<string | undefined>(undefined);
   private readonly authChanged = new Subject<void>();
+  /** Settles once the callback has been matched to a saved request. */
+  private resumed: Promise<void> = Promise.resolve();
 
   constructor() {
     this.destroyRef.onDestroy(clearBusinessGithubContinuation);
@@ -79,11 +85,31 @@ export class GithubAuthorizationPageComponent {
       );
       return;
     }
+    // Saved requests hold only a hash of the OAuth state, so the returned
+    // state is hashed before it is matched to a saved request.
+    // The page can be left before the hash settles; nothing resumes then.
+    let destroyed = false;
+    this.destroyRef.onDestroy(() => (destroyed = true));
+    this.resumed = hashReturnedOAuthState(authorization.state)
+      .then((stateHash) => {
+        if (!destroyed) this.resumeAuthorization(authorization, stateHash);
+      })
+      .catch(() => {
+        if (destroyed) return;
+        this.message.set(
+          'GitHub authorization could not be checked. Your project details are saved; retry from the project form.',
+        );
+      });
+  }
+  private resumeAuthorization(
+    authorization: { code: string; state: string } | { error: string; state: string },
+    stateHash: string | undefined,
+  ): void {
     if ('error' in authorization) {
       this.message.set('GitHub authorization was canceled. Your project details are saved; retry from the project form.');
-      if (hasPendingOAuthProject(authorization.state))
+      if (hasPendingOAuthProject(stateHash))
         this.newProjectService.returnFromGithubOAuth('denied');
-      const reconnect = readPendingGithubReconnect(authorization.state);
+      const reconnect = readPendingGithubReconnect(stateHash);
       if (reconnect) {
         clearPendingGithubReconnect();
         this.reconnectReturnUrl.set(reconnect.returnUrl);
@@ -93,8 +119,8 @@ export class GithubAuthorizationPageComponent {
     }
     // Existing GitHub App callbacks remain supported. Only the explicit
     // operation-bound marker selects the new OAuth project-create flow.
-    const isOAuthProjectFlow = hasPendingOAuthProject(authorization.state);
-    const reconnect = readPendingGithubReconnect(authorization.state);
+    const isOAuthProjectFlow = hasPendingOAuthProject(stateHash);
+    const reconnect = readPendingGithubReconnect(stateHash);
     this.watchAuthChanges(isOAuthProjectFlow, reconnect);
     if (reconnect) {
       this.completeGithubReconnect(authorization.code, authorization.state, reconnect);
@@ -286,14 +312,15 @@ function readPendingOperationID(): string | undefined {
   }
 }
 
-function hasPendingOAuthProject(returnedState: string): boolean {
+function hasPendingOAuthProject(returnedStateHash: string | undefined): boolean {
   const draft = readPendingDraft();
   return (
+    !!returnedStateHash &&
     draft?.['oauthResumePending'] === true &&
     typeof draft['operationID'] === 'string' &&
     /^[0-9a-f-]{36}$/i.test(draft['operationID']) &&
-    typeof draft['oauthState'] === 'string' &&
-    draft['oauthState'] === returnedState
+    isOAuthStateHash(draft['oauthStateHash']) &&
+    draft['oauthStateHash'] === returnedStateHash
   );
 }
 
@@ -325,7 +352,7 @@ function bindGitHubActorID(actorID: string): void {
   try {
     sessionStorage.setItem(
       'datatug:new-project:draft',
-      JSON.stringify({ ...draft, githubActorID: actorID, oauthState: undefined }),
+      JSON.stringify({ ...draft, githubActorID: actorID, oauthStateHash: undefined }),
     );
   } catch {
     // The form reports storage failures when it resumes.
@@ -352,7 +379,7 @@ function resetPendingProjectForGitHubActor(actorID: string): void {
         createConflictNeedsStatusCheck: false,
         resolvedCreateRequest: undefined,
         oauthResumePending: false,
-        oauthState: undefined,
+        oauthStateHash: undefined,
         projectCreateSubmitted: false,
       }),
     );

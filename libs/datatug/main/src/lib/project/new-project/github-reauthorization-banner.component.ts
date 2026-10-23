@@ -8,11 +8,13 @@ import { readGithubProjectId } from '@datatug/project-address';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { Router } from '@angular/router';
+import { hashOAuthState, isOAuthStateHash } from './oauth-state-hash';
 
 export interface PendingGithubReconnect {
   readonly operationID: string;
   readonly firebaseUID: string;
-  readonly oauthState: string;
+  /** SHA-256 hash of the OAuth state; the state itself is never stored. */
+  readonly oauthStateHash: string;
   readonly returnUrl: string;
   readonly requiredScopes: readonly ('repo' | 'workflow')[];
 }
@@ -115,13 +117,16 @@ export class GitHubReauthorizationBannerComponent {
       )
       .subscribe({
         next: ({ authorizationURL, firebaseUID, operationID }) => {
-          if (
-            generation !== this.requestGeneration() ||
-            authGeneration !== this.authGeneration() ||
-            firebaseUID !== this.currentFirebaseUID() ||
-            !equalProjectRef(ref, this.projectRef())
-          )
-            return;
+          const isCurrent = () =>
+            generation === this.requestGeneration() &&
+            authGeneration === this.authGeneration() &&
+            firebaseUID === this.currentFirebaseUID() &&
+            equalProjectRef(ref, this.projectRef());
+          const startFailed = () => {
+            this.reconnecting.set(false);
+            this.error.set('GitHub authorization could not be started. Try again.');
+          };
+          if (!isCurrent()) return;
           try {
             const url = new URL(authorizationURL);
             if (
@@ -136,18 +141,30 @@ export class GitHubReauthorizationBannerComponent {
             if (!oauthState || oauthState.length > 512 || !firebaseUID) {
               throw new Error('Missing authorization state');
             }
-            const pending: PendingGithubReconnect = {
-              operationID,
-              firebaseUID,
-              oauthState,
-              returnUrl,
-              requiredScopes: this.requiredScopes(),
-            };
-            sessionStorage.setItem(GITHUB_RECONNECT_SESSION_KEY, JSON.stringify(pending));
-            window.location.assign(url.href);
+            const requiredScopes = this.requiredScopes();
+            hashOAuthState(oauthState).then(
+              (oauthStateHash) => {
+                if (!isCurrent()) return;
+                try {
+                  const pending: PendingGithubReconnect = {
+                    operationID,
+                    firebaseUID,
+                    oauthStateHash,
+                    returnUrl,
+                    requiredScopes,
+                  };
+                  sessionStorage.setItem(GITHUB_RECONNECT_SESSION_KEY, JSON.stringify(pending));
+                  window.location.assign(url.href);
+                } catch {
+                  startFailed();
+                }
+              },
+              () => {
+                if (isCurrent()) startFailed();
+              },
+            );
           } catch {
-            this.reconnecting.set(false);
-            this.error.set('GitHub authorization could not be started. Try again.');
+            startFailed();
           }
         },
         error: (error: unknown) => {
@@ -189,7 +206,9 @@ export function safeGitHubReconnectReturnUrl(value: string | null | undefined): 
   }
 }
 
-export function readPendingGithubReconnect(returnedState: string): PendingGithubReconnect | undefined {
+export function readPendingGithubReconnect(
+  returnedStateHash: string | undefined,
+): PendingGithubReconnect | undefined {
   try {
     const raw = sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY);
     if (!raw) return undefined;
@@ -200,8 +219,9 @@ export function readPendingGithubReconnect(returnedState: string): PendingGithub
       typeof pending.operationID !== 'string' ||
       !/^[0-9a-f-]{36}$/i.test(pending.operationID) ||
       typeof pending.firebaseUID !== 'string' ||
-      typeof pending.oauthState !== 'string' ||
-      pending.oauthState !== returnedState ||
+      !returnedStateHash ||
+      !isOAuthStateHash(pending.oauthStateHash) ||
+      pending.oauthStateHash !== returnedStateHash ||
       typeof pending.returnUrl !== 'string' ||
       !Array.isArray(pending.requiredScopes) ||
       !pending.requiredScopes.includes('repo') ||

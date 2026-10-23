@@ -263,7 +263,7 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     expect(api.length).toBeLessThanOrEqual(2);
     expect(api.some((u) => u.includes('/commits/HEAD'))).toBe(true);
     expect(api.filter((u) => u.includes('/git/trees/'))).toHaveLength(1);
-    expect(github.some((u) => u.includes('cdn.jsdelivr.net'))).toBe(false);
+    expect(github.some((u) => new URL(u).hostname === 'cdn.jsdelivr.net')).toBe(false);
     expect(raw.length).toBeGreaterThan(0);
     const commits = new Set(raw.map((u) => SHA_IN_URL.exec(u)?.[1]));
     expect(commits.size).toBe(1);
