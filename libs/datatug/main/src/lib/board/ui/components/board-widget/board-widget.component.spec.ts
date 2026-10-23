@@ -99,6 +99,15 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
+  // Ionic toolbar slot text is absent from the ancestor's textContent in the
+  // test DOM. Inspect the rendered action labels themselves, including nested tabs.
+  function renderedHeaderActions(): string[] {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll('ion-buttons[slot="end"] .header-action-text') as NodeListOf<HTMLElement>,
+      (label) => label.textContent?.trim() || '',
+    );
+  }
+
   function renderedQueryLink(): string {
     fixture.detectChanges();
     const button = fixture.debugElement.query(By.directive(RouterLink));
@@ -196,12 +205,14 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId } },
     });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Run on board');
+    expect(fixture.nativeElement.querySelector('ion-toolbar ion-buttons[slot="end"] ion-button')?.getAttribute('aria-label')).toContain('Run on board');
     await fixture.componentInstance.run();
     fixture.detectChanges();
     expect(readBoard).toHaveBeenCalledWith(ref, 'board1');
     expect(getQuery).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.primaryActionLabel()).toBe('Refresh on board');
     expect(run.mock.calls[0][0]).toMatchObject({
       definition: { connectionId: 'chinook-sqlite' },
       projectRef: ref,
@@ -537,7 +548,7 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'Unsupported widget: HTTP',
     );
-    expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Run on board');
     expect(tabs.activePath()).toEqual(['id:grid']);
   });
 
@@ -882,8 +893,8 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId: 'demodb/q' } },
     });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Open saved query');
-    expect(fixture.nativeElement.textContent).not.toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Open saved query');
+    expect(renderedHeaderActions()).not.toContain('Run on board');
     expect(getQuery).toHaveBeenCalledTimes(1);
   });
 
@@ -1792,4 +1803,76 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.componentInstance.sessionOnly()).toBe(false);
     expect(run).toHaveBeenCalledTimes(2);
   });
+  it('runs independent bindings through existing widgets, retains the first snapshot when adding a sibling and exposes title and raw source inspection', async () => {
+    await router.navigateByUrl('/?mode=tutorial');
+    const n = { id: 'northwind', queryId: 'reports/n' }, c = { id: 'chinook', queryId: 'reports/c' };
+    const data: ChartWidgetDef = { title: 'Null countries excluded; source observations remain separate.', sources: [n, c], chart: { type: 'bar', categoryColumn: 'country', valueColumn: 'customers', unit: 'customer records' } };
+    const widget: BoardWidget = { name: 'chart', data };
+    const board = { id: 'showcase', title: 'Showcase', rows: [{ cards: [{ id: 'countries', title: 'Countries', widget }] }] };
+    const fixtureTerms = (database: string) => ({ sourceRights: [{ sourceId: `ovdb:fixture-server/${database}/Customer`, source: { serverId: 'fixture-server', databaseId: database, recordset: 'Customer' }, declaration: { text: 'Fixture reuse terms' }, declarationScope: 'server', declaredAt: { serverId: 'fixture-server' }, evidenceOrigin: 'server-declared', pins: [], transformations: [] }], usedSourceIds: [`ovdb:fixture-server/${database}/Customer`] });
+    run.mockImplementation(async ({ queryId }: { queryId: string }) => ({ ...fixtureTerms(queryId.endsWith('/n') ? 'northwind' : 'chinook'), nativeDirect: true, ordinaryComplete: true, totalRows: 1, hasMore: false, truncated: false, limitations: [], bindingsApplied: [], ordinarySources: [{ database: queryId.endsWith('/n') ? 'northwind' : 'chinook', collection: 'Customer' }], provenance: { source: `https://cloud.openvaultdb.com/v1/databases/${queryId.endsWith('/n') ? 'northwind' : 'chinook'} (direct OVDB)`, queryId, collection: 'Customer', mode: 'live', observedAt: '2026-10-21T00:00:00Z' }, recordset: { columns: [{ name: 'country', type: 'string' }, { name: 'customers', type: 'integer' }], rows: [[{ type: 'string', value: 'Canada' }, { type: 'integer', value: queryId.endsWith('/n') ? '3' : '8' }]] } }));
+    // Seed via real session action and admission; no synthetic single-source saved board.
+    const session = await TutorialBoardSession.open(board, 'independent-test');
+    session.dispatch({ type: 'add-card', cardId: 'countries', initialSourceIds: ['northwind'] });
+    const seeded = session.board.rows?.[0].cards?.[0].widget;
+    if (!seeded) throw new Error('Missing seeded widget');
+    const { readBoard } = configureShowcase(seeded);
+    readBoard.mockReturnValue(of(board));
+    getQuery.mockImplementation((_ref, id: string) => of({ id, title: id, request: { queryType: QueryType.DTQL, text: 'from: { name: Customer }' }, federation: { ovdbBaseUrl: 'https://cloud.openvaultdb.com', tables: [{ database: id.endsWith('/n') ? 'northwind' : 'chinook', name: 'Customer', fields: ['Country'] }] } }));
+    const runtime = TestBed.inject(TutorialBoardRuntime);
+    const ref = fixture.componentInstance.projectRef();
+    if (!ref) throw new Error('Missing project reference');
+    runtime.publish(ref, session, (action) => { session.dispatch(action); });
+    fixture.componentRef.setInput('widgetDef', seeded);
+    fixture.detectChanges();
+    await vi.waitFor(() => {
+      const children = fixture.debugElement.queryAll(By.directive(BoardWidgetComponent)).map((item) => item.componentInstance as BoardWidgetComponent);
+      expect(run.mock.calls.length, JSON.stringify({ independent: fixture.componentInstance.independent(), controllers: fixture.componentInstance.sourceControllers().length, children: children.map((child) => ({ binding: child.sourceBindingId(), query: child.queryId(), executionOnly: child.executionOnly(), session: child.sessionOnly(), error: child.runError(), unsupported: child.unsupportedReason(), definition: child.definition()?.id })) })).toBe(1);
+    });
+    await fixture.whenStable();
+    const before = fixture.componentInstance.sourceControllers()[0].state().snapshot;
+    expect(before?.queryId).toBe('reports/n');
+    expect(session.dispatch({ type: 'add-chart-source', cardId: 'countries', sourceId: 'chinook', queryId: 'reports/c' })).toBe(true);
+    if (!ref) throw new Error('Missing project reference');
+    runtime.publish(ref, session, (action) => { session.dispatch(action); });
+    fixture.componentRef.setInput('widgetDef', session.board.rows?.[0].cards?.[0].widget);
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.sourceControllers()[0].state().snapshot).toBe(before);
+    expect(run.mock.calls.map(([request]) => request.queryId)).toEqual(['reports/n', 'reports/c']);
+    expect(fixture.nativeElement.textContent).toContain(data.title);
+    expect(fixture.nativeElement.textContent).toContain('Declared unit: customer records');
+    expect(fixture.nativeElement.textContent).toContain('Inspect chinook source rows and terms');
+    expect(fixture.componentInstance.independentBars().data?.groups[0].observations.map((value) => value?.value)).toEqual([3, 8]);
+    expect(readBoard).toHaveBeenCalledTimes(2);
+    const children = fixture.debugElement.queryAll(By.directive(BoardWidgetComponent)).map((item) => item.componentInstance as BoardWidgetComponent);
+    const second = children.find((child) => child.sourceBindingId() === 'chinook');
+    if (!second) throw new Error('Missing second source controller');
+    let complete: ((value: unknown) => void) | undefined;
+    run.mockImplementationOnce(() => new Promise((resolve) => { complete = resolve; }));
+    const secondSnapshot = second.heldSnapshot();
+    const pending = second.run();
+    await vi.waitFor(() => expect(complete).toBeDefined());
+    second.cancelSource();
+    expect(second.running()).toBe(false);
+    if (!complete) throw new Error('Missing pending completion');
+    complete({ ...second.result() });
+    await pending;
+    expect(second.runError()).toContain('cancelled');
+    expect(second.heldSnapshot()).toBe(secondSnapshot);
+    if (!secondSnapshot) throw new Error('Missing source snapshot');
+    run.mockResolvedValueOnce(secondSnapshot.result);
+    await second.run();
+    expect(second.runError()).toBeUndefined();
+    // Inside a card the chart's own disclosure stays; only an exact repeat of the card title is dropped.
+    fixture.componentRef.setInput('embedded', true);
+    fixture.componentRef.setInput('cardTitle', 'Countries');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-disclosure')?.textContent).toBe(data.title);
+    fixture.componentRef.setInput('cardTitle', data.title);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-disclosure')).toBeNull();
+  });
+
 });

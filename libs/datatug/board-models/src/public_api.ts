@@ -106,3 +106,4 @@ export {
   matchCards,
   matchRuleRank,
 } from './lib/card-match';
+export { editChartSources, seedChartSources, ChartSourceEdit } from './lib/chart-source-edit';

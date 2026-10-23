@@ -1,3 +1,11 @@
+import {
+  EntitySnapshot,
+  decodeEntity,
+  entityRevision,
+  nativeID,
+  object,
+  text,
+} from '../../shipping/native-semantic-contract';
 import { HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import {
@@ -61,6 +69,67 @@ export function hostedAssetScope(ref: IProjectRef, environment: string) {
 @Injectable({ providedIn: 'root' })
 export class ProjectAssetsApiService {
   private readonly api = inject(DatatugApiService);
+  entities(
+    ref: IProjectRef,
+    environment: string,
+  ): Observable<{ id: string; title?: string }[]> {
+    return defer(() =>
+      this.api.get<unknown>(
+        'datatug/entities/all_entities',
+        new HttpParams({ fromObject: hostedAssetScope(ref, environment) }),
+      ),
+    ).pipe(
+      map((value) => {
+        if (!Array.isArray(value) || value.length > 1000)
+          throw new Error('Entity list is unavailable.');
+        const items = value.map((v) => {
+          const o = object(v);
+          if (!nativeID(o['id']))
+            throw new Error('Entity identity is unavailable.');
+          return {
+            id: o['id'],
+            ...(o['title'] !== undefined ? { title: text(o['title']) } : {}),
+          };
+        });
+        if (new Set(items.map((e) => e.id)).size !== items.length)
+          throw new Error('Entity identities are ambiguous.');
+        return items;
+      }),
+    );
+  }
+  entity(
+    ref: IProjectRef,
+    environment: string,
+    id: string,
+  ): Observable<EntitySnapshot> {
+    return defer(() => {
+      if (!nativeID(id)) throw new Error('Invalid entity identity.');
+      return this.api.getResponse<unknown>(
+        'datatug/entities/entity',
+        new HttpParams({
+          fromObject: { ...hostedAssetScope(ref, environment), id },
+        }),
+      );
+    }).pipe(
+      map((response) => {
+        if (!(response instanceof HttpResponse))
+          throw new Error('Entity response is unavailable.');
+        const entity = decodeEntity(response.body);
+        if (entity.id !== id)
+          throw new Error('Entity detail identity differs.');
+        const revision = response.headers.get('X-Datatug-Asset-Revision'),
+          etag = response.headers.get('ETag');
+        return entityRevision(revision) && etag === `"${revision}"`
+          ? { entity, revision }
+          : {
+              entity,
+              revisionError:
+                'Entity revision headers are missing or do not match. Saving is blocked.',
+            };
+      }),
+    );
+  }
+
   boards(
     ref: IProjectRef,
     environment: string,

@@ -1,5 +1,5 @@
 import { Provider } from '@angular/core';
-import { IEnvironmentConfig } from '@sneat/core';
+import { IEnvironmentConfig, IPosthogSettings } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 import { TEST_CHECKOUT_ORIGIN } from '../app/checkout/checkout-config.mjs';
 import { authDomainOfLocation } from './auth-domain';
@@ -16,6 +16,17 @@ export const datatugBusinessCheckoutLiveEnabled = true;
 // accepts the analytics banner (app/analytics-consent); main.ts hands it over for the DataTug profile only.
 export const datatugGoogleAnalyticsMeasurementId: string | undefined =
   'G-DESWRP39RY';
+
+/**
+ * DataTug's own PostHog project for consented, anonymous usage events on datatug.app (public-demo
+ * REQ:demo-usage-analytics; founder 2026-10-22: usage analytics yes, PostHog consent-gated). OFF until the founder
+ * provides a DataTug PostHog project API key (`phc_…`, EU cloud) and the privacy notice lists the event list. Set:
+ *   { token: 'phc_…', config: { api_host: 'https://eu.i.posthog.com' } }
+ * main.ts adds the rest (anonymous: no identify, `person_profiles: 'never'`, no autocapture or recording, and the
+ * usage scrubber: closed event list, no query, fragment or repository name). The shared sneat.app project below is
+ * not used for DataTug.
+ */
+export const datatugUsagePosthog: IPosthogSettings | undefined = undefined;
 
 export const DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT = false;
 

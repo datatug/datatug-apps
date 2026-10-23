@@ -218,6 +218,40 @@ describe('CardPageComponent', () => {
       expect(field('id').hasAttribute('disabled') || (field('id') as never as { disabled: boolean }).disabled).toBe(true);
     });
 
+    it('lists the Related entities and saved queries of a saved card', async () => {
+      const related: ProjectCard = {
+        ...saved,
+        parameters: [
+          {
+            id: 'customerId',
+            type: 'string',
+            meta: { entity: 'Customer', field: 'ID' },
+            match: [{ entity: 'Customer', field: 'ID' }, { table: 'Orders', column: 'CustomerID' }],
+          },
+        ] as ProjectCard['parameters'],
+        widget: {
+          name: 'tabs',
+          data: {
+            tabs: [
+              {
+                id: 'orders',
+                title: 'Orders',
+                widgets: [{ name: 'SQL', data: { queryId: 'customers/by-id' } }],
+              },
+            ],
+          },
+        } as ProjectCard['widget'],
+      };
+      await create({ params: { cardId: 'customer' }, service: { getCard: vi.fn(() => of(related)) } });
+      expect(qn('[data-test="card-related"]')).not.toBeNull();
+      expect(
+        Array.from(el().querySelectorAll('[data-test="related-entity"]')).map((a) => a.textContent?.trim()),
+      ).toEqual(['Customer']);
+      expect(
+        Array.from(el().querySelectorAll('[data-test="related-query"]')).map((a) => a.textContent?.trim()),
+      ).toEqual(['Customer by id']);
+    });
+
     it('says when the card does not exist', async () => {
       await create({
         params: { cardId: 'gone' },

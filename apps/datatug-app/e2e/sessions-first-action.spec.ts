@@ -1,16 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const project =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
-const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
-
-test.beforeEach(async ({ context }) => {
-  if (fake)
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: fake },
-    ]);
-});
 
 test('canonical public demo Sessions starts with the read-only sample journey at wide and narrow widths', async ({
   page,

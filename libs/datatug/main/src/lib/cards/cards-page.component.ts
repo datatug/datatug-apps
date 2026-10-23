@@ -199,13 +199,13 @@ interface CardRow {
       }
       .state.empty ion-icon {
         font-size: 2.5rem;
-        color: var(--ion-color-medium);
+        color: var(--dt-text-muted);
       }
       .state h2 {
         margin: 0.5rem 0;
       }
       .muted {
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
       }
       .chips {
         display: flex;

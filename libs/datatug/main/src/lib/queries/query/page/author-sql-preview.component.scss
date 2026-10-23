@@ -67,12 +67,12 @@ sneat-author-source-inspector,
 
 .author-preview-heading p {
   margin: 0.25rem 0 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.8rem;
 }
 
 .copy-status {
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 
 .copy-status {
@@ -90,8 +90,8 @@ sneat-author-source-inspector,
 .author-sql-scroll {
   max-width: 100%;
   overflow-x: auto;
-  background: var(--ion-color-step-50, #f8fafc);
-  scrollbar-color: var(--ion-color-step-400, #94a3b8) transparent;
+  background: var(--ion-background-color-step-50, #f8fafc);
+  scrollbar-color: var(--ion-background-color-step-400, #94a3b8) transparent;
 }
 
 .author-sql-scroll pre {
@@ -121,7 +121,7 @@ sneat-author-source-inspector,
 
 .author-binding-note {
   margin: 0.55rem 0 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.82rem;
   line-height: 1.55;
 }
@@ -137,13 +137,13 @@ sneat-author-source-inspector,
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.8rem;
   line-height: 1.4;
 }
 
 .author-binding-row + .author-binding-row {
-  border-top: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-top: 1px solid var(--ion-background-color-step-150, #e5e7eb);
 }
 
 .author-binding-index,
@@ -156,7 +156,7 @@ sneat-author-source-inspector,
   width: fit-content;
   padding: 0.1rem 0.3rem;
   border-radius: 0.3rem;
-  background: var(--ion-color-step-100, #f1f5f9);
+  background: var(--ion-background-color-step-100, #f1f5f9);
 }
 
 .author-binding-value {

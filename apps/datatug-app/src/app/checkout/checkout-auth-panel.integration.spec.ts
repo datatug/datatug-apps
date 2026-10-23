@@ -138,6 +138,9 @@ async function render(
         return currentUser;
       },
     },
+    // The shared login panel follows a pending provider link (an email
+    // that already has an account); none in these checkout journeys.
+    pendingCredentialLinkChanges: of(undefined),
     signInWith: vi.fn().mockResolvedValue(undefined),
     signOut: vi.fn().mockResolvedValue(undefined),
   };

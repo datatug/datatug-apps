@@ -1,5 +1,7 @@
 import { QuickSearchApiService } from './quick-search-api.service';
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, Injector } from '@angular/core';
+import { IEnvironmentFull } from '../models/definition/environments';
+import { ProjectAssetsReadService } from '../services/project/project-assets-read.service';
 import { firstValueFrom, take, filter, timeout } from 'rxjs';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import {
@@ -110,6 +112,7 @@ export function queryDocuments(
 }
 @Injectable({ providedIn: 'root' })
 export class QuickSearchSnapshotService {
+  private readonly injector = inject(Injector);
   private readonly quickSearch = inject(QuickSearchApiService);
   private readonly projects = inject(ProjectService);
   private readonly queries = inject(QueriesService);
@@ -244,10 +247,20 @@ export class QuickSearchSnapshotService {
       ),
     );
     if (!summary) throw new Error('Project metadata is unavailable.');
+    // The first authorized summary may precede its environment read. This
+    // category has its own authority and must never infer a verified empty list.
+    let environmentItems: IEnvironmentFull[] | undefined;
+    try {
+      environmentItems = await firstValueFrom(
+        this.injector.get(ProjectAssetsReadService).environments(ref).pipe(take(1), timeout(15000)),
+      );
+    } catch {
+      environmentItems = undefined;
+    }
     for (const [kind, items] of [
       ['dashboard', summary.boards],
       ['entity', summary.entities],
-      ['environment', summary.environments],
+      ['environment', environmentItems],
     ] as const) {
       // Brief inventories identify objects; only their full source owns names/tags.
       if (items && (!ref.spaceID || kind === 'environment' || environmentId)) {

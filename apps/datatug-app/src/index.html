@@ -7,7 +7,26 @@
 
     <base href="/" />
 
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- Theme before first paint (no flash). Same key and rules as ThemeService in
+         libs/datatug/main/src/lib/services/theme/theme.service.ts: light | dark | auto (default, follows the OS). -->
+    <script id="datatug-theme-init">
+      (function () {
+        var root = document.documentElement;
+        var query = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+        function apply() {
+          // ThemeService records the live choice here, so a blocked localStorage does not turn Dark back into Auto.
+          var mode = root.getAttribute('data-theme-mode') || 'auto';
+          if (!root.getAttribute('data-theme-mode')) try { var stored = localStorage.getItem('datatug.theme.v1'); if (stored === 'light' || stored === 'dark') mode = stored; } catch (e) {}
+          var dark = mode === 'dark' || (mode === 'auto' && !!query && query.matches);
+          root.classList.toggle('ion-palette-dark', dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+        }
+        apply();
+        // `auto` follows the OS on every page, before and without ThemeService (the app's lazy-loaded library).
+        if (query && query.addEventListener) query.addEventListener('change', apply);
+      })();
+    </script>
     <meta
       name="viewport"
       content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0, user-scalable=no"

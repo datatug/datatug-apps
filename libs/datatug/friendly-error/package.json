@@ -1,0 +1,6 @@
+{
+  "name": "@datatug/friendly-error",
+  "version": "0.0.1",
+  "description": "Turns a failure into words a visitor can act on and sanitises what may be shown in Details (no URLs with queries, tokens, internal hosts, stack traces or undefined). No Angular, no I/O: the app start-up code and the lazy datatug-main library both use it.",
+  "sideEffects": false
+}

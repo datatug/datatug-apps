@@ -1,11 +1,12 @@
-// Browses one OVDB database: a header (with Reset Database when the descriptor
-// says `reset`), the table list, and a table's rows with the record view.
+// Browses one OVDB database: a source status row (its "more actions" menu holds Reset database when the
+// descriptor says `reset`), the table list, and a table's rows with the record view.
 // Every mutation control is decided by the descriptor's capabilities.
 //
 // Flow (routes are the host's, given as `basePath`):
 //   <basePath>                 table list ─click─▶ <basePath>/table/<name>
-//   <basePath>/table/<name>    rows ─click─▶ record (edit / delete) ; "All tables" ─▶ <basePath>
-//   header: Reset Database ─▶ confirmation ─▶ POST reset ─▶ descriptor re-read and verified ─▶ rows reloaded
+//   <basePath>/table/<name>    rows ─click─▶ record (edit / delete); the way back to <basePath> is the host page's
+//                              header (back button), not a link inside the table card
+//   source menu: Reset database ─▶ confirmation ─▶ POST reset ─▶ descriptor re-read and verified ─▶ rows reloaded
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -15,12 +16,14 @@ import {
   IonCardContent,
   IonCardHeader,
   IonCardTitle,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
-  IonNote,
   IonSpinner,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { addOutline, ellipsisVertical } from 'ionicons/icons';
 import { OvdbRecordEditorComponent, type OvdbRecordChange } from '../pages/signed-in/env-db-table/ovdb-record-editor/ovdb-record-editor.component';
 import {
   fetchOvdbDescriptor,
@@ -29,10 +32,14 @@ import {
   type OvdbConnection,
   type OvdbDescriptor,
 } from './ovdb-connection';
+import { ResultFooterComponent } from '../components/result-footer/result-footer.component';
 import { OvdbConfirmService } from './ovdb-confirm.service';
 import { displayOvdbValue, ovdbFormFields, type OvdbDisplayValue } from './ovdb-record-form';
 import { getOvdbRecord, ovdbCreateKeyField, OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
 import { ovdbCollectionSchema } from './ovdb-connection';
+import type { RelatedLogEvidenceLink } from '../pages/demo-logs/log-source-declarations';
+
+addIcons({ addOutline, ellipsisVertical });
 
 @Component({
   selector: 'sneat-datatug-ovdb-database-browser',
@@ -45,45 +52,65 @@ import { ovdbCollectionSchema } from './ovdb-connection';
     IonCardContent,
     IonCardHeader,
     IonCardTitle,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,
-    IonNote,
     IonSpinner,
     OvdbRecordEditorComponent,
+    ResultFooterComponent,
   ],
   template: `
-    <ion-card data-testid="ovdb-database-header">
-      <ion-card-header>
-        <ion-card-title>{{ connection().title }}</ion-card-title>
-        <p class="ovdb-subtitle">
-          {{ tables().length }} tables ·
-          {{ caps().edit || caps().delete ? 'editable' : 'read-only' }}
-          @if (statusText()) {
-            · <span data-testid="ovdb-status">{{ statusText() }}</span>
+    <section class="ovdb-source" data-testid="ovdb-database-header">
+      <div class="ovdb-source-row">
+        <div class="ovdb-source-summary">
+          @if (showTitle()) {
+            <h2 class="ovdb-source-title">{{ connection().title }}</h2>
           }
-        </p>
-      </ion-card-header>
-      @if (caps().reset || resetMessage() || resetError()) {
-        <ion-card-content>
+          <p class="ovdb-subtitle">
+            {{ tables().length }} tables ·
+            {{ caps().edit || caps().delete ? 'editable' : 'read-only' }}
+            @if (statusText()) {
+              · <span data-testid="ovdb-status">{{ statusText() }}</span>
+            }
+          </p>
+        </div>
+        @if (caps().reset || hasSourceActions()) {
+          <button
+            type="button"
+            data-testid="source-menu"
+            class="ovdb-source-menu-toggle"
+            aria-label="More actions for this database"
+            aria-haspopup="true"
+            aria-controls="ovdb-source-menu"
+            [attr.aria-expanded]="menuOpen()"
+            (click)="menuOpen.set(!menuOpen())"
+            (keydown.escape)="menuOpen.set(false)"
+          >
+            <ion-icon name="ellipsis-vertical" aria-hidden="true" />
+          </button>
+        }
+      </div>
+      @if (menuOpen() && (caps().reset || hasSourceActions())) {
+        <ion-list id="ovdb-source-menu" class="ovdb-source-menu" lines="full" data-testid="source-menu-list" (click)="menuOpen.set(false)" (keydown.escape)="menuOpen.set(false)">
           @if (caps().reset) {
-            <ion-button data-testid="reset-database" color="danger" fill="outline" size="small" [disabled]="resetting()" (click)="resetDatabase()">
-              @if (resetting()) {
-                <ion-spinner name="dots" />
-              } @else {
-                Reset Database
-              }
-            </ion-button>
+            <ion-item button detail="false" data-testid="reset-database" [disabled]="resetting()" (click)="resetDatabase()">
+              <ion-label class="ovdb-danger-label">Reset database…</ion-label>
+            </ion-item>
           }
-          @if (resetMessage()) {
-            <p role="status" data-testid="reset-message">{{ resetMessage() }}</p>
-          }
-          @if (resetError()) {
-            <p role="alert" class="ovdb-error" data-testid="reset-error">{{ resetError() }}</p>
-          }
-        </ion-card-content>
+          <ng-content select="[ovdbSourceAction]" />
+        </ion-list>
       }
-    </ion-card>
+      @if (resetting()) {
+        <p role="status" class="ovdb-subtitle"><ion-spinner name="dots" /> Resetting…</p>
+      }
+      @if (resetMessage()) {
+        <p role="status" data-testid="reset-message">{{ resetMessage() }}</p>
+      }
+      @if (resetError()) {
+        <p role="alert" class="ovdb-error" data-testid="reset-error">{{ resetError() }}</p>
+      }
+    </section>
 
     @if (!caps().browse) {
       <ion-card><ion-card-content role="alert">This database cannot be browsed: it does not accept queries.</ion-card-content></ion-card>
@@ -109,16 +136,18 @@ import { ovdbCollectionSchema } from './ovdb-connection';
       </ion-card>
     } @else {
       <ion-card data-testid="ovdb-table">
-        <ion-card-header>
+        <ion-card-header class="ovdb-table-header">
           <ion-card-title>{{ table() }}
             @if (rows(); as list) {
               <ion-badge color="medium">{{ list.length }}{{ list.length === pageSize ? '+' : '' }}</ion-badge>
             }
           </ion-card-title>
           @if (canCreate()) {
-            <ion-button data-testid="record-create" size="small" [disabled]="creating() || resetting()" (click)="creating.set(true)">Create record</ion-button>
+            <ion-button data-testid="record-create" size="small" [disabled]="creating() || resetting()" (click)="creating.set(true)">
+              <ion-icon slot="start" name="add-outline" />
+              Create record
+            </ion-button>
           }
-          <p class="ovdb-subtitle"><a [routerLink]="basePath()" [queryParams]="navigationQuery()">All tables</a></p>
         </ion-card-header>
         <ion-card-content>
           @if (loadError()) {
@@ -130,7 +159,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
             <div class="ovdb-grid-scroll">
               <table class="ovdb-grid" data-testid="ovdb-rows">
                 <thead>
-                  <tr>@for (column of columns(); track column) { <th>{{ column }}</th> }</tr>
+                  <tr>@for (column of columns(); track column) { <th [class.ovdb-num]="numericColumns().has(column)">{{ column }}</th> }</tr>
                 </thead>
                 <tbody>
                   @for (row of rows(); track row.key; let i = $index) {
@@ -145,18 +174,18 @@ import { ovdbCollectionSchema } from './ovdb-connection';
                     >
                       @for (column of columns(); track column) {
                         @let value = cell(column, row.data[column]);
-                        <td [class.ovdb-null]="value.kind !== 'value'" [attr.data-cell-kind]="value.kind">{{ value.text }}</td>
+                        <td [class.ovdb-null]="value.kind !== 'value'" [class.ovdb-num]="numericColumns().has(column)" [attr.data-cell-kind]="value.kind">{{ value.text }}</td>
                       }
                     </tr>
                   }
                 </tbody>
               </table>
             </div>
-            @if (rows()!.length === pageSize) {
-              <ion-note>Showing the first {{ pageSize }} rows.</ion-note>
-            }
           }
         </ion-card-content>
+        @if (rows()?.length === pageSize) {
+          <sneat-datatug-result-footer data-testid="rows-limit-note">Showing the first {{ pageSize }} rows.</sneat-datatug-result-footer>
+        }
       </ion-card>
       @if (creating()) {
         <sneat-datatug-ovdb-record-editor
@@ -164,10 +193,8 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           (created)="recordCreated($event)" (cancelled)="creating.set(false)"
         />
       } @else if (selected(); as row) {
-        @if (relatedEvidence(); as link) {
-          @if (table() === link.collection && row.data[link.field] !== null && row.data[link.field] !== undefined) {
-            <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="{ order: row.data[link.field] }">Related log evidence</ion-button>
-          }
+        @for (link of relatedEvidenceTargets(); track link.label) {
+          <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="link.queryParams">{{ link.label }}</ion-button>
         }
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
@@ -184,10 +211,26 @@ import { ovdbCollectionSchema } from './ovdb-connection';
     .ovdb-grid th, .ovdb-grid td { border-bottom: 1px solid var(--ion-color-light-shade); padding: 4px 8px; text-align: left; white-space: nowrap; max-width: 24em; overflow: hidden; text-overflow: ellipsis; }
     .ovdb-grid tbody tr { cursor: pointer; }
     .ovdb-grid tbody tr:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
-    .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
+    .ovdb-null { color: var(--dt-text-muted); font-style: italic; }
     .ovdb-grid tr.selected { background: var(--ion-color-primary-tint); color: var(--ion-color-primary-contrast); }
     .ovdb-error { color: var(--ion-color-danger); }
-    .ovdb-subtitle { margin: 4px 0 0; color: var(--ion-color-medium); font-size: 14px; }
+    .ovdb-grid th.ovdb-num, .ovdb-grid td.ovdb-num { text-align: right; font-variant-numeric: tabular-nums; }
+    .ovdb-subtitle { margin: 4px 0 0; color: var(--dt-text-muted); font-size: 14px; }
+    /* The source status is a flat row, not a card: the page header already names the database. */
+    .ovdb-source { margin: 12px 16px 0; }
+    .ovdb-source-menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--dt-text-muted); font-size: 20px; cursor: pointer; }
+    .ovdb-source-menu-toggle:hover { background: var(--ion-color-light-tint); }
+    .ovdb-source-menu-toggle:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
+    .ovdb-source-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .ovdb-source-summary { min-width: 0; }
+    .ovdb-source-summary .ovdb-subtitle { margin: 0; }
+    .ovdb-source-title { margin: 0 0 2px; font-size: 18px; font-weight: 500; }
+    .ovdb-source-menu { margin-top: 8px; border-radius: 4px; background: var(--ion-card-background, var(--ion-background-color, #fff)); }
+    .ovdb-danger-label { color: var(--ion-color-danger); }
+    /* Title and its primary action share one row; the action stays compact and right-aligned. */
+    .ovdb-table-header { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
+    .ovdb-table-header ion-card-title { min-width: 0; }
+    .ovdb-table-header ion-button { flex: none; margin: 0; }
   `,
 })
 export class OvdbDatabaseBrowserComponent {
@@ -198,12 +241,29 @@ export class OvdbDatabaseBrowserComponent {
   readonly basePath = input.required<readonly string[]>();
   readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
-  /** Optional explicit mapping supplied by a demo/project, never inferred from the OVDB engine. */
-  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string } | undefined>();
+  /** Explicit record → evidence links declared by a project (log-source-declarations.ts), never inferred from the OVDB engine. */
+  readonly relatedEvidence = input<readonly RelatedLogEvidenceLink[]>([]);
+  protected readonly relatedEvidenceTargets = computed(() => {
+    const row = this.selected();
+    if (!row) return [];
+    return this.relatedEvidence().flatMap((link) => {
+      const value = row.data[link.field];
+      if (this.table() !== link.collection || typeof link.queryParam !== 'string' || !link.queryParam ||
+        value === null || value === undefined || value === '') return [];
+      return [{ path: link.path, label: link.label ?? 'Related log evidence', queryParams: { ...link.queryParams, [link.queryParam]: String(value) } }];
+    });
+  });
   /** Deep-linked record id. Local keyed sources may load it beyond the first grid page. */
   readonly focusRecordId = input<string | undefined>();
   /** Extra status shown in the header (for example "Local copy ready"). */
   readonly statusText = input<string>('');
+  /**
+   * Show the database title above the status. A host whose page header already names the database turns
+   * this off so the same name is not printed twice.
+   */
+  readonly showTitle = input<boolean>(true);
+  /** True when the host projects its own `[ovdbSourceAction]` items into the source menu. */
+  readonly hasSourceActions = input<boolean>(false);
   /** Added to the Reset Database confirmation (for example that a reset needs the network). */
   readonly resetNote = input<string>('');
   /** Emits the re-read descriptor after a successful reset. */
@@ -230,6 +290,41 @@ export class OvdbDatabaseBrowserComponent {
   protected readonly loadError = signal('');
   protected readonly selectedKey = signal<string | undefined>(undefined);
   protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()) ?? (this.focusedRow()?.key === this.selectedKey() ? this.focusedRow() : undefined) ?? (this.createdRow()?.key === this.selectedKey() ? this.createdRow() : undefined));
+  /** Columns whose values are numbers (by declared type, else by the rows): right-aligned with tabular figures. */
+  protected readonly numericColumns = computed<ReadonlySet<string>>(() => {
+    const table = this.table();
+    const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
+    const rows = this.rows() ?? [];
+    const numeric = new Set<string>();
+    for (const column of this.columns()) {
+      const sample = rows.map((row) => row.data[column]).find((value) => value !== null && value !== undefined);
+      const kind = ovdbFormFields(schema, { [column]: sample }).find((f) => f.name === column)?.kind;
+      if (kind === 'integer' || kind === 'decimal' || kind === 'number') numeric.add(column);
+    }
+    return numeric;
+  });
+  /**
+   * Fixed scale per fractional numeric column that declares none (SQLite REAL, Postgres float): the most fraction
+   * digits among the loaded rows, so `51.3` and `32.38` line up as `51.30` and `32.38`. Display only; capped at 6.
+   */
+  protected readonly displayScales = computed<ReadonlyMap<string, number>>(() => {
+    const scales = new Map<string, number>();
+    const numeric = this.numericColumns();
+    for (const column of this.columns()) {
+      if (!numeric.has(column)) continue;
+      let max = 0;
+      let allNumbers = true;
+      for (const row of this.rows() ?? []) {
+        const value = row.data[column];
+        if (value === null || value === undefined) continue;
+        if (typeof value !== 'number') { allNumbers = false; break; }
+        if (Number.isInteger(value) || !Number.isFinite(value)) continue;
+        max = Math.max(max, Math.min(6, (String(value).split('.')[1] ?? '').length));
+      }
+      if (allNumbers && max > 0) scales.set(column, max);
+    }
+    return scales;
+  });
   protected readonly columns = computed(() => {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
@@ -237,6 +332,7 @@ export class OvdbDatabaseBrowserComponent {
     if (declared.length) return declared;
     return [...new Set((this.rows() ?? []).flatMap((row) => Object.keys(row.data)))];
   });
+  protected readonly menuOpen = signal(false);
   protected readonly resetting = signal(false);
   protected readonly resetMessage = signal('');
   protected readonly resetError = signal('');
@@ -263,6 +359,10 @@ export class OvdbDatabaseBrowserComponent {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
     const field = ovdbFormFields(schema, { [column]: value }).find((f) => f.name === column);
+    const scale = this.displayScales().get(column);
+    if (field && scale !== undefined && field.scale === undefined && typeof value === 'number') {
+      return displayOvdbValue({ kind: 'decimal', scale }, value);
+    }
     return field ? displayOvdbValue(field, value) : { text: String(value ?? ''), kind: value === null || value === undefined ? 'null' : 'value' };
   }
 

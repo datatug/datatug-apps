@@ -66,7 +66,9 @@ jobs:
       - uses: ./.github/actions/pnpm
 
       - name: Install browsers
-        run: pnpm exec playwright install --with-deps chromium firefox
+        uses: ./.github/actions/playwright-install
+        with:
+          browsers: chromium firefox
 
       - name: nx e2e-demo-postgresql
         env:

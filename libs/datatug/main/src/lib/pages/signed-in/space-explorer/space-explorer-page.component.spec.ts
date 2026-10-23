@@ -8,6 +8,7 @@ import {
   IExploreDoc,
   SpaceExplorerService,
 } from '../../../services/repo/space-explorer.service';
+import { renderedText } from '../../../testing/rendered-text.spec-helper';
 
 type Streams<T> = Map<string, Subject<T>>;
 
@@ -43,8 +44,8 @@ async function setup(options: { throwOnCollection?: boolean; throwOnDocument?: b
   fixture.detectChanges();
   await fixture.whenStable();
   const el = fixture.nativeElement as HTMLElement;
-  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so read the markup instead.
-  const text = () => el.innerHTML.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
+  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so walk the text nodes instead.
+  const text = () => renderedText(el);
   const button = (label: string) =>
     Array.from(el.querySelectorAll<HTMLElement>('ion-button, ion-item[button]')).find((node) => node.innerHTML.includes(label)) as HTMLElement;
   const click = async (label: string) => {

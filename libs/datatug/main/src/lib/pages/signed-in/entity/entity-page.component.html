@@ -4,7 +4,9 @@
       <ion-menu-button />
       <ion-back-button />
     </ion-buttons>
-    <sneat-datatug-page-title pageTitle="Entity" />
+    <sneat-datatug-page-title
+      [pageTitle]="entity()?.title || entityId() || 'Entity'"
+    />
   </ion-toolbar>
 </ion-header>
 
@@ -24,17 +26,6 @@
         branch.</ion-card-content
       ></ion-card
     >
-  }
-
-  @if (entityLoadState() === 'ready') {
-    <ion-card>
-      <ion-item>
-        <ion-label>
-          <p>Name</p>
-          <h2>{{ entity()?.title || entityId() }}</h2>
-        </ion-label>
-      </ion-item>
-    </ion-card>
   }
 
   @if (entityLoadState() === 'error') {
@@ -67,6 +58,53 @@
           </ion-item-group>
         }
       </ion-list>
+    </ion-card>
+
+    <!-- Related: the cards that show this entity and the saved queries
+         whose parameters mean one of its fields. -->
+    <ion-card data-testid="entity-related">
+      <ion-item lines="full">
+        <ion-label color="medium">Related</ion-label>
+      </ion-item>
+      @if (relatedState() === 'loading') {
+        <ion-card-content role="status"
+          >Looking for related cards and queries…</ion-card-content
+        >
+      } @else if (!relatedCards().length && !relatedQueries().length) {
+        <ion-card-content role="status"
+          >No cards or saved queries use this entity yet.</ion-card-content
+        >
+      } @else {
+        <ion-list lines="none">
+          @for (card of relatedCards(); track card.id) {
+            <ion-item
+              button
+              detail
+              [routerLink]="projectLink(['card', card.id])"
+              data-testid="entity-related-card"
+            >
+              <ion-label>
+                <h3>{{ card.title || card.id }}</h3>
+                <p>Card</p>
+              </ion-label>
+            </ion-item>
+          }
+          @for (query of relatedQueries(); track query.id) {
+            <ion-item
+              button
+              detail
+              [routerLink]="queryLink(query.id)"
+              [queryParams]="{ id: query.id }"
+              data-testid="entity-related-query"
+            >
+              <ion-label>
+                <h3>{{ query.title || query.id }}</h3>
+                <p>Saved query</p>
+              </ion-label>
+            </ion-item>
+          }
+        </ion-list>
+      }
     </ion-card>
 
     <ion-card>

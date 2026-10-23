@@ -90,6 +90,18 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
       return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+    // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
+    // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
+    if (path.endsWith('/agent-info'))
+      return route.fulfill({ json: { version: '0.100.0' } });
+    // Like every released `datatug serve`, this agent has no
+    // environment-state/1 route: Go's router answers it with a plain-text 404.
+    if (path.endsWith('/environments/state'))
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain; charset=utf-8',
+        body: '404 page not found\n',
+      });
     return route.fulfill({ json: {} });
   });
   await page.route('**/v0/datatug/project/quick-search/**', async (route) => {
@@ -189,7 +201,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     'sneat-datatug-quick-search[data-search-view=tags]:not(.ion-page-hidden)',
   );
   await expect(
-    main.getByText('Quick Search is disabled.', { exact: false }),
+    main.getByText('no search index yet', { exact: false }),
   ).toBeVisible();
   await main
     .getByRole('button', { name: 'Index settings', exact: true })
@@ -313,7 +325,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     .getByRole('button', { name: 'Confirm disable and delete', exact: true })
     .click();
   await expect(
-    main.getByText('Quick Search is disabled.', { exact: false }),
+    main.getByText('no search index yet', { exact: false }),
   ).toBeVisible();
   expect(deletes).toBe(2);
   await page.setViewportSize({ width: 390, height: 844 });

@@ -84,6 +84,24 @@ const roles = {
         }
       </select></label
     >
+    @if (kind() === 'timeline') {
+      <label
+        >Time axis
+        <select
+          aria-label="Time axis"
+          [value]="timeMode()"
+          [disabled]="disabled()"
+          (change)="chooseTimeMode($any($event.target).value)"
+        >
+          <option value="absolute" [selected]="timeMode() === 'absolute'">
+            Calendar time
+          </option>
+          <option value="elapsed" [selected]="timeMode() === 'elapsed'">
+            Elapsed from observed start
+          </option>
+        </select>
+      </label>
+    }
     @if (loading()) {
       <p role="status">Loading declared query columns…</p>
     }
@@ -184,6 +202,7 @@ export class BoardChartEditorComponent {
   readonly boardParameters = input<readonly BoardParameterDef[]>([]);
   readonly definition = output<ChartWidgetDef>();
   readonly kind = signal<EvidenceChartSpec['type']>('timeline');
+  readonly timeMode = signal<'absolute' | 'elapsed'>('absolute');
   readonly queryId = signal('');
   readonly mapping = signal<Record<string, string>>({});
   readonly bindings = signal<Record<string, string>>({});
@@ -193,7 +212,12 @@ export class BoardChartEditorComponent {
   );
   readonly error = signal('');
   readonly loading = signal(false);
-  readonly fields = computed(() => roles[this.kind()]);
+  readonly fields = computed(() => [
+    ...roles[this.kind()],
+    ...(this.kind() === 'timeline' && this.timeMode() === 'elapsed'
+      ? ['anchorColumn']
+      : []),
+  ]);
   readonly complete = computed(() =>
     this.fields().every((role) =>
       this.columns().includes(this.mapping()[role]),
@@ -212,6 +236,11 @@ export class BoardChartEditorComponent {
       ) {
         const chart = decodeEvidenceChartSpec(data.chart);
         this.kind.set(chart.type);
+        this.timeMode.set(
+          chart.type === 'timeline'
+            ? (chart.timeline.timeMode ?? 'absolute')
+            : 'absolute',
+        );
         this.mapping.set({
           ...('timeline' in chart
             ? chart.timeline
@@ -279,6 +308,7 @@ export class BoardChartEditorComponent {
   }
   chooseKind(value: EvidenceChartSpec['type']) {
     this.kind.set(value);
+    this.timeMode.set('absolute');
     this.mapping.set({});
   }
   roleLabel(role: string): string {
@@ -293,6 +323,20 @@ export class BoardChartEditorComponent {
   bind(id: string, value: string) {
     this.bindings.update((current) => ({ ...current, [id]: value }));
   }
+  chooseTimeMode(value: string): void {
+    if (this.disabled() || (value !== 'absolute' && value !== 'elapsed'))
+      return;
+    this.timeMode.set(value);
+    this.mapping.update((mapping) =>
+      Object.fromEntries(
+        Object.entries(mapping).filter(
+          ([key]) =>
+            key !== 'timeMode' &&
+            (value === 'elapsed' || key !== 'anchorColumn'),
+        ),
+      ),
+    );
+  }
   apply() {
     if (this.disabled() || !this.complete()) return;
     try {
@@ -305,7 +349,19 @@ export class BoardChartEditorComponent {
       const chart = decodeEvidenceChartSpec({
         type: this.kind(),
         selectionId: old?.chart.selectionId || 'selection-' + card.id,
-        [arm]: this.mapping(),
+        [arm]: {
+          ...Object.fromEntries(
+            Object.entries(this.mapping()).filter(
+              ([key]) => key !== 'timeMode' && key !== 'anchorColumn',
+            ),
+          ),
+          ...(this.kind() === 'timeline' && this.timeMode() === 'elapsed'
+            ? {
+                timeMode: 'elapsed',
+                anchorColumn: this.mapping()['anchorColumn'],
+              }
+            : {}),
+        },
       });
       const original =
         old?.sources[0]?.queryId === this.queryId()

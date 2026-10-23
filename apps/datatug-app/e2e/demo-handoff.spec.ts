@@ -84,6 +84,10 @@ async function stubExternal(
 const dialogRequested = (external: External[]): boolean =>
   external.some((request) => request.url.includes('/api/embed/error-page'));
 
+/** True for `domain` itself and its subdomains, never for a host that only contains it (`sentry.io.example`). */
+const isHostOrSubdomain = (host: string, domain: string): boolean =>
+  host === domain || host.endsWith(`.${domain}`);
+
 /**
  * Resolves once Sentry has sent the report of an error thrown after this call (its next request to the ingest
  * host), or after `ms` if none comes. Start it before throwing the probe: the report usually leaves within
@@ -91,7 +95,7 @@ const dialogRequested = (external: External[]): boolean =>
  */
 async function sentryReport(page: Page, ms = 3000): Promise<void> {
   await page
-    .waitForRequest((request) => new URL(request.url()).hostname.includes('sentry.io'), { timeout: ms })
+    .waitForRequest((request) => isHostOrSubdomain(new URL(request.url()).hostname, 'sentry.io'), { timeout: ms })
     .catch(() => undefined);
 }
 
@@ -302,14 +306,14 @@ async function expectDiagnosticsWithoutOptionalTracking(
   expect(
     hosts.filter(
       (host) =>
-        host.includes('google-analytics.com') ||
-        host.includes('googletagmanager.com') ||
-        host.includes('posthog.com'),
+        isHostOrSubdomain(host, 'google-analytics.com') ||
+        isHostOrSubdomain(host, 'googletagmanager.com') ||
+        isHostOrSubdomain(host, 'posthog.com'),
     ),
     'optional analytics must not start',
   ).toEqual([]);
   expect(
-    hosts.some((host) => host.includes('sentry.io')),
+    hosts.some((host) => isHostOrSubdomain(host, 'sentry.io')),
     'Sentry error probe exercises the observer',
   ).toBe(true);
 }
@@ -1567,8 +1571,17 @@ test.describe('an address that the router reads another way than the inline scri
       await expect
         .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
         .toBe('/project/github.com/acme/demo/queries');
-      await page.waitForTimeout(1500);
+      // The router rewrites the address once its navigation ends, which a loaded CI runner can delay: wait for the
+      // end state instead of a fixed time.
+      await expect
+        .poll(() => hasMarker(page.url()), { timeout: 15_000 })
+        .toBe(false);
       expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+      // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
+      await expect(page).toHaveURL(
+        /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
+        { timeout: 20_000 },
+      );
       const state = await page.evaluate(() => ({
         title: document.title,
         storage:
@@ -1665,9 +1678,17 @@ test.describe('an address that the router reads another way than the inline scri
     await expect
       .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
       .toBe('/project/github.com/acme/demo/queries');
-    await page.waitForTimeout(1500);
-    expect(new URL(page.url()).searchParams.has('msg')).toBe(false);
+    // The router replaces the address once its redirected navigation ends (its lazy chunks loaded), which a loaded
+    // CI runner can delay well past a fixed wait: poll for the end state.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('msg'), { timeout: 15_000 })
+      .toBe(false);
     expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+    // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
+    await expect(page).toHaveURL(
+      /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
+      { timeout: 20_000 },
+    );
     const entries = await page.evaluate(() =>
       (
         window as unknown as { navigation: { entries: () => { url: string }[] } }
@@ -1737,7 +1758,7 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
   });
 });
 
-test.describe('every other route behaves as it does on main', () => {
+test.describe('an address no route answers shows a friendly 404', () => {
   for (const path of [
     '/no-such-route-xyz?q=1',
     // (`/project/github.com/datatug/chinook-demo` used to be here: since G-A1b it is the project, at its short address.)
@@ -1745,7 +1766,7 @@ test.describe('every other route behaves as it does on main', () => {
     '/demo/other?q=1',
     '/demo(menu:x)?q=1', // an outlet group: not a hand-off address, for the script and the router alike
   ]) {
-    test(`${path} still fails to match, asks for the crash-report dialog and rewrites the URL to /`, async ({
+    test(`${path} shows the not-found page, asks for no crash-report dialog and keeps no question in the address`, async ({
       page,
       context,
       baseURL,
@@ -1754,12 +1775,19 @@ test.describe('every other route behaves as it does on main', () => {
       const external = await stubExternal(context, (o) => o === origin);
       const errors = consoleErrors(page);
       await page.goto(path);
-      // This is main's behaviour, unchanged by G-0 (the global not-found handling is a separate task).
+      await expect(
+        page.getByRole('heading', { name: 'This page does not exist' }),
+      ).toBeVisible({ timeout: 20_000 });
+      // A routing miss is not a crash: no report dialog is requested and no NG04002 reaches the console as an error.
+      expect(dialogRequested(external)).toBe(false);
+      expect(errors.some((e) => e.includes('NG04002'))).toBe(false);
+      // The visitor's question (`?q=` / `?msg=`) is never left in the address bar of a page that does not answer it.
       await expect
-        .poll(() => dialogRequested(external), { timeout: 20_000 })
-        .toBe(true);
-      expect(errors.some((e) => e.includes('NG04002'))).toBe(true);
-      expect(new URL(page.url()).pathname).toBe('/');
+        .poll(() => {
+          const { searchParams } = new URL(page.url());
+          return ['q', 'msg'].filter((name) => searchParams.has(name));
+        })
+        .toEqual([]);
     });
   }
 });

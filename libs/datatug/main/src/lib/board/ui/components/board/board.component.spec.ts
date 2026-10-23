@@ -58,12 +58,16 @@ describe('BoardComponent saved-query journey', () => {
       ],
     });
     fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
 
     try {
       const column = fixture.debugElement.query(By.directive(IonCol));
       expect(column.componentInstance.size).toBe('12');
       expect(column.componentInstance.sizeMd).toBe('12');
-      expect(fixture.nativeElement.textContent).toContain('Customer spend');
+      expect(fixture.nativeElement.querySelector('ion-card-title')?.textContent).toContain('Top customers');
+      const widget = fixture.debugElement.query(By.directive(BoardWidgetComponent)).componentInstance as BoardWidgetComponent;
+      expect(widget.definition()?.title).toBe('Customer spend');
       const link = fixture.debugElement.query(By.directive(RouterLink));
       expect(link).not.toBeNull();
       expect(link.nativeElement.textContent).toContain('Open saved query');

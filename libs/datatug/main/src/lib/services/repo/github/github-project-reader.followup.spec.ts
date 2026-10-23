@@ -944,7 +944,7 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
         url.pathname.includes(SHA_1) && url.pathname.endsWith('x.json')
           ? 429
           : undefined;
-      const gate = gated(gh, (url) => url.includes('cdn.jsdelivr.net'));
+      const gate = gated(gh, (url) => new URL(url).hostname === 'cdn.jsdelivr.net');
       const reader = browser.load(browser.store, gate.fetch);
       const file = first(reader.getRawJson(ID_B, 'x.json'));
       await gate.reached; // the mirror is asked for the file at SHA_1
@@ -969,7 +969,8 @@ describe('GithubProjectReaderService: the follow-up of the second review', () =>
       const gate = gated(
         gh,
         (url) =>
-          url.includes('raw.githubusercontent.com') && url.includes('E.entity'),
+          new URL(url).hostname === 'raw.githubusercontent.com' &&
+          new URL(url).pathname.includes('E.entity'),
       );
       const reader = browser.load(browser.store, gate.fetch);
       const entity = first(reader.getRawJson(ID_B, 'entities/E/E.entity.json'));

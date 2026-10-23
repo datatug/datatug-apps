@@ -20,7 +20,7 @@ const renderedBoard = (page: Page) =>
   });
 const cardTitles = (page: Page) =>
   page
-    .locator('sneat-datatug-board-card > ion-card > ion-item ion-label')
+    .locator('sneat-datatug-board-card > ion-card > ion-card-header ion-card-title')
     .allTextContents();
 
 async function changeStep(
@@ -191,13 +191,12 @@ test('tutorial country selection follows the present chart and clears on restart
     storage,
   );
   expect(ledger.posts).toEqual(baseline);
-  // Undo the inspector, then the producing chart; redo recreates an unselected chart.
-  await changeStep(tutorial, 'Previous');
-  await changeStep(tutorial, 'Previous');
+  // Walk back to the producing card regardless of newly added source-construction stages.
+  for (let count = 0; count < 20 && await paired.count(); count++) await changeStep(tutorial, 'Previous');
   await expect(paired).toHaveCount(0);
   await changeStep(tutorial, 'Next Step');
   await expect(canada).toHaveAttribute('aria-pressed', 'false');
-  await changeStep(tutorial, 'Next Step');
+  for (let count = 0; count < 20 && !(await inspector.count()); count++) await changeStep(tutorial, 'Next Step');
   await expect(inspector).toContainText('830 rows · 14 columns');
   await canada.click();
   await expect(inspector).toContainText('30 of 830 orders shipped to Canada');

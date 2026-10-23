@@ -45,6 +45,8 @@ export class SqlEditorComponent implements OnChanges, AfterViewInit {
   readonly readonly = input(true);
   readonly disabled = input(false);
   readonly autoCloseBrackets = input(true);
+  /** Accessible name of the editable text (CodeMirror's content element). */
+  readonly ariaLabel = input('SQL query');
 
   @Output() sqlChanged = new EventEmitter<string>();
 
@@ -54,7 +56,7 @@ export class SqlEditorComponent implements OnChanges, AfterViewInit {
     generation: 0,
     value: '',
     extensions: createSqlEditorExtensions(
-      'SQL query',
+      this.ariaLabel(),
       this.autoCloseBrackets(),
     ),
   });
@@ -75,7 +77,8 @@ export class SqlEditorComponent implements OnChanges, AfterViewInit {
     if (
       textChangedExternally ||
       changes['lineNumbers'] ||
-      changes['autoCloseBrackets']
+      changes['autoCloseBrackets'] ||
+      changes['ariaLabel']
     ) {
       this.replaceInstance(value);
     }
@@ -91,7 +94,7 @@ export class SqlEditorComponent implements OnChanges, AfterViewInit {
 
   private replaceInstance(value: string): void {
     const extensions = createSqlEditorExtensions(
-      'SQL query',
+      this.ariaLabel(),
       this.autoCloseBrackets(),
     );
     extensions.push(

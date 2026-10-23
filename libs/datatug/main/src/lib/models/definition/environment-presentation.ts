@@ -26,7 +26,7 @@ export function environmentPresentation(env?: Partial<IEnvironmentBase>) {
       presentation?.label?.trim() || env?.title || env?.id || 'Environment',
     icon: icons[presentation?.icon || ''] || globeOutline,
     tone:
-      tone && ['primary', 'success', 'warning', 'danger'].includes(tone)
+      tone && ['warning', 'danger'].includes(tone)
         ? tone
         : 'medium',
     safetyLabel:

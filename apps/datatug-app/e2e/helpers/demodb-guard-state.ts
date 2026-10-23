@@ -48,7 +48,7 @@ export function tripBreaker(message: string): string {
 export function rateLimitMessage(url: string, status: number, retryAfter?: string): string {
   return (
     `HTTP ${status} from ${url}${retryAfter ? ` (Retry-After: ${retryAfter})` : ''}: the host is rate limiting or blocking this client. ` +
-    'All further requests to the DemoDB hosts are refused in every worker of this run, nothing is retried. Wait for the limit to clear.'
+    'All further requests to the guarded hosts (DemoDB, OVDB, GitHub) are refused in every worker of this run, nothing is retried. Wait for the limit to clear.'
   );
 }
 
@@ -58,6 +58,8 @@ export function rateLimitMessage(url: string, status: number, retryAfter?: strin
  */
 export function isRateLimited(status: number, headers: Record<string, string>, bodyText = ''): boolean {
   if (status === 429) return true;
+  // GitHub's anonymous API quota (60 an hour per address) answers 403 with x-ratelimit-remaining: 0.
+  if (status === 403 && headers['x-ratelimit-remaining'] === '0') return true;
   if (![403, 503, 520, 521, 522, 523, 524, 525, 526, 527, 530].includes(status)) return false;
   if (headers['cf-mitigated']) return true;
   const cloudflare = /cloudflare/i.test(headers['server'] ?? '') || /cloudflare/i.test(bodyText);
