@@ -7,7 +7,7 @@ import { GithubConnectionService } from '../../services/repo/github/github-conne
 import { NewProjectService } from './new-project.service';
 import { GITHUB_RECONNECT_SESSION_KEY } from './github-reauthorization-banner.component';
 import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
-import { hashOAuthState } from './oauth-state-hash';
+import { sha256Hex } from './sha256-hex';
 import type { ComponentFixture } from '@angular/core/testing';
 
 /** Waits until the page has hashed the returned state and matched it. */
@@ -69,7 +69,7 @@ afterEach(() => {
 describe('GitHub callback authenticated exchange', () => {
   it('consumes the handoff, waits for Firebase and resumes the saved operation once', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('state-fixture'), ciEnabled: true }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('state-fixture'), ciEnabled: true }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -100,7 +100,7 @@ describe('GitHub callback authenticated exchange', () => {
   });
   it('returns a state-matched OAuth denial to the saved form without exchanging a code', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('denied-state') }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('denied-state') }));
     window.__datatugTakeGitHubAuthorization = () => ({ error: 'access_denied', state: 'denied-state' });
     const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
     fixture.detectChanges();
@@ -111,7 +111,7 @@ describe('GitHub callback authenticated exchange', () => {
   });
   it('requires repository and branch reselection when the connected GitHub actor changes', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ actorID: 'actor', githubActorID: '100', operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('state-fixture'), ciEnabled: false, repositoryID: 42, githubRepositoryURL: 'https://github.com/old/repo', branch: 'main' }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ actorID: 'actor', githubActorID: '100', operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('state-fixture'), ciEnabled: false, repositoryID: 42, githubRepositoryURL: 'https://github.com/old/repo', branch: 'main' }));
     window.__datatugTakeGitHubAuthorization = () => ({ code: 'code-fixture', state: 'state-fixture' });
     const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
     fixture.detectChanges();
@@ -129,7 +129,7 @@ describe('GitHub callback authenticated exchange', () => {
   it('returns the same actor to the saved project request after OAuth', async () => {
     const h = harness('business-only-actor', true);
     const navigate = vi.spyOn(h.router, 'navigate').mockResolvedValue(true);
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '22222222-2222-4222-8222-222222222222', oauthResumePending: true, oauthStateHash: await hashOAuthState('state-fixture'), ciEnabled: false }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '22222222-2222-4222-8222-222222222222', oauthResumePending: true, oauthStateHash: await sha256Hex('state-fixture'), ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -151,7 +151,7 @@ describe('GitHub callback authenticated exchange', () => {
   });
   it('cancels an old-actor return on a session change and never claims it is connected for the new actor', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('state-fixture'), ciEnabled: false }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('state-fixture'), ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -168,7 +168,7 @@ describe('GitHub callback authenticated exchange', () => {
   });
   it('keeps a legacy App return on its legacy path when an old OAuth draft has a different state', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('new-oauth-state') }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('new-callback-state') }));
     window.__datatugTakeGitHubAuthorization = () => ({ code: 'app-code', state: 'old-app-state' });
     const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
     fixture.detectChanges();
@@ -188,7 +188,7 @@ describe('GitHub callback authenticated exchange', () => {
     expect(h.complete).not.toHaveBeenCalled();
     expect(h.completeLegacy).toHaveBeenCalledWith('app-code', 'plain-state');
 
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('bound-state'), ciEnabled: false }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('bound-state'), ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({ code: 'code-fixture', state: 'bound-state' });
     const next = harness();
     const second = TestBed.createComponent(GithubAuthorizationPageComponent);
@@ -204,7 +204,7 @@ describe('GitHub callback authenticated exchange', () => {
   });
   it('resumes nothing and does not throw when the page is left before the state hash settles', async () => {
     const h = harness();
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await hashOAuthState('state-fixture'), ciEnabled: false }));
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthStateHash: await sha256Hex('state-fixture'), ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({ code: 'code-fixture', state: 'state-fixture' });
     const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
     fixture.detectChanges();
@@ -236,7 +236,7 @@ describe('GitHub callback authenticated exchange', () => {
       JSON.stringify({
         operationID: '33333333-3333-4333-8333-333333333333',
         firebaseUID: 'actor',
-        oauthStateHash: await hashOAuthState('reconnect-state'),
+        oauthStateHash: await sha256Hex('reconnect-state'),
         returnUrl: '/projects/repo?branch=work',
         requiredScopes: ['repo', 'workflow'],
       }),

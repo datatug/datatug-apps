@@ -12,7 +12,7 @@ import {
   readPendingGithubReconnect,
   safeGitHubReconnectReturnUrl,
 } from './github-reauthorization-banner.component';
-import { hashOAuthState } from './oauth-state-hash';
+import { sha256Hex } from './sha256-hex';
 
 describe('GitHub reauthorization handoff', () => {
   afterEach(() => sessionStorage.removeItem(GITHUB_RECONNECT_SESSION_KEY));
@@ -44,15 +44,15 @@ describe('GitHub reauthorization handoff', () => {
       JSON.stringify({
         operationID: '11111111-1111-4111-8111-111111111111',
         firebaseUID: 'firebase-actor',
-        oauthStateHash: await hashOAuthState('state-expected'),
+        oauthStateHash: await sha256Hex('state-expected'),
         returnUrl: '/projects/repo?branch=work',
         requiredScopes: ['repo'],
       }),
     );
-    expect(readPendingGithubReconnect(await hashOAuthState('different-state'))).toBeUndefined();
+    expect(readPendingGithubReconnect(await sha256Hex('different-state'))).toBeUndefined();
     expect(readPendingGithubReconnect(undefined)).toBeUndefined();
     expect(readPendingGithubReconnect('state-expected')).toBeUndefined();
-    expect(readPendingGithubReconnect(await hashOAuthState('state-expected'))).toMatchObject({
+    expect(readPendingGithubReconnect(await sha256Hex('state-expected'))).toMatchObject({
       firebaseUID: 'firebase-actor',
       returnUrl: '/projects/repo?branch=work',
       requiredScopes: ['repo'],
@@ -105,7 +105,7 @@ describe('GitHub reauthorization handoff', () => {
     expect(stored).not.toContain('expected-state');
     expect(JSON.parse(stored)).toMatchObject({
       firebaseUID: 'firebase-actor',
-      oauthStateHash: await hashOAuthState('expected-state'),
+      oauthStateHash: await sha256Hex('expected-state'),
       returnUrl: '/new-project?store=github',
       requiredScopes: ['repo', 'workflow'],
     });

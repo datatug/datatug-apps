@@ -14,7 +14,7 @@ import type { IProjectRef } from '../../core/project-context';
 import { isValidProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
-import { hashOAuthState } from './oauth-state-hash';
+import { sha256Hex } from './sha256-hex';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
@@ -1174,7 +1174,7 @@ describe('New project through authenticated common API', () => {
     expect(stored).not.toContain('secure-state');
     expect(JSON.parse(stored)).toMatchObject({
       oauthResumePending: true,
-      oauthStateHash: await hashOAuthState('secure-state'),
+      oauthStateHash: await sha256Hex('secure-state'),
     });
     expect(JSON.parse(stored)).not.toHaveProperty('oauthState');
     assign.mockRestore();

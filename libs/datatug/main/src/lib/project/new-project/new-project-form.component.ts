@@ -66,7 +66,7 @@ import {
   clearBusinessGithubContinuation,
   saveBusinessGithubContinuation,
 } from './business-github-continuation';
-import { hashOAuthState, isOAuthStateHash } from './oauth-state-hash';
+import { sha256Hex, isSha256Hex } from './sha256-hex';
 
 interface NewProjectDraft {
   readonly demoContinuation?: string;
@@ -100,13 +100,6 @@ interface NewProjectDraft {
 
 const NEW_PROJECT_DRAFT_KEY = 'datatug:new-project:draft';
 
-/**
- * Billing intent is a plan selector, not a secret; persisting it as one of the
- * two known constants keeps arbitrary values out of browser storage.
- */
-function persistedBillingIntent(value: ProjectBillingIntent): ProjectBillingIntent {
-  return value === 'space_business' ? 'space_business' : 'personal_pro';
-}
 
 @Component({
   selector: 'sneat-datatug-new-project-form',
@@ -691,7 +684,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const intent = {
       title: this.title(),
       spaceID: this.spaceID(),
-      billingIntent: persistedBillingIntent(this.billingIntent()),
+      billingIntent: (this.billingIntent() === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
       github: {
         owner: address.owner,
         name: address.name,
@@ -1019,7 +1012,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const request: CreateGithubProject = {
       title: setup.title,
       spaceID: setup.spaceID,
-      billingIntent: persistedBillingIntent(setup.billingIntent),
+      billingIntent: (setup.billingIntent === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
       operationID: setup.operationID,
       ciEnabled: setup.ciEnabled,
       github: {
@@ -1183,7 +1176,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.pathname !== '/login/oauth/authorize' || url.username || url.password) throw new Error();
           const state = url.searchParams.get('state');
           if (!state || state.length > 512) throw new Error();
-          hashOAuthState(state).then(
+          sha256Hex(state).then(
             (stateHash) => {
               if (!isCurrent()) return;
               this.oauthStateHash.set(stateHash);
@@ -1352,7 +1345,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       }
       const draft: NewProjectDraft = {
         demoContinuation: this.demoContinuation,
-        billingIntent: persistedBillingIntent(this.billingIntent()),
+        billingIntent: (this.billingIntent() === 'space_business' ? 'space_business' : 'personal_pro') as ProjectBillingIntent,
         source: this.copySource(),
         returnUrl: this.returnUrl,
         actorID: this.userID(),
@@ -1575,7 +1568,7 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
       oauthResumePending: draft.oauthResumePending === true,
       projectCreateSubmitted: draft.projectCreateSubmitted === true,
       setupPR: isSafeSetupPR(draft.setupPR) ? draft.setupPR : undefined,
-      oauthStateHash: isOAuthStateHash(draft.oauthStateHash) ? draft.oauthStateHash : undefined,
+      oauthStateHash: isSha256Hex(draft.oauthStateHash) ? draft.oauthStateHash : undefined,
       resolvedCreateRequest: isCreateGithubProject(draft.resolvedCreateRequest) ? draft.resolvedCreateRequest : undefined,
     };
   } catch {
