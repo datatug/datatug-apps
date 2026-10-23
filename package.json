@@ -14,7 +14,7 @@
     "test:check-card-headers": "node --test tools/__tests__/check-card-headers.test.mjs",
     "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs",
     "test:stamp-ag-grid-license": "node --test tools/__tests__/stamp-ag-grid-license.test.mjs",
-    "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs workers/demo-redirect/index.test.mjs",
+    "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs",
     "check:demo-sqlite-catalog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-demo-sqlite-catalog.mjs",
     "check:demo-postgresql-catalog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-demo-postgresql-catalog.mjs",
     "test:checkout-flow": "node --test tools/checkout-flow.test.mjs"

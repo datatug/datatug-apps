@@ -57,20 +57,12 @@ test('the app worker preserves DataTug and serves the Incidentius app hostname',
   ]);
 });
 
-// JSONC as wrangler reads it here: whole-line comments and trailing commas.
-const parseJsonc = (source) => JSON.parse(source.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
-
-test('demo.datatug.app is its own redirect Worker, never a route of the app Worker', async () => {
-  const config = parseJsonc(
-    await readFile(new URL('../workers/demo-redirect/wrangler.jsonc', import.meta.url), 'utf8'),
-  );
-  assert.equal(config.name, 'datatug-demo-redirect');
-  assert.equal(config.main, 'index.mjs');
-  assert.equal(config.workers_dev, false);
-  assert.equal(config.assets, undefined);
-  assert.deepEqual(config.routes, [{ pattern: 'demo.datatug.app', custom_domain: true }]);
-  const deploy = await readFile(new URL('../.github/workflows/deploy-demo-redirect.yml', import.meta.url), 'utf8');
-  assert.match(deploy, /wrangler-config: workers\/demo-redirect\/wrangler\.jsonc/);
+// demo.datatug.app is a zone redirect rule of datatug.app (datatug/websites, apps/app/scripts/zone-rules.mjs, group `demo`), not a Worker:
+// the account is at the Free plan's 100 Workers. The app Worker's routes above leave it out; this keeps a redirect Worker from coming back.
+test('demo.datatug.app has no Worker of its own (it is the zone rule demo:redirect)', async () => {
+  const gone = (path) => readFile(new URL(path, import.meta.url)).then(() => false, (e) => e.code === 'ENOENT');
+  assert.ok(await gone('../workers/demo-redirect/wrangler.jsonc'), 'workers/demo-redirect is retired');
+  assert.ok(await gone('../.github/workflows/deploy-demo-redirect.yml'), 'deploy-demo-redirect.yml is retired');
 });
 
 test('the app serves no cross-origin isolation headers (opfs-sahpool needs neither COOP nor COEP)', async () => {
