@@ -16,11 +16,13 @@ import { QueryEditorStateService } from './query-editor-state-service';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { QueriesUiService } from './queries-ui.service';
 import { projectPageHref } from '../nav/project-page-href';
+import { QueryListItemComponent } from '../components/query-list-item/query-list-item.component';
 
 @Component({
   selector: 'sneat-datatug-queries-menu',
   templateUrl: './queries-menu.component.html',
   imports: [
+    QueryListItemComponent,
     IonItem,
     IonItemDivider,
     IonIcon,

@@ -107,28 +107,25 @@
   }
   @if (filter) {
     @for (item of filteredItems || []; track item.query.id) {
-      <ion-item tappable (click)="goQuery(item.query, 'edit', item.folders)">
-        <sneat-datatug-query-type-icon
-          slot="start"
-          [type]="item.query.request.queryType"
-        />
-        <ion-label>
-          <sneat-datatug-query-item-heading
-            [queryTitle]="item.query.title || item.query.id"
-            [createdAt]="item.query.createdAt"
-          />
-          @if (item.folders.length) {
-            <p>
-              <ion-text color="medium">Folder:&nbsp;</ion-text>
-              <code>
-                @for (p of item.folders; track p) {
-                  <span>{{ p }}/</span>
-                }
-              </code>
-            </p>
-          }
-        </ion-label>
-      </ion-item>
+      <sneat-datatug-query-list-item
+        [queryTitle]="item.query.title || item.query.id"
+        [type]="item.query.request.queryType"
+        [createdAt]="item.query.createdAt"
+        [detail]="false"
+        [loadText]="textLoader(item.query, item.folders)"
+        (opened)="goQuery(item.query, 'edit', item.folders)"
+      >
+        @if (item.folders.length) {
+          <p queryRowSubtitle>
+            <ion-text color="medium">Folder:&nbsp;</ion-text>
+            <code>
+              @for (p of item.folders; track p) {
+                <span>{{ p }}/</span>
+              }
+            </code>
+          </p>
+        }
+      </sneat-datatug-query-list-item>
     }
   }
   @if (!filter && currentFolder) {
@@ -139,60 +136,46 @@
       </ion-item>
     }
     @for (query of currentFolder.items; track query.id) {
-      <ion-item tappable (click)="goQuery(query)">
-        <sneat-datatug-query-type-icon
-          slot="start"
-          [type]="query.request.queryType"
-        />
-
-        <ion-label>
-          <sneat-datatug-query-item-heading
-            [queryTitle]="query.title || query.id"
-            [createdAt]="query.createdAt"
-          />
-          @if (query.targets; as targets) {
-            @if (targets.length) {
-              <p>
-                @for (
-                  target of targets;
-                  track '' + target.catalog + target.host + target.port
-                ) {
-                  <ion-badge>{{ target?.catalog }}</ion-badge>
-                }
-              </p>
-            }
+      <!-- The list shows title, type badge, date and actions only; the query text is a hover/focus preview. -->
+      <sneat-datatug-query-list-item
+        [queryTitle]="query.title || query.id"
+        [type]="query.request.queryType"
+        [createdAt]="query.createdAt"
+        [detail]="false"
+        [loadText]="textLoader(query)"
+        (opened)="goQuery(query)"
+      >
+        @if (query.targets; as targets) {
+          @if (targets.length) {
+            <p queryRowSubtitle>
+              @for (
+                target of targets;
+                track '' + target.catalog + target.host + target.port
+              ) {
+                <ion-badge>{{ target?.catalog }}</ion-badge>
+              }
+            </p>
           }
-        </ion-label>
-
-        <ion-buttons slot="end" class="ion-no-margin">
+        }
+        <ion-buttons slot="end" class="ion-no-margin" queryRowActions>
           <ion-button
             color="medium"
             title="Edit"
-            (click)="goQuery(query, 'edit')"
+            aria-label="Edit"
+            (click)="$event.stopPropagation(); goQuery(query, 'edit')"
           >
             <ion-icon slot="start" name="create-outline" />
           </ion-button>
           <ion-button
             color="medium"
             title="Execute"
-            (click)="goQuery(query, 'execute')"
+            aria-label="Execute"
+            (click)="$event.stopPropagation(); goQuery(query, 'execute')"
           >
             <ion-icon slot="start" name="play-outline" />
           </ion-button>
         </ion-buttons>
-      </ion-item>
-      @if (query.request.queryType === 'SQL') {
-        <ion-item>
-          <small>
-            <small>
-              <sneat-datatug-sql [sql]="getText(query)" />
-            </small>
-          </small>
-          <!--					@if (query.text) {-->
-          <!--						<pre  style="font-size: smaller">{{query.text}}</pre>-->
-          <!--					}-->
-        </ion-item>
-      }
+      </sneat-datatug-query-list-item>
     }
   }
 }

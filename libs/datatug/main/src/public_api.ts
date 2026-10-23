@@ -78,7 +78,12 @@ export {
   queryTypeLabel,
 } from './lib/components/query-type-icon/query-type-icon.component';
 export {
+  QUERY_PREVIEW_LINES,
+  QueryListItemComponent,
+  queryPreviewText,
+} from './lib/components/query-list-item/query-list-item.component';
+export {
   QueryItemHeadingComponent,
   formatQueryTimestamp,
   type QueryTimestamp,
-} from './lib/queries/query-list-item/query-list-item';
+} from './lib/components/query-list-item/query-item-heading';

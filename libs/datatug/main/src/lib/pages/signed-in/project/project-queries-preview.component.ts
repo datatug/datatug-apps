@@ -18,7 +18,7 @@ import {
   IonSegment,
   IonSegmentButton,
 } from '@ionic/angular';
-import { Observable, Subscription } from 'rxjs';
+import { Observable, Subscription, map, of } from 'rxjs';
 import {
   textOutline,
   calendarOutline,
@@ -29,14 +29,8 @@ import type { IProjectRef } from '../../../core/project-context';
 import type { IQueryFolder } from '../../../models/definition/query-def';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { QueriesService } from '../../../queries/queries.service';
-import {
-  QueryItemHeadingComponent,
-  formatQueryTimestamp,
-} from '../../../queries/query-list-item/query-list-item';
-import {
-  QueryTypeIconComponent,
-  queryTypeLabel,
-} from '../../../components/query-type-icon/query-type-icon.component';
+import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
+import { queryTypeLabel } from '../../../components/query-type-icon/query-type-icon.component';
 import {
   ProjectTabPanelComponent,
   matchesOverviewFilter,
@@ -49,6 +43,8 @@ interface QueryLink {
   readonly href: UrlTree;
   readonly createdAt: string;
   readonly createdTime: number;
+  /** Lazily reads the query text for the row's hover preview. */
+  readonly loadText: () => Observable<string | undefined>;
 }
 
 const previewLimit = 100;
@@ -71,6 +67,7 @@ function previewQueries(
   router: Router,
   ref: IProjectRef,
   root: IQueryFolder,
+  textOf: (id: string, listed?: string) => () => Observable<string | undefined>,
 ): QueryLink[] {
   const queries: QueryLink[] = [];
   const visit = (folder: IQueryFolder, path: string): void => {
@@ -86,6 +83,10 @@ function previewQueries(
         createdAt: query.createdAt,
         createdTime: Date.parse(query.createdAt),
         href: queryHref(router, ref, id),
+        loadText: textOf(
+          id,
+          (query.request as { readonly text?: string } | undefined)?.text,
+        ),
       });
     }
     for (const child of folder.folders ?? []) {
@@ -104,8 +105,7 @@ function previewQueries(
     ErrorStateComponent,
     RouterLink,
     ProjectTabPanelComponent,
-    QueryTypeIconComponent,
-    QueryItemHeadingComponent,
+    QueryListItemComponent,
     IonButton,
     IonIcon,
     IonItem,
@@ -200,27 +200,14 @@ function previewQueries(
         }
         <ion-list>
           @for (query of queries(); track query.id) {
-            <ion-item
-              button
-              detail
-              [routerLink]="query.href"
-              [attr.aria-label]="
-                query.title +
-                ', ' +
-                typeLabel(query.type) +
-                ' query, open saved query' +
-                (query.createdAt ? '. ' + timestampText(query.createdAt) : '')
-              "
-            >
-              <sneat-datatug-query-type-icon slot="start" [type]="query.type" />
-              <ion-label>
-                <sneat-datatug-query-item-heading
-                  [queryTitle]="query.title"
-                  [createdAt]="query.createdAt"
-                  [testId]="'saved-query-' + query.id"
-                />
-              </ion-label>
-            </ion-item>
+            <sneat-datatug-query-list-item
+              [queryTitle]="query.title"
+              [type]="query.type"
+              [createdAt]="query.createdAt"
+              [href]="query.href"
+              [titleTestId]="'saved-query-' + query.id"
+              [loadText]="query.loadText"
+            />
           } @empty {
             <ion-item lines="none">
               <ion-label color="medium"
@@ -339,11 +326,6 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       .slice(0, previewLimit),
   );
 
-  protected readonly typeLabel = queryTypeLabel;
-  protected timestampText(createdAt: string): string {
-    return formatQueryTimestamp(createdAt)?.full ?? '';
-  }
-
   protected setSortOrder(value: unknown): void {
     if (value === 'alphabetical' || value === 'newest')
       this.sortOrder.set(value);
@@ -375,7 +357,30 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
     ).subscribe({
       next: (folder) => {
         try {
-          const all = folder ? previewQueries(this.router, ref, folder) : [];
+          const all = folder
+            ? previewQueries(
+                this.router,
+                ref,
+                folder,
+                (id, listed) =>
+                  // The folder listing leaves `text` unset (the body is a sidecar file); read the one query on demand.
+                  () =>
+                    listed
+                      ? of(listed)
+                      : this.queriesService
+                          .getQuery(ref, id)
+                          .pipe(
+                            map(
+                              (def) =>
+                                (
+                                  def?.request as
+                                    | { readonly text?: string }
+                                    | undefined
+                                )?.text,
+                            ),
+                          ),
+              )
+            : [];
           this.total.set(all.length);
           this.allQueries.set(all);
           this.state.set(all.length ? 'ready' : 'empty');

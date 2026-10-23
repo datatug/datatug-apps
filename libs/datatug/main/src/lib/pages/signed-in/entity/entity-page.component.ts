@@ -20,7 +20,14 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DataGridComponent } from '@sneat/datagrid';
-import { combineLatest, forkJoin, of, Subject, Subscription } from 'rxjs';
+import {
+  combineLatest,
+  forkJoin,
+  Observable,
+  of,
+  Subject,
+  Subscription,
+} from 'rxjs';
 import {
   catchError,
   defaultIfEmpty,
@@ -56,6 +63,7 @@ import {
   type RelatedQueryShape,
 } from '../../../cards/related-links';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -73,6 +81,7 @@ import { projectPageHref } from '../../../nav/project-page-href';
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
     DataGridComponent,
+    QueryListItemComponent,
     FormsModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -204,6 +213,35 @@ export class EntityPageComponent implements OnDestroy {
   /** A saved query's page; the id itself rides in `?id=` (the `query/**` route). */
   queryLink(queryId: string): string {
     return this.projectLink(['query', ...queryId.split('/')]);
+  }
+
+  // One loader per query id, so a row's `loadText` input keeps its identity across renders.
+  private readonly queryTextLoaders = new Map<
+    string,
+    () => Observable<string | undefined>
+  >();
+
+  /** Reads a related query's text for its row's hover preview (the folder listing carries no text). */
+  queryTextLoader(queryId: string): () => Observable<string | undefined> {
+    let loader = this.queryTextLoaders.get(queryId);
+    if (!loader) {
+      loader = () => {
+        const ref = this.projectRef();
+        return ref
+          ? this.queriesService
+              .getQuery(ref, queryId)
+              .pipe(
+                map(
+                  (def) =>
+                    (def?.request as { readonly text?: string } | undefined)
+                      ?.text,
+                ),
+              )
+          : of(undefined);
+      };
+      this.queryTextLoaders.set(queryId, loader);
+    }
+    return loader;
   }
 
   /** Cards that show this entity and saved queries whose parameters mean it. */

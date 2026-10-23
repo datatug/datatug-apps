@@ -2,24 +2,25 @@
   <ion-label>Active queries</ion-label>
 </ion-item-divider>
 @for (query of queries(); track query.id) {
-  <ion-item button (click)="selectQuery(query.id)">
-    <ion-icon name="terminal-outline" slot="start" />
-    <ion-label
-      [color]="query.id === currentQueryId() ? 'primary' : undefined"
-      [title]="query?.title"
-    >
-      {{ query.title || query.id }}
-    </ion-label>
-    <ion-buttons slot="end">
+  <sneat-datatug-query-list-item
+    [queryTitle]="query.title || query.id || ''"
+    [type]="query.queryType"
+    [createdAt]="query.def?.createdAt"
+    [detail]="false"
+    [selected]="query.id === currentQueryId()"
+    (opened)="selectQuery(query.id)"
+  >
+    <ion-buttons slot="end" queryRowActions>
       <ion-button
         color="medium"
         title="Close query"
+        aria-label="Close query"
         (click)="closeQuery($event, query)"
       >
         <ion-icon name="close-outline" />
       </ion-button>
     </ion-buttons>
-  </ion-item>
+  </sneat-datatug-query-list-item>
 }
 @if (!queries()?.length) {
   <ion-item>

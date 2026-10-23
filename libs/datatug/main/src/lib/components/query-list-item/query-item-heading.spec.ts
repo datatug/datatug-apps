@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   QueryItemHeadingComponent,
   formatQueryTimestamp,
-} from './query-list-item';
+} from './query-item-heading';
 
 // Local-time instants, so the "today" rule does not depend on the runner's time zone.
 const now = new Date(2026, 9, 23, 16, 30);
