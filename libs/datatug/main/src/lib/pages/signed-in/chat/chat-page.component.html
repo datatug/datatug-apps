@@ -4,11 +4,7 @@
       <ion-buttons slot="start"><ion-menu-button /></ion-buttons>
       <div class="chat-header-title">
       <sneat-datatug-page-title pageTitle="Chat" [heading]="true" [compact]="true" />
-      <ion-select aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
-        @for (session of sessions(); track session.id) {
-          <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
-        }
-      </ion-select>
+      @if (!narrow()) { <ng-container [ngTemplateOutlet]="sessionSelect" /> }
       </div>
       <ion-buttons slot="end">
         <ion-button aria-label="New chat" title="New chat" (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()"><ion-icon slot="icon-only" name="add-outline" /></ion-button>
@@ -22,7 +18,21 @@
         </div></ng-template>
       </ion-popover>
     </ion-toolbar>
+    <!-- Phones: the session picker gets its own row so the page title stays readable. -->
+    @if (narrow()) {
+      <ion-toolbar class="chat-session-toolbar">
+        <ng-container [ngTemplateOutlet]="sessionSelect" />
+      </ion-toolbar>
+    }
   </ion-header>
+
+  <ng-template #sessionSelect>
+    <ion-select class="chat-session-select" aria-label="Chat session" interface="popover" [value]="activeSessionId()" [selectedText]="activeSessionTitle()" (ionChange)="switchSession($event.detail.value)" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy() || !sessions().length">
+      @for (session of sessions(); track session.id) {
+        <ion-select-option [value]="session.id">{{ session.title }}</ion-select-option>
+      }
+    </ion-select>
+  </ng-template>
 
   <ng-template #failureView let-failure>
     <div class="turn-error" role="alert">
@@ -121,7 +131,7 @@
     </div>
 
     <aside class="workspace-panel" aria-label="Chat workspace">
-      <ion-segment [value]="workspace().activeTab" (ionChange)="setWorkspaceTab($event.detail.value)">
+      <ion-segment class="workspace-tabs" [value]="workspace().activeTab" (ionChange)="setWorkspaceTab($event.detail.value)">
         <ion-segment-button value="project">Project</ion-segment-button>
         <ion-segment-button value="selected">Selected</ion-segment-button>
         <ion-segment-button value="docked">Docked {{ workspace().docks.length }}</ion-segment-button>
@@ -129,7 +139,7 @@
       </ion-segment>
       <div class="workspace-body">
         @if (workspace().activeTab === 'project') {
-          <ion-item><ion-label><strong>{{ projectId() }}</strong><p>Project</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(projectReference())">{{ attached(projectReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
+          <ion-item><ion-label><strong>{{ projectTitle() }}</strong><p>Project</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(projectReference())">{{ attached(projectReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
           @if (!managed() && !connectionId() && demoProject() && seedState() === 'ready') {
             <ion-item><ion-label><strong>Chinook</strong><p>Local data source · main schema</p></ion-label><ion-button slot="end" fill="clear" (click)="toggleAttachment(sourceReference())">{{ attached(sourceReference()) ? 'Detach' : 'Attach' }}</ion-button></ion-item>
             <div class="workspace-group-label">Tables</div>
@@ -225,6 +235,7 @@
 
   <ion-footer class="composer-footer">
     <ion-toolbar>
+      <div class="composer-body">
       <ion-segment aria-label="AI mode" [value]="managed() ? 'managed' : 'byok'" (ionChange)="chooseAIMode($event.detail.value === 'managed')">
         <ion-segment-button value="managed">Managed AI</ion-segment-button>
         <ion-segment-button value="byok">Your own provider (BYOK)</ion-segment-button>
@@ -235,7 +246,12 @@
           <ion-button fill="outline" (click)="selectProvider('__add_provider__')">Add AI provider</ion-button>
         </div>
       }
-      @if (managed()) {
+      @if (managed() && signedOut()) {
+        <div class="ion-padding-horizontal managed-signed-out" role="status" aria-label="Managed AI status">
+          <p>Sign in to ask questions with Managed AI. It uses your DataTug allowance, so no provider API key is needed. You can also use your own provider (BYOK) without signing in.</p>
+          <ion-button fill="solid" size="small" routerLink="/login" [fragment]="returnPath()" [queryParams]="{ reason: 'Sign in to use Managed AI' }">Sign in</ion-button>
+        </div>
+      } @else if (managed()) {
         <div class="ion-padding-horizontal" role="status" aria-label="Managed AI status">
           <p>Managed AI uses your signed-in DataTug allowance. No provider API key is needed. Select a source and ask about its schema and data.</p>
           @if (managedGateway.allowance(); as allowance) { <p>{{ allowance.limit - allowance.used > 0 ? allowance.limit - allowance.used : 0 }} / {{ allowance.limit }} {{ allowance.unit }} remaining · resets {{ allowance.resetsAt || 'as reported by the service' }}</p> }
@@ -282,11 +298,12 @@
               <ion-select-option value="__add_provider__">Your own provider (BYOK)…</ion-select-option>
             </ion-select>
           </ion-col>
-          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="(!managed() && !selectedProvider()) || ((managed() || !demoProject() || connectionId()) && (!projectContext() || !connectionId())) || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
+          <ion-col class="composer-send"><ion-button fill="solid" color="primary" [disabled]="(!managed() && !selectedProvider()) || (managed() && signedOut()) || ((managed() || !demoProject() || connectionId()) && (!projectContext() || !connectionId())) || seedState() !== 'ready' || sessionState() !== 'ready' || !question().trim() || submitting() || sessionBusy()" (click)="submit()"><ion-icon slot="start" name="send-outline" />Send</ion-button></ion-col>
           @if (submitting() && (managed() || !demoProject() || connectionId())) { <ion-col><ion-button fill="clear" (click)="cancelRequest()">Cancel request</ion-button></ion-col> }
         </ion-row>
       </ion-grid>
-      <div class="chat-status-bar">{{ projectId() }} · {{ activeSessionTitle() }} · {{ turns().length }} turns · {{ workspace().attachments.length }} attached · {{ currentSelection()?.rows?.length || 0 }} selected · {{ submitting() ? 'working' : sessionState() }}</div>
+      <div class="chat-status-bar">{{ projectTitle() }} · {{ activeSessionTitle() }} · {{ turns().length }} turns · {{ workspace().attachments.length }} attached · {{ currentSelection()?.rows?.length || 0 }} selected · {{ submitting() ? 'working' : sessionState() }}</div>
+      </div>
     </ion-toolbar>
   </ion-footer>
 

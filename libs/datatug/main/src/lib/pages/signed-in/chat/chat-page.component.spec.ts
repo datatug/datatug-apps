@@ -15,6 +15,7 @@ import { emptyChatWorkspace } from '../../../chat/chat-workspace';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatPageComponent } from './chat-page.component';
 import { ProjectAIEligibilityService } from '../../../services/project/project-ai-eligibility.service';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 
 const engineError = 'join_aggregate at orderBy[0]: c.Country is neither aggregated nor present in GROUP BY';
 const session = {
@@ -77,6 +78,7 @@ describe('ChatPageComponent failed turns', () => {
   let deferredRouteParams: Subject<ReturnType<typeof convertToParamMap>> | undefined;
   let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
+  let navProject: BehaviorSubject<unknown>;
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const details = (): HTMLDetailsElement | null => (fixture.nativeElement as HTMLElement).querySelector('details.error-detail');
@@ -95,6 +97,7 @@ describe('ChatPageComponent failed turns', () => {
     deferredRouteParams = deferProjectRef ? new Subject() : undefined;
     routeQuery = new BehaviorSubject(convertToParamMap(query));
     authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'authenticated', user: { uid: 'actor-1' } });
+    navProject = new BehaviorSubject<unknown>(undefined);
     const route = {
       get snapshot() {
         return { paramMap: routeParams.value, queryParamMap: routeQuery.value };
@@ -114,6 +117,7 @@ describe('ChatPageComponent failed turns', () => {
         { provide: ChatInterpretService, useValue: interpreter },
         { provide: ChatJoinService, useValue: joiner },
         { provide: ProjectAIEligibilityService, useValue: eligibility },
+        { provide: DatatugNavContextService, useValue: { currentProject: navProject.asObservable() } },
         {
           provide: SneatAuthStateService,
           useValue: { authState: authState.asObservable() },
@@ -177,6 +181,54 @@ describe('ChatPageComponent failed turns', () => {
     expect(store.completeQuery).not.toHaveBeenCalled();
     expect(component.turns()).toEqual([]);
     expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'This request was interrupted. Ask it again to retry.');
+  });
+
+  it('shows the project title from the navigation context instead of the raw project id', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    expect(component.projectTitle()).toBe('datatug-demo-project');
+    navProject.next({ ref: { projectId: 'datatug-demo-project' }, brief: { title: 'DataTug Demo Project' } });
+    await fixture.whenStable();
+    expect(component.projectTitle()).toBe('DataTug Demo Project');
+    expect(text()).toContain('DataTug Demo Project · Chat');
+    expect(component.projectReference().title).toBe('DataTug Demo Project');
+    navProject.next({ ref: { projectId: 'another-project' }, brief: { title: 'Another project' } });
+    await fixture.whenStable();
+    expect(component.projectTitle()).toBe('datatug-demo-project');
+  });
+
+  it.each([
+    [false, 'chat-header-title'],
+    [true, 'chat-session-toolbar'],
+  ])('renders exactly one session picker (narrow=%s) inside .%s', async (narrow, container) => {
+    const matchMedia = vi.fn(() => ({ matches: narrow, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    vi.stubGlobal('matchMedia', matchMedia);
+    try {
+      await render([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const pickers = (fixture.nativeElement as HTMLElement).querySelectorAll('ion-select.chat-session-select');
+    expect(pickers.length).toBe(1);
+    expect(pickers[0].closest('.' + container)).not.toBeNull();
+  });
+
+  it('asks a signed-out visitor to sign in for Managed AI instead of reporting the allowance as unavailable', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    component.managed.set(true);
+    authState.next({ status: 'notAuthenticated' });
+    await fixture.whenStable();
+    expect(component.signedOut()).toBe(true);
+    const status = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="Managed AI status"]');
+    expect(status?.textContent).toContain('Sign in to ask questions with Managed AI');
+    expect(status?.querySelector('ion-button')?.textContent).toContain('Sign in');
+    expect(text()).not.toContain('Allowance unavailable');
+    expect(text()).not.toContain('Refresh allowance');
+    authState.next({ status: 'authenticated', user: { uid: 'actor-1' } });
+    await fixture.whenStable();
+    expect(component.signedOut()).toBe(false);
+    expect(text()).toContain('Allowance unavailable');
   });
 
   it('explains why a fresh visitor cannot send and opens the existing provider flow', async () => {

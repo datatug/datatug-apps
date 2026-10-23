@@ -107,3 +107,9 @@
 .chat-header-title ion-select { min-width: 0; flex: 1 1 auto; max-width: 360px; overflow: hidden; }
 .session-action-menu { display: flex; flex-direction: column; padding: .5rem; }
 .session-action-menu ion-button { min-height: 44px; }
+.managed-signed-out ion-button { margin: 0 0 .5rem; }
+@media (max-width: 540px) {
+  .chat-header-title > sneat-datatug-page-title { flex: 1 1 auto; }
+  .chat-session-toolbar { --min-height: 40px; }
+  .chat-session-select { width: 100%; padding-inline: .75rem; }
+}
