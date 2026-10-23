@@ -17,7 +17,9 @@ import {
   GITHUB_SIGNED_OUT_EVENT,
   GITHUB_TOKEN_STORAGE_KEY,
   GITHUB_USER_TOKEN,
+  forgetGithubUserToken,
   readGithubUserToken,
+  rejectGithubUserToken,
   resetGithubTokenRejection,
 } from './github-user-token';
 
@@ -283,5 +285,38 @@ describe('a private listing never outlives the token', () => {
     globalThis.dispatchEvent(new Event(GITHUB_SIGNED_OUT_EVENT));
     expect(sessions.size).toBe(0);
     expect([...treeCalls.keys()].some((key) => !key.startsWith('anonymous|'))).toBe(false);
+  });
+});
+
+describe('the token helpers with storage blocked by the browser', () => {
+  it('read no token, forget and reject without throwing', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+    try {
+      expect(readGithubUserToken()).toBeUndefined();
+      expect(() => forgetGithubUserToken()).not.toThrow();
+      expect(() => rejectGithubUserToken('gho_x')).not.toThrow();
+      // A reader made with the default token source reads anonymously.
+      const gh = new FakeGithub();
+      gh.addRepo(REPO, SHA, FILES);
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: GITHUB_FETCH, useValue: gh.fetch },
+          { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+          { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+        ],
+      });
+      const reader = TestBed.inject(GithubProjectReaderService);
+      await firstValueFrom(reader.listDirectory(PROJECT_ID, ''));
+      expect(gh.requests.every((r) => authorization(r.init) === undefined)).toBe(true);
+      expect(reader.visitEpoch(PROJECT_ID)).toMatch(/^anonymous\./);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+    }
   });
 });

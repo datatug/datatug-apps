@@ -5,6 +5,7 @@ import {
   GITHUB_TOKEN_STORAGE_KEY,
   IGithubSignOutAuthState,
   forgetGithubTokenOnSignOut,
+  tabStorage,
 } from './github-redirect-capture';
 
 describe('forgetGithubTokenOnSignOut', () => {
@@ -12,7 +13,7 @@ describe('forgetGithubTokenOnSignOut', () => {
     const states = new Subject<IGithubSignOutAuthState>();
     const events: string[] = [];
     const target = { dispatchEvent: (event: Event) => { events.push(event.type); return true; } };
-    forgetGithubTokenOnSignOut(states, sessionStorage, target);
+    forgetGithubTokenOnSignOut(states, () => sessionStorage, target);
     return { states, events };
   }
   /** What `GithubOAuthService.setToken` (or the redirect capture) stores. */
@@ -74,5 +75,54 @@ describe('forgetGithubTokenOnSignOut', () => {
     sessionStorage.clear();
     states.next({ status: 'notAuthenticated' });
     expect(events).toEqual([]);
+  });
+});
+
+describe('with storage blocked by the browser', () => {
+  /** Reading `sessionStorage` throws, as it does when site data is blocked. */
+  function blockStorage() {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    Object.defineProperty(globalThis, 'sessionStorage', {
+      configurable: true,
+      get: () => {
+        throw new DOMException('The operation is insecure.', 'SecurityError');
+      },
+    });
+    return () => {
+      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+    };
+  }
+
+  it('tabStorage is undefined instead of throwing', () => {
+    const restore = blockStorage();
+    try {
+      expect(tabStorage()).toBeUndefined();
+    } finally {
+      restore();
+    }
+  });
+
+  it('the sign-out watch starts and follows auth states without throwing (no token, no owner)', () => {
+    const restore = blockStorage();
+    try {
+      const states = new Subject<IGithubSignOutAuthState>();
+      const events: string[] = [];
+      const target = { dispatchEvent: (event: Event) => { events.push(event.type); return true; } };
+      expect(() => forgetGithubTokenOnSignOut(states, undefined, target)).not.toThrow();
+      expect(() => {
+        states.next({ status: 'authenticated', user: { uid: 'u1' } });
+        states.next({ status: 'notAuthenticated' });
+      }).not.toThrow();
+      expect(events).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
+
+  it('storage whose methods throw is no token either', () => {
+    const states = new Subject<IGithubSignOutAuthState>();
+    const throwing = { getItem: () => { throw new Error('blocked'); }, removeItem: () => { throw new Error('blocked'); } };
+    forgetGithubTokenOnSignOut(states, () => throwing, { dispatchEvent: () => true });
+    expect(() => states.next({ status: 'notAuthenticated' })).not.toThrow();
   });
 });

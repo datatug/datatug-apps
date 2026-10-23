@@ -30,6 +30,19 @@ export const GITHUB_TOKEN_OWNER_STORAGE_KEY = 'datatug:github:token-owner';
  * GitHub token: the user came back authorised, but DataTug stayed disconnected.
  * Hence an app initializer registered BEFORE `provideSneatAuthenticatedProviders()`.
  */
+/**
+ * The tab's sessionStorage, or undefined when the browser blocks it: reading `sessionStorage` itself throws a
+ * SecurityError then (blocked site data, some private modes), so it is never touched outside a try. No storage means no
+ * token and no owner, never a failed start-up.
+ */
+export function tabStorage(): Storage | undefined {
+  try {
+    return globalThis.sessionStorage ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function captureGithubRedirectSignIn(): Promise<void> {
   const auth = inject<Auth>(SNEAT_FIREBASE_AUTH);
   try {
@@ -37,11 +50,12 @@ export async function captureGithubRedirectSignIn(): Promise<void> {
     const token = credential
       ? GithubAuthProvider.credentialFromResult(credential)?.accessToken
       : undefined;
-    if (token) {
-      sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+    const storage = tabStorage();
+    if (token && storage) {
+      storage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
       const owner = credential?.user?.uid;
-      if (owner) sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
-      else sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+      if (owner) storage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
+      else storage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
     }
   } catch {
     // A redirect that carries no usable credential is not an error worth
@@ -78,7 +92,8 @@ export interface IGithubSignOutAuthState {
  */
 export function forgetGithubTokenOnSignOut(
   authState: Observable<IGithubSignOutAuthState>,
-  storage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = globalThis.sessionStorage,
+  // A getter, read inside a try at each auth state: reading `sessionStorage` throws when the browser blocks storage.
+  storage: () => Pick<Storage, 'getItem' | 'removeItem'> | undefined = tabStorage,
   target: Pick<EventTarget, 'dispatchEvent'> | undefined = globalThis,
 ) {
   return authState.subscribe((state) => {
@@ -87,10 +102,11 @@ export function forgetGithubTokenOnSignOut(
     }
     const uid = state.status === 'authenticated' ? state.user?.uid || undefined : undefined;
     try {
-      if (!storage?.getItem(GITHUB_TOKEN_STORAGE_KEY)) return;
-      if ((storage.getItem(GITHUB_TOKEN_OWNER_STORAGE_KEY) || undefined) === uid && uid) return;
-      storage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
-      storage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+      const kept = storage();
+      if (!kept?.getItem(GITHUB_TOKEN_STORAGE_KEY)) return;
+      if ((kept.getItem(GITHUB_TOKEN_OWNER_STORAGE_KEY) || undefined) === uid && uid) return;
+      kept.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+      kept.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
     } catch {
       return; // Storage not available: nothing kept there.
     }
@@ -102,6 +118,10 @@ export function forgetGithubTokenOnSignOut(
 export function provideGithubSignOutForget(): EnvironmentProviders {
   return provideAppInitializer(() => {
     const auth = inject(SneatAuthStateService, { optional: true });
-    if (auth) forgetGithubTokenOnSignOut(auth.authState);
+    try {
+      if (auth) forgetGithubTokenOnSignOut(auth.authState);
+    } catch {
+      // Never fail start-up over the sign-out watch: without it, a token is only kept until the tab closes.
+    }
   });
 }
