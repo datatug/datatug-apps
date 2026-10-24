@@ -6,6 +6,7 @@ import {
   OnChanges,
   SimpleChanges,
   ViewChild,
+  afterEveryRender,
   input,
   inject,
   output,
@@ -84,6 +85,14 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
   public readonly readOnly = input(false);
   public readonly disabled = input(false);
   public readonly visible = input(true);
+  /** Whether the host renders an element with `id = toolsTriggerId` that opens the editor actions menu. A host
+   * without that button sets it false, so the popover is not rendered against a trigger that never exists
+   * (Ionic warns `trigger "author-code-tools-trigger-N" was not found in the DOM`). */
+  public readonly toolsMenu = input(true);
+  /** The popover's trigger is bound only once the host's trigger button is in the DOM: the button lives in the
+   * host's template and can render after this popover (or be removed by a tab switch), and Ionic warns about a
+   * trigger id it cannot find. */
+  public readonly toolsTrigger = signal<string | undefined>(undefined);
   public readonly formatDiagnostics = input<readonly TugQLDiagnostic[]>([]);
   public readonly remainingFormatDiagnosticCount = input(0);
   public readonly canFormat = input(false);
@@ -100,6 +109,14 @@ export class AuthorCodeEditorComponent implements OnChanges, AfterViewInit {
     language: 'TugQL',
     extensions: createTugqlEditorExtensions('TugQL source'),
   });
+
+  public constructor() {
+    afterEveryRender(() => {
+      const present = !!this.editorRoot.getElementById(this.toolsTriggerId);
+      const trigger = present ? this.toolsTriggerId : undefined;
+      if (this.toolsTrigger() !== trigger) this.toolsTrigger.set(trigger);
+    });
+  }
 
   @ViewChild(CodeEditor) private editor?: CodeEditor;
   @ViewChild(IonPopover) private toolsPopover?: IonPopover;

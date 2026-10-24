@@ -57,6 +57,15 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (queryLoadError() !== undefined) {
+    <!-- The saved query could not be read: one designed state with Retry, no empty editor and no Run. -->
+    <sneat-datatug-error-state
+      data-testid="query-load-error"
+      what="this query"
+      [error]="queryLoadError()"
+      (retry)="retryQueryLoad()"
+    />
+  } @else {
   @if (isQueryReadOnly() && queryDef()) {
     <p class="query-read-only-note" data-testid="query-read-only-note" role="note">
       {{ queryReadOnlyReason() }}
@@ -152,7 +161,9 @@
         <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
       }
       @if (showWorkspaceTab('tugql') && !nativeOverflowLayout()) {
-        <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>{{ isTugqlAuthorJourney() || (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) ? 'TugQL Query' : 'TugQL' }}</ion-label></ion-segment-button>
+        <!-- The tab that holds the query's own text is "Source" for SQL, TugQL YAML and TugQL text alike; on a SQL or
+             YAML query the derived TugQL view is "TugQL". -->
+        <ion-segment-button value="tugql" data-testid="author-code-tab" [attr.aria-label]="isNativeSqlWorkspace() || isTugqlYamlWorkspace() ? 'TugQL' : 'TugQL source'"><ion-label>{{ isNativeSqlWorkspace() || isTugqlYamlWorkspace() ? 'TugQL' : 'Source' }}</ion-label></ion-segment-button>
       }
       @if (showWorkspaceTab('preview') && !nativeOverflowLayout()) {
         <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
@@ -610,9 +621,11 @@
         (requestChange)="httpRequestChanged($event)"
         [parameters]="httpParameters"
         (parametersChange)="httpParametersChanged($event)"
+        (typedValueChange)="httpTypedValueChanged($event)"
         [rowBinding]="httpRowBinding()"
         [bagEntries]="httpBagEntries()"
         [showRun]="!httpSemanticRun()"
+        [readonly]="isQueryReadOnly()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -1056,7 +1069,7 @@
           }
           @if (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) {
             <sneat-author-code-editor class="author-code-editor" data-testid="query-body-text"
-              label="TugQL Query" [text]="queryBodyText() ?? ''" [visible]="workspaceTab() === 'tugql'"
+              label="TugQL Query" [text]="queryBodyText() ?? ''" [visible]="workspaceTab() === 'tugql'" [toolsMenu]="false"
               [disabled]="queryState.isSaving || running()" [readOnly]="queryState.saveSupported === false && !project?.ref?.spaceID"
               (textChange)="authorCodeChanged($event)" />
           }
@@ -2142,6 +2155,7 @@
     <ng-container *ngTemplateOutlet="queryResults" />
   }
   <sneat-work-artifact-links [project]="project?.ref" kind="query" [identifier]="queryId || ''" />
+  }
 </ion-content>
 
 <ion-modal

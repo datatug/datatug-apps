@@ -168,6 +168,38 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
+  function renderBoardCard(queryId: string): void {
+    fixture.componentRef.setInput('projectRef', { storeId: 'github.com', projectId: 'r@o' });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', vi.fn());
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.detectChanges();
+  }
+
+  it('asks a runnable board card to be run (demo walk item 5)', () => {
+    renderBoardCard('demodb/chinook-top-customer-spend');
+    expect(renderedHeaderActions()).toContain('Run on board');
+    expect(fixture.nativeElement.textContent).toContain('Not run yet. Press ▶ Run on board to see its rows here.');
+  });
+
+  it('marks a saved SQL query with nowhere to run as browse-only instead of offering a failing Run (demo walk item 5)', () => {
+    // The Northwind board's queries name no connection: a public project without an agent cannot run them.
+    getQuery.mockReturnValue(
+      of({
+        id: 'northwind-reorder-watchlist',
+        title: 'Reorder Watchlist',
+        request: { queryType: QueryType.SQL, text: 'select 1' },
+      }),
+    );
+    renderBoardCard('demodb/northwind-reorder-watchlist');
+    expect(renderedHeaderActions()).not.toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Open saved query');
+    expect(fixture.nativeElement.textContent).toContain('Browse only: this saved query has no database it can run on here.');
+    expect(fixture.nativeElement.textContent).not.toContain('Not run yet');
+    expect(run).not.toHaveBeenCalled();
+  });
+
   it('dispatches an arbitrary catalog connection after re-reading the board and query', async () => {
     const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
     const queryId = 'demodb/chinook-top-customer-spend';

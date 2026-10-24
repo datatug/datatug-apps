@@ -311,9 +311,18 @@ export class DatatugNavContextService {
     this.$currentEnvDbTable.next(undefined);
   }
 
-  public setCurrentEnvironment(id?: string): void {
+  /**
+   * Select the current environment. `persist: false` is for a default the app picked (a query page's first
+   * environment, the environment a saved result ran in): it selects the environment for this page without
+   * remembering it for the tab, so viewing one query never changes the environment every later query starts in.
+   * Only an environment the visitor chose, or one the address names, is remembered.
+   */
+  public setCurrentEnvironment(
+    id?: string,
+    options?: { readonly persist?: boolean },
+  ): void {
     // console.log('DatatugNavContextService.setCurrentEnvironment()', id);
-    if (id) {
+    if (id && options?.persist !== false) {
       this.persistLastEnvId(id);
     }
     if (this.$currentEnv.value?.id === id) {

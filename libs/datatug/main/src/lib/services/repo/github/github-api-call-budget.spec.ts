@@ -5,7 +5,18 @@ import { TestBed } from '@angular/core/testing';
 import { GithubDefaultBranchLookup } from '../../../routes/github-project-address-check';
 import { FakeGithub, fakeSha } from './github-fake-backend.test';
 import { NO_GITHUB_FILE_STORE } from './github-file-store-api';
-import { GITHUB_API_HOST, GITHUB_RAW_HOST, githubGet } from './github-http';
+import {
+  GITHUB_API_HOST,
+  GITHUB_RAW_HOST,
+  githubGet,
+  type GithubFetch,
+} from './github-http';
+import {
+  GITHUB_API_MEMORY,
+  createInPageGithubApiMemory,
+  type IGithubApiMemory,
+} from './github-api-memory';
+import { GITHUB_RATE_LIMIT_MESSAGE } from './github-read-limits';
 import {
   GITHUB_CLOCK,
   GITHUB_FETCH,
@@ -35,7 +46,9 @@ const FILES = {
 };
 
 function authorization(init: RequestInit): string | undefined {
-  return (init.headers as Record<string, string> | undefined)?.['Authorization'];
+  return (init.headers as Record<string, string> | undefined)?.[
+    'Authorization'
+  ];
 }
 
 function setup(token?: string) {
@@ -83,7 +96,9 @@ describe('api.github.com budget of a project read', () => {
     await Promise.all([
       firstValueFrom(reader.listDirectory(pinned, '')),
       firstValueFrom(reader.listDirectory(other, 'queries')),
-      firstValueFrom(reader.listDirectory(other, '', { requireComplete: true })),
+      firstValueFrom(
+        reader.listDirectory(other, '', { requireComplete: true }),
+      ),
     ]);
     // A listing at a commit is kept for the page: the HEAD session already read it.
     expect(gh.count(GITHUB_API_HOST)).toBe(0);
@@ -109,7 +124,9 @@ describe('api.github.com budget of a project read', () => {
     const api = gh.requests.filter((r) => r.host === GITHUB_API_HOST);
     const raw = gh.requests.filter((r) => r.host === GITHUB_RAW_HOST);
     expect(api).toHaveLength(2);
-    expect(api.every((r) => authorization(r.init) === 'Bearer gho_user')).toBe(true);
+    expect(api.every((r) => authorization(r.init) === 'Bearer gho_user')).toBe(
+      true,
+    );
     expect(raw.length).toBeGreaterThan(0);
     expect(raw.every((r) => authorization(r.init) === undefined)).toBe(true);
     expect(gh.requests.every((r) => r.init.credentials === 'omit')).toBe(true);
@@ -118,7 +135,9 @@ describe('api.github.com budget of a project read', () => {
   it('makes anonymous calls when nobody is signed in', async () => {
     const { gh, reader } = setup(undefined);
     await firstValueFrom(reader.listDirectory(PROJECT_ID, ''));
-    expect(gh.requests.every((r) => authorization(r.init) === undefined)).toBe(true);
+    expect(gh.requests.every((r) => authorization(r.init) === undefined)).toBe(
+      true,
+    );
   });
 });
 
@@ -127,11 +146,26 @@ describe('githubGet with a token', () => {
 
   it('adds the token for api.github.com and not for the other hosts', async () => {
     const fetchFn = vi.fn(async () => ok());
-    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', { maxBytes: 10, token: 't1' });
-    await githubGet(fetchFn, 'https://raw.githubusercontent.com/o/r/HEAD/a', { maxBytes: 10, token: 't1' });
-    await githubGet(fetchFn, 'https://cdn.jsdelivr.net/gh/o/r/a', { maxBytes: 10, token: 't1' });
-    const inits = fetchFn.mock.calls.map((call) => (call as unknown as [string, RequestInit])[1]);
-    expect(inits.map(authorization)).toEqual(['Bearer t1', undefined, undefined]);
+    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', {
+      maxBytes: 10,
+      token: 't1',
+    });
+    await githubGet(fetchFn, 'https://raw.githubusercontent.com/o/r/HEAD/a', {
+      maxBytes: 10,
+      token: 't1',
+    });
+    await githubGet(fetchFn, 'https://cdn.jsdelivr.net/gh/o/r/a', {
+      maxBytes: 10,
+      token: 't1',
+    });
+    const inits = fetchFn.mock.calls.map(
+      (call) => (call as unknown as [string, RequestInit])[1],
+    );
+    expect(inits.map(authorization)).toEqual([
+      'Bearer t1',
+      undefined,
+      undefined,
+    ]);
   });
 
   it('retries once anonymously when GitHub refuses the token (401)', async () => {
@@ -139,7 +173,10 @@ describe('githubGet with a token', () => {
       .fn()
       .mockResolvedValueOnce(new Response('bad credentials', { status: 401 }))
       .mockResolvedValueOnce(ok());
-    const out = await githubGet(fetchFn, 'https://api.github.com/repos/o/r', { maxBytes: 10, token: 'stale' });
+    const out = await githubGet(fetchFn, 'https://api.github.com/repos/o/r', {
+      maxBytes: 10,
+      token: 'stale',
+    });
     expect(out).toEqual({ kind: 'ok', text: 'abc', bytes: 3 });
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(authorization(fetchFn.mock.calls[1][1])).toBeUndefined();
@@ -149,27 +186,43 @@ describe('githubGet with a token', () => {
     const fetchFn = vi.fn(async (_url: string, init: RequestInit) =>
       authorization(init) ? new Response('', { status: 401 }) : ok(),
     );
-    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', { maxBytes: 10, token: 'stale' });
+    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', {
+      maxBytes: 10,
+      token: 'stale',
+    });
     expect(fetchFn).toHaveBeenCalledTimes(2);
-    await githubGet(fetchFn, 'https://api.github.com/repos/o/r2', { maxBytes: 10, token: 'stale' });
+    await githubGet(fetchFn, 'https://api.github.com/repos/o/r2', {
+      maxBytes: 10,
+      token: 'stale',
+    });
     expect(fetchFn).toHaveBeenCalledTimes(3);
     expect(authorization(fetchFn.mock.calls[2][1])).toBeUndefined();
     // A new sign-in brings a new token, which is sent.
-    await githubGet(fetchFn, 'https://api.github.com/repos/o/r3', { maxBytes: 10, token: 'fresh' });
+    await githubGet(fetchFn, 'https://api.github.com/repos/o/r3', {
+      maxBytes: 10,
+      token: 'fresh',
+    });
     expect(authorization(fetchFn.mock.calls[3][1])).toBe('Bearer fresh');
   });
 
   it('removes a refused token from the tab, and the reader stops reading it', async () => {
     sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, 'stale');
     const fetchFn = vi.fn(async () => new Response('', { status: 401 }));
-    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', { maxBytes: 10, token: readGithubUserToken() });
+    await githubGet(fetchFn, 'https://api.github.com/repos/o/r', {
+      maxBytes: 10,
+      token: readGithubUserToken(),
+    });
     expect(sessionStorage.getItem(GITHUB_TOKEN_STORAGE_KEY)).toBeNull();
     expect(readGithubUserToken()).toBeUndefined();
   });
 
   it('keeps a 401 without a token as an outage, in one call', async () => {
     const fetchFn = vi.fn(async () => new Response('', { status: 401 }));
-    expect(await githubGet(fetchFn, 'https://api.github.com/repos/o/r', { maxBytes: 10 })).toEqual({ kind: 'down', status: 401 });
+    expect(
+      await githubGet(fetchFn, 'https://api.github.com/repos/o/r', {
+        maxBytes: 10,
+      }),
+    ).toEqual({ kind: 'down', status: 401 });
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 });
@@ -194,7 +247,10 @@ describe('the default-branch lookup of an address check', () => {
       ],
     });
     const lookup = TestBed.inject(GithubDefaultBranchLookup);
-    await Promise.all([lookup.lookup('datatug', 'datatug-demo-project'), lookup.lookup('datatug', 'datatug-demo-project')]);
+    await Promise.all([
+      lookup.lookup('datatug', 'datatug-demo-project'),
+      lookup.lookup('datatug', 'datatug-demo-project'),
+    ]);
     await lookup.lookup('datatug', 'datatug-demo-project');
     expect(gh.count(GITHUB_API_HOST)).toBe(1);
     expect(authorization(gh.requests[0].init)).toBe('Bearer gho_user');
@@ -208,10 +264,16 @@ describe('a private listing never outlives the token', () => {
   /** GitHub as it is for a private repository: the API answers only with a token; the file host never. */
   function privateGithub() {
     const gh = new FakeGithub();
-    gh.addRepo(PRIVATE, SHA, { 'datatug-project.json': '{}', 'queries/q.sql': 'select 1' });
+    gh.addRepo(PRIVATE, SHA, {
+      'datatug-project.json': '{}',
+      'queries/q.sql': 'select 1',
+    });
     const fetch = vi.fn(async (url: string, init: RequestInit) => {
       const u = new URL(url);
-      if (u.host === GITHUB_RAW_HOST || (u.host === GITHUB_API_HOST && !authorization(init))) {
+      if (
+        u.host === GITHUB_RAW_HOST ||
+        (u.host === GITHUB_API_HOST && !authorization(init))
+      ) {
         return new Response('not found', { status: 404 });
       }
       return gh.fetch(url, init);
@@ -219,7 +281,10 @@ describe('a private listing never outlives the token', () => {
     return fetch;
   }
 
-  function recordingStore(): IGithubFileStore & { writes: string[]; reads: string[] } {
+  function recordingStore(): IGithubFileStore & {
+    writes: string[];
+    reads: string[];
+  } {
     const files = new Map<string, { text: string | null; bytes: number }>();
     const resolved = new Map<string, { sha: string; at: number }>();
     const writes: string[] = [];
@@ -227,11 +292,25 @@ describe('a private listing never outlives the token', () => {
     return {
       writes,
       reads,
-      getFile: async (commit, path) => { reads.push(`${commit}:${path}`); return files.get(`${commit}:${path}`); },
-      putFile: async (commit, path, file) => { writes.push(`${commit}:${path}`); files.set(`${commit}:${path}`, file); },
-      getResolved: async (key) => { reads.push(`resolved:${key}`); return resolved.get(key); },
-      putResolved: async (key, commit) => { writes.push(`resolved:${key}`); resolved.set(key, commit); },
-      dropResolved: async (key) => { resolved.delete(key); },
+      getFile: async (commit, path) => {
+        reads.push(`${commit}:${path}`);
+        return files.get(`${commit}:${path}`);
+      },
+      putFile: async (commit, path, file) => {
+        writes.push(`${commit}:${path}`);
+        files.set(`${commit}:${path}`, file);
+      },
+      getResolved: async (key) => {
+        reads.push(`resolved:${key}`);
+        return resolved.get(key);
+      },
+      putResolved: async (key, commit) => {
+        writes.push(`resolved:${key}`);
+        resolved.set(key, commit);
+      },
+      dropResolved: async (key) => {
+        resolved.delete(key);
+      },
       forgetResolved: async () => undefined,
     };
   }
@@ -249,13 +328,23 @@ describe('a private listing never outlives the token', () => {
       ],
     });
     const reader = TestBed.inject(GithubProjectReaderService);
-    return { reader, fetch, store, signOut: () => { token = undefined; } };
+    return {
+      reader,
+      fetch,
+      store,
+      signOut: () => {
+        token = undefined;
+      },
+    };
   }
 
   it('a signed-in read writes nothing to the persistent cache', async () => {
     const { reader, store } = privateSetup();
     const listing = await firstValueFrom(reader.listDirectory(PRIVATE_ID, ''));
-    expect(listing.map((e) => e.name)).toEqual(['datatug-project.json', 'queries']);
+    expect(listing.map((e) => e.name)).toEqual([
+      'datatug-project.json',
+      'queries',
+    ]);
     expect(store.writes).toEqual([]);
     expect(store.reads).toEqual([]);
   });
@@ -265,32 +354,45 @@ describe('a private listing never outlives the token', () => {
     await firstValueFrom(reader.listDirectory(PRIVATE_ID, ''));
     signOut();
     fetch.mockClear();
-    expect(await firstValueFrom(reader.listDirectory(PRIVATE_ID, ''))).toEqual([]);
+    expect(await firstValueFrom(reader.listDirectory(PRIVATE_ID, ''))).toEqual(
+      [],
+    );
     // GitHub was asked again, anonymously: nothing read with the token was served.
     expect(fetch).toHaveBeenCalled();
-    expect(fetch.mock.calls.every((call) => authorization(call[1]) === undefined)).toBe(true);
+    expect(
+      fetch.mock.calls.every((call) => authorization(call[1]) === undefined),
+    ).toBe(true);
     // Not a pinned listing either: the private commit's listing is not served from memory.
     expect(
-      await firstValueFrom(reader.listDirectory(`private@acme@@${SHA}`, '')).catch(() => []),
+      await firstValueFrom(
+        reader.listDirectory(`private@acme@@${SHA}`, ''),
+      ).catch(() => []),
     ).toEqual([]);
   });
 
   it('drops the signed-in visit at the sign-out event, before any further read', async () => {
     const { reader, signOut } = privateSetup();
     await firstValueFrom(reader.listDirectory(PRIVATE_ID, ''));
-    const sessions = (reader as unknown as { sessions: Map<string, unknown> }).sessions;
-    const treeCalls = (reader as unknown as { treeCalls: Map<string, unknown> }).treeCalls;
+    const sessions = (reader as unknown as { sessions: Map<string, unknown> })
+      .sessions;
+    const treeCalls = (reader as unknown as { treeCalls: Map<string, unknown> })
+      .treeCalls;
     expect(sessions.size).toBe(1);
     signOut();
     globalThis.dispatchEvent(new Event(GITHUB_SIGNED_OUT_EVENT));
     expect(sessions.size).toBe(0);
-    expect([...treeCalls.keys()].some((key) => !key.startsWith('anonymous|'))).toBe(false);
+    expect(
+      [...treeCalls.keys()].some((key) => !key.startsWith('anonymous|')),
+    ).toBe(false);
   });
 });
 
 describe('the token helpers with storage blocked by the browser', () => {
   it('read no token, forget and reject without throwing', async () => {
-    const original = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis,
+      'sessionStorage',
+    );
     Object.defineProperty(globalThis, 'sessionStorage', {
       configurable: true,
       get: () => {
@@ -313,10 +415,96 @@ describe('the token helpers with storage blocked by the browser', () => {
       });
       const reader = TestBed.inject(GithubProjectReaderService);
       await firstValueFrom(reader.listDirectory(PROJECT_ID, ''));
-      expect(gh.requests.every((r) => authorization(r.init) === undefined)).toBe(true);
+      expect(
+        gh.requests.every((r) => authorization(r.init) === undefined),
+      ).toBe(true);
       expect(reader.visitEpoch(PROJECT_ID)).toMatch(/^anonymous\./);
     } finally {
-      if (original) Object.defineProperty(globalThis, 'sessionStorage', original);
+      if (original)
+        Object.defineProperty(globalThis, 'sessionStorage', original);
     }
+  });
+});
+
+describe('api.github.com budget across page loads (the API memory)', () => {
+  /** One page load: a fresh reader (as after a reload) over the same browser memory. */
+  function load(
+    gh: FakeGithub,
+    memory: IGithubApiMemory,
+    now: number,
+    token?: string,
+  ) {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: GITHUB_FETCH, useValue: gh.fetch },
+        { provide: GITHUB_CLOCK, useValue: () => now },
+        { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+        { provide: GITHUB_USER_TOKEN, useValue: () => token },
+        { provide: GITHUB_API_MEMORY, useValue: memory },
+      ],
+    });
+    return TestBed.inject(GithubProjectReaderService);
+  }
+
+  it('once GitHub refuses an anonymous call, the page and the next loads make no further call until the reset', async () => {
+    const now = 1_000_000;
+    const memory = createInPageGithubApiMemory(() => now);
+    const gh = new FakeGithub();
+    gh.addRepo(REPO, SHA, FILES);
+    gh.fail.api = 403;
+    const first = load(gh, memory, now);
+    await expect(
+      firstValueFrom(first.listDirectory(PROJECT_ID, '')),
+    ).rejects.toThrow(GITHUB_RATE_LIMIT_MESSAGE);
+    // The resolve call was refused; the listing was not asked for.
+    expect(gh.count(GITHUB_API_HOST)).toBe(1);
+    const second = load(gh, memory, now);
+    await expect(
+      firstValueFrom(second.listDirectory(PROJECT_ID, '')),
+    ).rejects.toThrow(GITHUB_RATE_LIMIT_MESSAGE);
+    expect(gh.count(GITHUB_API_HOST)).toBe(1);
+    // A project file still reads, from the file host.
+    expect(
+      await firstValueFrom(
+        second.getRawJson(PROJECT_ID, 'datatug-project.json'),
+      ),
+    ).toEqual({ id: 'demo' });
+  });
+
+  it('a signed-in reload pays nothing for an unchanged project: both calls are answered 304', async () => {
+    const memory = createInPageGithubApiMemory();
+    const gh = new FakeGithub();
+    gh.addRepo(REPO, SHA, FILES);
+    let notModified = 0;
+    const etagOf = (url: string) => `"${url.length}"`;
+    const conditional: GithubFetch = async (url, init) => {
+      const asked = (init.headers as Record<string, string> | undefined)?.[
+        'If-None-Match'
+      ];
+      if (url.includes(GITHUB_API_HOST) && asked === etagOf(url)) {
+        notModified++;
+        gh.requests.push({ url, host: GITHUB_API_HOST, init });
+        return new Response(null, { status: 304 });
+      }
+      const response = await gh.fetch(url, init);
+      if (!url.includes(GITHUB_API_HOST)) return response;
+      return new Response(await response.text(), {
+        status: response.status,
+        headers: { ETag: etagOf(url) },
+      });
+    };
+    const ghWithEtag = Object.assign(Object.create(gh), {
+      fetch: conditional,
+    }) as FakeGithub;
+    const before = await firstValueFrom(
+      load(ghWithEtag, memory, 1, 'gho_user').listDirectory(PROJECT_ID, ''),
+    );
+    expect(notModified).toBe(0);
+    const after = await firstValueFrom(
+      load(ghWithEtag, memory, 2, 'gho_user').listDirectory(PROJECT_ID, ''),
+    );
+    expect(after).toEqual(before);
+    expect(notModified).toBe(2);
   });
 });

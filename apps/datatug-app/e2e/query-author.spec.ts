@@ -599,7 +599,7 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
   await author.getByTestId('author-code-tab').click();
-  await expect(author.getByTestId('author-code-tab')).toHaveText('TugQL Query');
+  await expect(author.getByTestId('author-code-tab')).toHaveText('Source');
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   await expect(editor).toHaveAttribute('aria-label', 'TugQL Query');
   const original = savedQuerySource('chinook-invoice-author');
@@ -783,7 +783,7 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
       };
     });
   await expect(author.locator('.author-code-label')).toHaveCount(0);
-  await expect(author.getByTestId('author-code-tab')).toHaveText('TugQL Query');
+  await expect(author.getByTestId('author-code-tab')).toHaveText('Source');
   await expect
     .poll(async () => {
       const geometry = await codeTabGeometry();
@@ -849,7 +849,7 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     expect(mobileHeader.resultHeadingWidth).toBeGreaterThanOrEqual(60);
     expect(mobileHeader.buttons).toHaveLength(6);
     for (const button of mobileHeader.buttons) {
-      expect(button.label).toMatch(/Compose|TugQL Query|Preview SQL|Parameters|Sources|Related/u);
+      expect(button.label).toMatch(/Compose|Source|Preview SQL|Parameters|Sources|Related/u);
       expect(button.width).toBeGreaterThan(0);
       expect(button.textWidth).toBeLessThanOrEqual(button.textClientWidth + 1);
     }
@@ -2106,7 +2106,7 @@ test('mobile editor actions format, undo, and open completion without executing'
           textRight: textBounds.right,
         };
       });
-      expect(textGeometry.label).toMatch(/Compose|TugQL Query|Preview SQL|Parameters|Sources|Related/u);
+      expect(textGeometry.label).toMatch(/Compose|Source|Preview SQL|Parameters|Sources|Related/u);
       expect(textGeometry.hostHeight).toBeGreaterThanOrEqual(44);
       expect(textGeometry.hostLeft).toBeGreaterThanOrEqual(textGeometry.segmentLeft - 1);
       expect(textGeometry.hostRight).toBeLessThanOrEqual(textGeometry.segmentRight + 1);
@@ -3257,7 +3257,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     // chart controls must not push the first query row below the viewport.
     await expect(invoiceAuthorPage.getByRole('region', { name: 'Result chart' })).toHaveCount(0);
     await expect(invoiceAuthorPage.getByText(
-      'Full-result chart preview unavailable: Source usage rights are unavailable for this result. The rows remain inspectable. Loaded rows remain available in the grid.',
+      'No chart for this result. DataTug can’t confirm that the data’s source allows charting it. The rows are still in the grid.',
     )).toHaveCount(1);
     await expect(invoiceAuthorPage.locator(
       '.author-results > .ion-padding-horizontal > sneat-datatug-source-rights-notice',

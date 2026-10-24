@@ -36,7 +36,7 @@ export function queryResultChartOptions(
     !result.sourceRights?.some((right) =>
       right.sourceId === id && right.evidenceOrigin !== 'legacy-metadata',
     ),
-  )) return { categories: [], measures: [], reason: 'Source usage rights are unavailable for this result. The rows remain inspectable.' };
+  )) return { categories: [], measures: [], reason: 'DataTug can’t confirm that the data’s source allows charting it. The rows are still in the grid.' };
 
   const names = recordset.columns.map((column) => column.name);
   if (new Set(names).size !== names.length)

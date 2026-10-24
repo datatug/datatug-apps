@@ -14,7 +14,6 @@ import {
 } from '../services/repo/github/github-project-reader.service';
 import { NO_GITHUB_FILE_STORE } from '../services/repo/github/github-file-store-api';
 import type { ProjectMeaningsCatalog } from './project-meanings-contract';
-import { semanticQueryHash } from '../queries/semantic-mapping';
 
 const data = fixture as Record<
   string,

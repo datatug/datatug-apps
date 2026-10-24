@@ -1,8 +1,8 @@
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, signal } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { firstValueFrom, Subject } from 'rxjs';
 import { AgGridReadyDirective } from '@datatug/ag-grid';
@@ -34,6 +34,7 @@ import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { IProjectRef, equalProjectRef, isSharedProjectRef, isLocalProjectRef } from '../../../core/project-context';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ProjectAIEligibilityService, type ProjectAIEligibility } from '../../../services/project/project-ai-eligibility.service';
 
 type SponsorEligibilityCheck =
@@ -52,7 +53,7 @@ addIcons({ addOutline, ellipsisVerticalOutline, sendOutline });
     FormsModule, DecimalPipe, NgTemplateOutlet, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardContent, IonFooter, IonModal, IonGrid, IonRow, IonCol,
     IonSelect, IonSelectOption, IonPopover, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
-    IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent,
+    IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent, RouterLink,
   ],
 })
 export class ChatPageComponent {
@@ -99,6 +100,16 @@ export class ChatPageComponent {
 
   readonly storeId = signal(this.route.snapshot.paramMap.get('storeId') || this.route.parent?.snapshot.paramMap.get('storeId') || '');
   readonly projectId = signal(this.route.snapshot.paramMap.get('projectId') || this.route.parent?.snapshot.paramMap.get('projectId') || '');
+  private readonly currentProject = toSignal(inject(DatatugNavContextService).currentProject, { initialValue: undefined });
+  /** The project's human title (as in the page header), falling back to its id while the summary loads. */
+  readonly projectTitle = computed(() => {
+    const project = this.currentProject();
+    const id = this.projectId();
+    const current = project?.ref?.projectId === id ? project : undefined;
+    return current?.brief?.title || current?.summary?.title || id;
+  });
+  /** Managed AI needs a signed-in DataTug account; a signed-out visitor gets a sign-in prompt, not an allowance error. */
+  readonly signedOut = computed(() => this.authInitialized() && !this.authIdentity());
   readonly seedState = signal<'loading' | 'ready' | 'error'>('loading');
   readonly seedError = signal<string | undefined>(undefined);
   readonly turns = signal<readonly ChatTurn[]>([]);
@@ -244,6 +255,20 @@ export class ChatPageComponent {
     } finally {
       if (this.isCurrentContext(scope, ref, authRevision, authIdentity)) this.sessionBusy.set(false);
     }
+  }
+
+  async selectSessionAction(popover: Pick<IonPopover, 'dismiss'>, kind: 'rename' | 'clear' | 'delete'): Promise<void> {
+    const id = this.activeSessionId();
+    if (!id || this.submitting() || this.sessionBusy()) return;
+    const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
+    // Finish the menu's overlay lifecycle before presenting another overlay.
+    if (!await popover.dismiss()) return;
+    if (this.destroyRef.destroyed || !this.isCurrentContext(scope, ref, authRevision, authIdentity) || id !== this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
+    if (kind === 'rename') this.openRename();
+    else this.askSessionAction(kind);
   }
 
   openRename(): void {
@@ -821,7 +846,12 @@ export class ChatPageComponent {
   }
 
   projectReference(): ChatContextReference {
-    return { kind: 'project', projectId: this.projectId(), objectId: this.projectId(), title: this.projectId() };
+    return { kind: 'project', projectId: this.projectId(), objectId: this.projectId(), title: this.projectTitle() };
+  }
+
+  /** Where sign-in returns the visitor: this chat page, query and all. */
+  returnPath(): string {
+    return this.router?.url ?? '';
   }
 
   sourceReference(): ChatContextReference {

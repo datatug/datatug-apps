@@ -8,9 +8,7 @@
     "e2e-meanings": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-meanings-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-meanings-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.meanings.config.ts --forbid-only"
       }
@@ -18,9 +16,7 @@
     "typecheck-showcase-e2e": {
       "executor": "nx:run-commands",
       "cache": false,
-      "inputs": [
-        "default"
-      ],
+      "inputs": ["default"],
       "outputs": [],
       "options": {
         "command": "tsc --noEmit --project apps/datatug-app/tsconfig.showcase-e2e.json"
@@ -81,24 +77,16 @@
         "stamp-ag-grid-license",
         "prepare-recordsetcompare"
       ],
-      "inputs": [
-        "production",
-        "{workspaceRoot}/tools/recordsetcompare/**/*"
-      ],
+      "inputs": ["production", "{workspaceRoot}/tools/recordsetcompare/**/*"],
       "cache": false,
-      "outputs": [
-        "{options.outputPath}"
-      ],
+      "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",
       "options": {
         "outputPath": "dist/apps/datatug-app",
         "index": "apps/datatug-app/src/index.html",
         "browser": "apps/datatug-app/src/main.ts",
         "polyfills": [],
-        "allowedCommonJsDependencies": [
-          "qrcode",
-          "sql.js"
-        ],
+        "allowedCommonJsDependencies": ["qrcode", "sql.js"],
         "tsConfig": "apps/datatug-app/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
@@ -125,9 +113,7 @@
             "output": "."
           }
         ],
-        "styles": [
-          "apps/datatug-app/src/styles.scss"
-        ],
+        "styles": ["apps/datatug-app/src/styles.scss"],
         "scripts": []
       },
       "configurations": {
@@ -238,9 +224,7 @@
         "development": {
           "buildTarget": "datatug-app:build:development",
           "host": "127.0.0.1",
-          "allowedHosts": [
-            "datatug.localhost"
-          ],
+          "allowedHosts": ["datatug.localhost"],
           "proxyConfig": "tools/public-ovdb-proxy.cjs"
         },
         "sso-e2e": {
@@ -264,9 +248,7 @@
     },
     "e2e": {
       "executor": "nx:run-commands",
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.config.ts"
       }
@@ -274,9 +256,7 @@
     "e2e-agent-links": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-agent-links-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-agent-links-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.agent-links.config.ts --forbid-only"
       }
@@ -294,18 +274,14 @@
     },
     "e2e-sso": {
       "executor": "nx:run-commands",
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-sso-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-sso-e2e"],
       "options": {
         "command": "pnpm e2e:sso"
       }
     },
     "e2e-demo-handoff": {
       "executor": "nx:run-commands",
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-demo-handoff-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-handoff-e2e"],
       "options": {
         "command": "pnpm e2e:demo-handoff"
       }
@@ -313,9 +289,7 @@
     "e2e-demo-sqlite": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
@@ -342,9 +316,7 @@
     },
     "e2e-error-dialog": {
       "executor": "nx:run-commands",
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-error-dialog-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-error-dialog-e2e"],
       "options": {
         "command": "pnpm e2e:error-dialog"
       }
@@ -352,9 +324,7 @@
     "e2e-checkout-provider": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-checkout-provider"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout-provider"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.checkout-provider.config.ts --forbid-only"
       }
@@ -362,9 +332,7 @@
     "e2e-context-bag-provider": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-context-bag-provider"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-context-bag-provider"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.context-bag-provider.config.ts --forbid-only"
       }
@@ -372,9 +340,7 @@
     "e2e-business-preview": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-business-preview"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-business-preview"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.business-preview.config.ts --forbid-only"
       }
@@ -382,9 +348,7 @@
     "e2e-checkout": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-checkout"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.checkout.config.ts --forbid-only"
       }
@@ -392,9 +356,7 @@
     "e2e-cloud-logs": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-cloud-logs"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-cloud-logs"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.cloud-logs.config.ts --forbid-only"
       }
@@ -402,9 +364,7 @@
     "e2e-hosted-incidents": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-hosted-incidents"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-hosted-incidents"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.hosted-incidents.config.ts --forbid-only"
       }
@@ -417,9 +377,7 @@
         "stamp-ag-grid-license",
         "prepare-recordsetcompare"
       ],
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-showcase-exploration"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-showcase-exploration"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.showcase-exploration.config.ts showcase-independent-sources.spec.ts --forbid-only"
       }
@@ -433,11 +391,17 @@
     "e2e-work": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-work"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-work"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.work.config.ts --forbid-only"
+      }
+    },
+    "e2e-watch": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-watch"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.watch.config.ts --forbid-only"
       }
     }
   }

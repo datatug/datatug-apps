@@ -2,6 +2,14 @@
   <ion-item>
     <ion-label>Loading queries...</ion-label>
   </ion-item>
+} @else if (loadError() !== undefined) {
+  <sneat-datatug-error-state
+    data-testid="queries-load-error"
+    what="the queries of this project"
+    [compact]="true"
+    [error]="loadError()"
+    (retry)="retryLoad()"
+  />
 } @else if (personalQueriesNotice(); as notice) {
   <ion-item>
     <ion-label color="medium">{{ notice }}</ion-label>
@@ -79,10 +87,23 @@
             <ion-icon name="trash" />
           </ion-button>
         }
-        <ion-button title="New query" (click)="newQuery()">
-          <ion-icon slot="start" name="add-outline" color="primary" />
-          <ion-label>New query</ion-label>
-        </ion-button>
+        @if (readOnlyProject()) {
+          <ion-text
+            class="queries-read-only"
+            color="medium"
+            role="note"
+            data-testid="queries-read-only"
+            [title]="readOnlyMessage"
+          >
+            <ion-icon name="lock-closed-outline" aria-hidden="true" />
+            Read-only from GitHub
+          </ion-text>
+        } @else {
+          <ion-button title="New query" (click)="newQuery()">
+            <ion-icon slot="start" name="add-outline" color="primary" />
+            <ion-label>New query</ion-label>
+          </ion-button>
+        }
         @if (supportsFolderMutations()) {
           <ion-button title="New folder" (click)="newFolder()">
             <ion-icon slot="start" name="add-circle-outline" color="primary" />

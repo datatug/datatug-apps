@@ -30,7 +30,7 @@ import { ProjectItemService } from '../services/repo/project-item-service';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 
-const isGithubStoreId = (storeId: string): boolean =>
+export const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 /**
@@ -55,6 +55,14 @@ const isGithubStoreId = (storeId: string): boolean =>
  * showed the exact same shared folder tree as "Shared" — confirmed live
  * against the real demo project (S163, founder-reported follow-up).
  */
+/** Why the Queries list offers no New query / New folder / Delete for a project read straight from GitHub. */
+export const GITHUB_READ_ONLY_QUERIES_MESSAGE =
+  'This project is browsed read-only from GitHub — adding or changing queries needs a DataTug agent. Clone the repo and run `datatug serve --project <path>` to edit them.';
+
+/** True for a project read straight from GitHub by the in-browser reader (no agent, no cloud API): it cannot be written. */
+export const isGithubReadOnlyProject = (ref: IProjectRef | undefined): boolean =>
+  !!ref && isGithubStoreId(ref.storeId) && !ref.projectApi && ref.spaceID === undefined;
+
 export const GITHUB_PERSONAL_QUERIES_MESSAGE =
   'This project is browsed read-only from GitHub — personal queries need a DataTug agent. Clone the repo and run `datatug serve --project <path>` to see them.';
 

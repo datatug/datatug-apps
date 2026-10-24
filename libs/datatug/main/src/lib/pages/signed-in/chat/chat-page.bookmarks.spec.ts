@@ -18,6 +18,7 @@ import { CHAT_SESSION_DATABASE, ChatSessionService } from '../../../chat/chat-se
 import { ChatBookmark } from '../../../chat/chat-workspace';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ProjectAIEligibilityService } from '../../../services/project/project-ai-eligibility.service';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ChatPageComponent } from './chat-page.component';
 
 const scope = JSON.stringify(['store', 'datatug-demo-project']);
@@ -45,6 +46,7 @@ async function mount() {
       { provide: ChatInterpretService, useValue: {} },
       { provide: ChatJoinService, useValue: { candidates: () => [] } },
       { provide: ProjectAIEligibilityService, useValue: { read: () => of({ aiAllowed: true }) } },
+      { provide: DatatugNavContextService, useValue: { currentProject: of(undefined) } },
       { provide: ChatProviderService, useValue: {
         providers: signal([]), selectedId: signal('legacy'), preset: (name: string) => providerPresets[name],
       } },

@@ -184,6 +184,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
     ...ProjectMenuTopComponent.sortProjectPages([
       { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
       { path: 'data-models', title: 'Data models', icon: 'layers-outline' },
+      { path: 'watch', title: 'Watch', icon: 'eye-outline' },
       { path: 'incidents', title: 'Incidents', icon: 'warning-outline' },
       { path: 'work', title: 'Work', icon: 'briefcase-outline' },
       {
@@ -361,6 +362,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'quick-search',
           'queries',
           'checks',
+          'watch',
           'detective',
           'work',
           'sessions',

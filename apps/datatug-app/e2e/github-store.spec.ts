@@ -425,7 +425,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     );
     await expect(chinookSource).toContainText('sqlite3', { timeout: 15_000 });
     await chinookSource
-      .getByRole('button', { name: 'Registered catalog', exact: true })
+      .getByRole('button', { name: 'chinook (local)', exact: true })
       .click();
     await expect(page).toHaveURL(`${PAGES_URL}/env/local/db/chinook`);
     await expect(
@@ -559,6 +559,44 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(
       page.locator('sneat-datatug-sql-editor .query-page-title'),
     ).toContainText('Top Customer Spend', { timeout: 20_000 });
+    expect(errors).toEqual([]);
+  });
+
+  /**
+   * Demo walk item 2 (2026-10-23): opening a query that needs an agent (`albums/albums_by_title`) or an HTTP query
+   * wrote `sessionStorage["datatug:lastEnv:…"] = "local"`, and every browser-SQLite query in the tab then failed with
+   * "The selected connection is unavailable in this environment". Viewing a query must not remember an environment
+   * the visitor never chose, and a remembered one the query cannot use must not break it.
+   */
+  test('viewing agent and HTTP queries never poisons the environment of a browser-SQLite query', async ({ page }) => {
+    test.setTimeout(120_000);
+    const errors = installErrorLoggerWatch(page);
+    const lastEnvKey = `datatug:lastEnv:github.com:${PROJECT_ID}`;
+    const openQuery = async (id: string, title: RegExp) => {
+      await page.goto(`${PAGES_URL}/query/${encodeURIComponent(id)}?id=${encodeURIComponent(id)}`);
+      await expect(page.locator('sneat-datatug-sql-editor .query-page-title')).toContainText(title, { timeout: 20_000 });
+    };
+    const runBrowserQuery = async () => {
+      const run = page.getByTestId('workspace-run');
+      await expect(run).toBeVisible();
+      await run.click();
+      // Ionic keeps earlier query pages in the DOM, hidden: only the visible page's Results count.
+      const results = page.getByRole('region', { name: 'Results' }).filter({ visible: true });
+      await expect(results.getByText(/^\s*\d+ rows\s*$/).first()).toBeVisible({ timeout: 25_000 });
+      await expect(page.getByText('unavailable in this environment')).toHaveCount(0);
+    };
+
+    await openQuery('albums/albums_by_title', /album/i);
+    await openQuery('reference/currency-rate-on-date', /currency/i);
+    expect(await page.evaluate((key) => sessionStorage.getItem(key), lastEnvKey)).toBeNull();
+
+    await openQuery('northwind/orders-by-customer', /orders/i);
+    await runBrowserQuery();
+
+    // A tab that already remembers an environment this connection does not serve still runs the pinned fixture.
+    await page.evaluate((key) => sessionStorage.setItem(key, 'local'), lastEnvKey);
+    await openQuery('demodb/chinook-top-customer-spend', /Top Customer Spend/);
+    await runBrowserQuery();
     expect(errors).toEqual([]);
   });
 
@@ -705,9 +743,19 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // reachable here: deliverable 2, "an explicit, friendly notice [that
     // running a query needs a DataTug agent], not a thrown error" for a
     // read-only GitHub-store project.
-    await activePage(page).getByRole('button', { name: /run/i }).click();
+    // Anchored: the query's connection now shows the "Execution runtime" select, whose name also contains "run".
+    await activePage(page).getByRole('button', { name: /^run\b/i }).click();
+    // The pinned checkout's query needs an agent (the friendly notice); the live demo project's current revision
+    // declares a browser projection, so the same Run shows rows (live or its recorded snapshot). Either is a
+    // non-error Run.
     await expect(
-      activePage(page).getByText(/datatug serve --project/),
+      activePage(page)
+        .getByText(/datatug serve --project/)
+        .or(
+          page
+            .getByLabel('Result pages')
+            .filter({ hasText: /Rows 1–\d+\s+of \d+/ }),
+        ),
     ).toBeVisible({ timeout: 10_000 });
 
     // The friendly Run message is not itself an ErrorLoggerService.logError

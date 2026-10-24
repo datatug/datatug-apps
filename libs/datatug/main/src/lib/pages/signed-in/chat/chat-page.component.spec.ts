@@ -15,6 +15,7 @@ import { emptyChatWorkspace } from '../../../chat/chat-workspace';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatPageComponent } from './chat-page.component';
 import { ProjectAIEligibilityService } from '../../../services/project/project-ai-eligibility.service';
+import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 
 const engineError = 'join_aggregate at orderBy[0]: c.Country is neither aggregated nor present in GROUP BY';
 const session = {
@@ -77,6 +78,7 @@ describe('ChatPageComponent failed turns', () => {
   let deferredRouteParams: Subject<ReturnType<typeof convertToParamMap>> | undefined;
   let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
+  let navProject: BehaviorSubject<unknown>;
 
   const text = (): string => (fixture.nativeElement as HTMLElement).textContent ?? '';
   const details = (): HTMLDetailsElement | null => (fixture.nativeElement as HTMLElement).querySelector('details.error-detail');
@@ -95,6 +97,7 @@ describe('ChatPageComponent failed turns', () => {
     deferredRouteParams = deferProjectRef ? new Subject() : undefined;
     routeQuery = new BehaviorSubject(convertToParamMap(query));
     authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'authenticated', user: { uid: 'actor-1' } });
+    navProject = new BehaviorSubject<unknown>(undefined);
     const route = {
       get snapshot() {
         return { paramMap: routeParams.value, queryParamMap: routeQuery.value };
@@ -114,6 +117,7 @@ describe('ChatPageComponent failed turns', () => {
         { provide: ChatInterpretService, useValue: interpreter },
         { provide: ChatJoinService, useValue: joiner },
         { provide: ProjectAIEligibilityService, useValue: eligibility },
+        { provide: DatatugNavContextService, useValue: { currentProject: navProject.asObservable() } },
         {
           provide: SneatAuthStateService,
           useValue: { authState: authState.asObservable() },
@@ -156,6 +160,36 @@ describe('ChatPageComponent failed turns', () => {
     }));
   });
 
+  it.each(['rename', 'clear', 'delete'] as const)('waits for the session menu dismissal before %s', async (kind) => {
+    await render([]);
+    const component = fixture.componentInstance;
+    let resolve!: (dismissed: boolean) => void;
+    const popover = { dismiss: vi.fn(() => new Promise<boolean>((done) => { resolve = done; })) };
+    const pending = component.selectSessionAction(popover, kind);
+    expect(popover.dismiss).toHaveBeenCalledOnce();
+    expect(component.renameModalOpen()).toBe(false);
+    expect(component.sessionAction()).toBeUndefined();
+    resolve(true);
+    await pending;
+    if (kind === 'rename') expect(component.renameModalOpen()).toBe(true);
+    else expect(component.sessionAction()).toEqual({ kind, id: 's1' });
+  });
+
+  it.each(['cancelled', 'identity changed', 'session changed', 'busy', 'destroyed'] as const)('does not open a session action after menu dismissal when %s', async (change) => {
+    await render([]);
+    const component = fixture.componentInstance;
+    let resolve!: (dismissed: boolean) => void;
+    const pending = component.selectSessionAction({ dismiss: () => new Promise<boolean>((done) => { resolve = done; }) }, 'delete');
+    if (change === 'identity changed') authState.next({ status: 'authenticated', user: { uid: 'other-actor' } });
+    if (change === 'session changed') component.activeSessionId.set('other-session');
+    if (change === 'busy') component.sessionBusy.set(true);
+    if (change === 'destroyed') fixture.destroy();
+    resolve(change !== 'cancelled');
+    await pending;
+    expect(component.sessionAction()).toBeUndefined();
+    expect(component.renameModalOpen()).toBe(false);
+  });
+
   it.each(['auth', 'environment', 'connection'])('cancels generic AI and prevents stale result persistence when %s changes', async (change) => {
     await render([], { storeId: 'local', projectId: 'equipment-project' }, { env: 'prod', aiConnection: 'factory' });
     const component = fixture.componentInstance;
@@ -177,6 +211,38 @@ describe('ChatPageComponent failed turns', () => {
     expect(store.completeQuery).not.toHaveBeenCalled();
     expect(component.turns()).toEqual([]);
     expect(store.failQuestion).toHaveBeenCalledWith(expect.any(String), 's1', 'new', 'This request was interrupted. Ask it again to retry.');
+  });
+
+  it('shows the project title from the navigation context instead of the raw project id', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    expect(component.projectTitle()).toBe('datatug-demo-project');
+    navProject.next({ ref: { projectId: 'datatug-demo-project' }, brief: { title: 'DataTug Demo Project' } });
+    await fixture.whenStable();
+    expect(component.projectTitle()).toBe('DataTug Demo Project');
+    expect(text()).toContain('DataTug Demo Project · Chat');
+    expect(component.projectReference().title).toBe('DataTug Demo Project');
+    navProject.next({ ref: { projectId: 'another-project' }, brief: { title: 'Another project' } });
+    await fixture.whenStable();
+    expect(component.projectTitle()).toBe('datatug-demo-project');
+  });
+
+  it('asks a signed-out visitor to sign in for Managed AI instead of reporting the allowance as unavailable', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    component.managed.set(true);
+    authState.next({ status: 'notAuthenticated' });
+    await fixture.whenStable();
+    expect(component.signedOut()).toBe(true);
+    const status = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="Managed AI status"]');
+    expect(status?.textContent).toContain('Sign in to ask questions with Managed AI');
+    expect(status?.querySelector('ion-button')?.textContent).toContain('Sign in');
+    expect(text()).not.toContain('Allowance unavailable');
+    expect(text()).not.toContain('Refresh allowance');
+    authState.next({ status: 'authenticated', user: { uid: 'actor-1' } });
+    await fixture.whenStable();
+    expect(component.signedOut()).toBe(false);
+    expect(text()).toContain('Allowance unavailable');
   });
 
   it('explains why a fresh visitor cannot send and opens the existing provider flow', async () => {

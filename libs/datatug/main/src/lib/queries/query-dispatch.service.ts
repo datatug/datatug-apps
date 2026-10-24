@@ -71,6 +71,24 @@ function usesProjectApi(ref: QueryDispatchRequest['projectRef']): boolean {
     ref.spaceID !== undefined || !AGENT_STORES.has(ref.storeId);
 }
 
+/**
+ * The environment a saved query runs in. A pinned browser SQLite fixture declared for exactly one environment is the
+ * query's own runnable target: with no environment chosen, or with one (a tab's remembered choice, a default another
+ * query picked) that this connection does not serve, the query runs in the fixture's environment instead of failing.
+ * Any other connection keeps the requested environment, so a real choice is never silently replaced.
+ */
+export function runnableEnvironment(
+  requested: string | undefined,
+  connection: QueryConnectionDescriptor,
+  definition: QueryDispatchRequest['definition'],
+): string | undefined {
+  const fixtureEnvironment = connection.storage === 'sqlite' && connection.browserFixture &&
+    definition.request.queryType === QueryType.SQL && connection.environment === undefined &&
+    connection.environments?.length === 1 ? connection.environments[0] : undefined;
+  if (!fixtureEnvironment) return requested;
+  return requested && connection.environments?.includes(requested) ? requested : fixtureEnvironment;
+}
+
 function abortError(): Error {
   const error = new Error('The query was cancelled because its execution context changed.');
   error.name = 'AbortError';
@@ -113,8 +131,7 @@ export class QueryDispatchService {
     const matches = (await this.connectionCatalog(request)).filter((item) => item.id === connectionId);
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
-    const environment = request.environment ?? (declaration.storage === 'sqlite' && declaration.browserFixture &&
-      request.definition.request.queryType === QueryType.SQL && declaration.environments?.length === 1 ? declaration.environments[0] : undefined);
+    const environment = runnableEnvironment(request.environment, declaration, request.definition);
     if (!environment && (declaration.environment !== undefined || declaration.environments !== undefined))
       throw new QueryDispatchError('Select an environment for this saved connection before running the query.');
     if (declaration.environment !== undefined && declaration.environment !== environment ||
@@ -133,8 +150,7 @@ export class QueryDispatchService {
       : captured.runtimeBinding;
     if (captured.runtimeSelectionId && !binding)
       throw new QueryDispatchError('The selected working copy is closed or no longer matches this project connection.');
-    const environment = captured.environment ?? (connection?.storage === 'sqlite' && connection.browserFixture &&
-      captured.definition.request.queryType === QueryType.SQL && connection.environments?.length === 1 ? connection.environments[0] : undefined);
+    const environment = connection ? runnableEnvironment(captured.environment, connection, captured.definition) : captured.environment;
     const boundRequest = { ...captured, ...(environment ? { environment } : {}), ...(binding ? { runtimeBinding: binding } : {}) };
     return { request: boundRequest, plan: resolveQueryDispatchPlan(boundRequest, connection ? { connections: [connection] } : undefined) };
   }

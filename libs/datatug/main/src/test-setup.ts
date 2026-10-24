@@ -15,3 +15,9 @@ import '@sneat/datagrid';
 import '@sneat/datatug-semantic';
 
 setupTestEnvironment();
+
+// The GitHub reader remembers the anonymous rate limit (localStorage) and conditional answers (sessionStorage) across
+// page loads; spec files share one module graph and one storage per worker, so each case starts with none.
+import { beforeEach } from 'vitest';
+import { clearStoredGithubApiMemory } from './lib/services/repo/github/github-api-memory';
+beforeEach(() => clearStoredGithubApiMemory());

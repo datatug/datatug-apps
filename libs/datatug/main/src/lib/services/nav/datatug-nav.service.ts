@@ -32,6 +32,7 @@ export type ProjectTopLevelPage =
   | 'sessions'
   | 'chat'
   | 'checks'
+  | 'watch'
   | 'detective'
   | 'demo-db-sandbox'
   | 'overview'

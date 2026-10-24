@@ -1,5 +1,6 @@
 import {WorkArtifactLinksComponent} from '../../../work/work-artifact-links.component';
 import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { friendlyError, redactErrorText } from '@datatug/friendly-error';
 import {
   prepareLocalMeaningSave,
@@ -857,6 +858,7 @@ function declaredParameterDefault(
   styleUrl: './query-page.component.scss',
   imports: [
     WorkArtifactLinksComponent,
+    ErrorStateComponent,
     EvidenceCopyLinkComponent,
     ResultCellCardsComponent,
     SemanticMappingDialogComponent,
@@ -2042,19 +2044,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Current selected query's header label; normalized only for presentation. */
   public readonly queryPageTitle = signal('Query');
 
+  /**
+   * Why the saved query could not be read (GitHub limiting anonymous reads, an outage): the page then shows that one
+   * state with Retry, never an empty editor with Run.
+   */
+  public readonly queryLoadError = signal<unknown>(undefined);
+
   /** The header's second line: what kind of query this is and the source it reads. */
   public readonly querySourceSubtitle = computed(() => {
     const def = this.queryDef();
     if (!def) return '';
     const type = def.request.queryType;
-    const kind =
-      type === QueryType.SQL
-        ? 'SQL'
-        : type === QueryType.HTTP
-          ? 'HTTP'
-          : type === QueryType.TugQL
-            ? queryTypeDisplayName(type)
-            : String(type ?? '');
+    // One display map for the header chip and the queries list badge (a legacy `DTQL` reads TugQL in both).
+    const kind = queryTypeDisplayName(type);
     const source = def.connectionId;
     return source ? `${kind} · ${source}` : kind;
   });
@@ -2288,6 +2290,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public nativeRunDisabled(): boolean {
     return (
       this.running() ||
+      this.queryLoadError() !== undefined ||
       this.demoDraftLoading() ||
       !!this.demoDraftRecovery() ||
       this.unavailableWorkingCopy() ||
@@ -2670,7 +2673,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return this.runResult()?.provenance.mode === 'snapshot' &&
       this.savedResultBanner()?.kind === 'shown'
       ? 'Full-result chart preview is available after running the query.'
-      : `Full-result chart preview unavailable: ${reason} Loaded rows remain available in the grid.`;
+      : `No chart for this result. ${reason}`;
   });
   public readonly resultChartHeld = computed(() => {
     const result = this.runResult();
@@ -4452,6 +4455,45 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.reportGitHubQueryEdit(this.project?.ref);
     this.queryState = { ...this.queryState, parameters };
     this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  /**
+   * A value typed in the HTTP editor becomes the parameter's own binding (the resolver's highest precedence), so a
+   * required parameter with no default that the page asks for can be supplied there and Run enables (demo walk
+   * item 4: currency-rate, country-facts and carrier-status had no other input). Clearing the text drops it again.
+   */
+  public httpTypedValueChanged(change: {
+    readonly id: string;
+    readonly text: string;
+  }): void {
+    const parameter = this.httpParameters.find((p) => p.id === change.id);
+    if (!parameter || parameter.isCredential) return;
+    const errors = new Map(this.nativeParameterErrors());
+    errors.delete(change.id);
+    if (change.text === '') {
+      this.nativeParameterErrors.set(errors);
+      this.userBindingValues.set(
+        new Map(
+          [...this.userBindingValues()].filter(([id]) => id !== change.id),
+        ),
+      );
+      this.updateBindings(change.id);
+      return;
+    }
+    let value: TypedValue;
+    try {
+      value = nativeTypedValue(parameter, change.text);
+    } catch {
+      this.nativeParameterErrors.set(
+        errors.set(
+          change.id,
+          `Enter a valid ${parameter.type} value before running.`,
+        ),
+      );
+      return;
+    }
+    this.nativeParameterErrors.set(errors);
+    this.editBinding(change.id, value);
   }
 
   /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
@@ -6540,7 +6582,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // Before the rows: a change of environment clears a displayed result.
       this.resultEnvId = env && !envUnknown ? env : undefined;
       if (this.resultEnvId)
-        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId);
+        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId, {
+          persist: false,
+        });
       this.selectedSource.set(plan.ids?.source);
       // The database that ran the query is shown in the editor's Target field, as for any query with a chosen source.
       if (this.resultTargetAdded) {
@@ -7083,6 +7127,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // A closed or unresolved selection must never inherit the previous
         // query's name while the editor state catches up.
         this.queryPageTitle.set('Query');
+        this.queryLoadError.set(undefined);
         return;
       }
       // The editor service emits a loading placeholder before a same-ID saved
@@ -7100,10 +7145,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.authorSavedDefinition.set(undefined);
       this.syncHttpRowBinding(queryState.id ?? '');
       const currentTitle = queryState.title ?? queryState.def?.title;
+      this.queryLoadError.set(queryState.loadError);
       this.queryPageTitle.set(
         typeof currentTitle === 'string'
           ? currentTitle.trim() || 'Query'
-          : 'Query',
+          : // Not read: the query's own name, from its id (`customers/customer-invoices` → `customer-invoices`).
+            (queryState.loadError !== undefined && queryState.id?.split('/').pop()) ||
+              'Query',
       );
       if (
         this.navigationDraft?.query.id === queryState.id &&
@@ -7168,9 +7216,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.selectedContextFactKeys.set(new Map());
         this.confirmedConflicts.set(new Map());
         this.bindingSnapshotKey = '';
-        const original =
-          (queryState.def?.request as ITextQueryRequest | undefined)?.text ??
-          '';
         const legacyTugql = isTugqlYamlRequest(
           queryState.def?.request ?? effectiveDefinition.request,
         );
@@ -7185,16 +7230,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               ? 'tugql-yaml'
               : 'tugql',
         );
-        // No dead end: a saved query with a required parameter opens on
-        // Parameters, where its value (pre-filled from a declared demo value
-        // when there is one) and any reason Run is off are visible.
+        // A saved query opens on its source. No dead end: one with a required
+        // parameter that has no declared default (Run is off until a value is
+        // typed) opens on Parameters instead, where that value is asked for and
+        // the reason Run is off is visible. A required parameter with a default
+        // is already supplied, so it does not hide the source (demo walk item 10).
         afterNextRender(
           () => {
             if (
               this.loadedTextRepresentation()?.scope !== representationScope ||
               this.isTugqlAuthorJourney() ||
               !!this.savedResultId() ||
-              !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
+              !(this.queryDef()?.parameters ?? []).some(
+                (p) =>
+                  p.isRequired &&
+                  (p.defaultValue === undefined ||
+                    p.defaultValue === null ||
+                    p.defaultValue === ''),
+              )
             )
               return;
             const tab = this.workspaceTab();
@@ -7301,7 +7354,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
-        this.datatugNavContextService.setCurrentEnvironment(this.envId);
+        // The page's default environment selects, but is not remembered for the tab: a visitor who never chose
+        // one must not have every later query open in it.
+        this.datatugNavContextService.setCurrentEnvironment(this.envId, {
+          persist: false,
+        });
         this.scheduleEntryRuntimeLoad();
       }
       this.syncScopeAndBindings();
@@ -7455,7 +7512,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!env || this.savedResultBanner()?.kind !== 'shown') return;
     queueMicrotask(() => {
       if (this.resultEnvId === env)
-        this.datatugNavContextService.setCurrentEnvironment(env);
+        this.datatugNavContextService.setCurrentEnvironment(env, {
+          persist: false,
+        });
     });
   }
 
@@ -8286,6 +8345,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       queryParams: { projectApi: 'cloud', branch },
       queryParamsHandling: 'merge',
     });
+  }
+
+  /** Retry of a query that could not be read: nothing was loaded, so there is no draft to lose. */
+  public retryQueryLoad(): void {
+    if (this.queryState.id) this.queryEditorStateService.reloadQuery(this.queryState.id);
   }
 
   public reloadSavedQuery(): void {
