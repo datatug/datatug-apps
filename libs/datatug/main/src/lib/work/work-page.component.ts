@@ -79,6 +79,7 @@ import {
   WorkType,
   draftFromWork,
   workError,
+  workNeedsMigration,
   workId,
   workOverdue,
   workTypeLabel,
@@ -340,6 +341,7 @@ export class WorkPageComponent {
   }
   private reportError(error: unknown): void {
     this.notice.set('');
+    if (workNeedsMigration(error)) this.pending.set(undefined);
     this.transitionOpen.set(false);
     this.linkOpen.set(false);
     this.proposalReviewOpen.set(false);
@@ -418,6 +420,13 @@ export class WorkPageComponent {
         item.incident.legacyRef.incidentId,
       ]);
     return '';
+  }
+  relationLabel(link: WorkDetail['links'][number]): string {
+    if (link.target.kind === 'work' && link.target.id === this.itemId()) {
+      if (link.relation === 'parent') return 'Child';
+      if (link.relation === 'blocks') return 'Blocked by';
+    }
+    return this.activityField(link.relation);
   }
   relatedHref(link: WorkDetail['links'][number]): string {
     if (link.target.kind === 'work') {

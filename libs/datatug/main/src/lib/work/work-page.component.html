@@ -529,7 +529,7 @@
                   <ion-item
                     ><ion-label class="ion-text-wrap"
                       ><p>
-                        {{ link.relation | titlecase }} ·
+                        {{ relationLabel(link) }} ·
                         {{ link.target.kind | titlecase }}
                       </p>
                       @if (relatedHref(link)) {
@@ -974,7 +974,9 @@
           >
             @for (env of artifactEnvironments(); track env.environmentId) {
               <ion-select-option [value]="env.environmentId">{{
-                env.title || env.environmentId
+                env.title
+                  ? env.title + ' · ' + env.environmentId
+                  : env.environmentId
               }}</ion-select-option>
             }
           </ion-select></ion-item

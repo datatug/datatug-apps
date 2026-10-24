@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { resolve } from 'node:path';
 import {
   demodbChromiumLaunch,
   demodbReporter,
@@ -17,6 +18,14 @@ export default defineConfig({
     actionTimeout: 15000,
     trace: 'off',
     screenshot: 'only-on-failure',
+  },
+  webServer: {
+    command: 'DATATUG_WATCH_UI_PORT=4201 node tools/serve-watch-preview.mjs',
+    cwd: resolve(__dirname, '../..'),
+    url: 'http://127.0.0.1:4201',
+    reuseExistingServer: false,
+    timeout: 15000,
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
   },
   projects: [
     {

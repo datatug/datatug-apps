@@ -287,6 +287,67 @@ describe('WorkPageComponent', () => {
       );
     },
   );
+  it('releases a known rejected migration-gated creation without suggesting a stale retry', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    api.action.mockRejectedValue({
+      status: 409,
+      error: { error: { code: 'work_migration_required' } },
+    });
+    await fixture.componentInstance.mutate({
+      spaceID: 'space',
+      projectID: 'project',
+      operationId: 'migration-rejected',
+      action: 'create',
+      draft: { type: 'task', title: 'Existing project', priority:'normal' },
+    });
+    expect(fixture.componentInstance.pending()).toBeUndefined();
+    expect(fixture.componentInstance.error()).toContain(
+      'complete the Work migration',
+    );
+  });
+  it('labels inverse parent and blocking edges from the current item perspective', async () => {
+    const { fixture, api, params } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    api.read.mockResolvedValue(workDetailFixture());
+    api.context.mockRejectedValue({ status: 404 });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    params.next(
+      convertToParamMap({
+        storeId: 'firestore',
+        spaceId: 'space',
+        projectId: 'project',
+        workItemId: 'task1',
+      }),
+    );
+    await fixture.whenStable();
+    const link = {
+      id: 'relationship',
+      sourceId: 'child',
+      relation: 'parent',
+      target: { kind: 'work' as const, id: 'task1' },
+      createdBy: 'lead',
+      createdAt: '',
+    };
+    expect(fixture.componentInstance.relationLabel(link)).toBe('Child');
+    expect(
+      fixture.componentInstance.relationLabel({ ...link, relation: 'blocks' }),
+    ).toBe('Blocked by');
+    expect(
+      fixture.componentInstance.relationLabel({
+        ...link,
+        sourceId: 'task1',
+        target: { kind: 'work', id: 'parent' },
+      }),
+    ).toBe('Parent');
+    for (const relation of ['related', 'duplicates'])
+      expect(
+        fixture.componentInstance.relationLabel({ ...link, relation }),
+      ).toBe(relation[0].toUpperCase() + relation.slice(1));
+  });
   it('offers server-admitted Incident resolution without bypassing native proof checks', async () => {
     const { fixture, api } = setup();
     api.list.mockResolvedValue(workPageFixture());

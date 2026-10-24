@@ -1,7 +1,23 @@
-import { draftFromWork, workOverdue, workScopeKey } from './work.models';
+import {
+  draftFromWork,
+  workOverdue,
+  workScopeKey,
+  workError,
+} from './work.models';
 import { workFixture } from './work.spec-helper';
 import { localDateInput } from './work-form.component';
 describe('Work presentation rules', () => {
+  it('distinguishes an existing-project migration gate from a stale-write conflict', () => {
+    expect(
+      workError({
+        status: 409,
+        error: { error: { code: 'work_migration_required' } },
+      }),
+    ).toContain('Ask your project owner to complete the Work migration');
+    expect(
+      workError({ status: 409, error: { error: { code: 'work_conflict' } } }),
+    ).toContain('changed elsewhere');
+  });
   it('marks only unfinished work strictly past its deadline overdue', () => {
     const now = Date.parse('2026-10-23T12:00:00Z');
     expect(

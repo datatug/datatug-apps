@@ -70,7 +70,7 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     };
     const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
     await reopened.openProject(project); await reopened.focus('s1');
-    expect(reopened.selectedBag()?.id).toBe('b1'); expect(reopened.appliedCount()).toBe(0); expect(reopened.draft().selections.b1).toEqual([]);
+    expect(reopened.selectedBag()?.id).toBe('b1'); expect(reopened.appliedCount()).toBe(0); expect(reopened.draft().selections['b1']).toEqual([]);
     reopened.chooseBag('local'); await reopened.flushDraft();
     const again = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
     await again.openProject(project); await again.focus('s1');

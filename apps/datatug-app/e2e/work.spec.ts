@@ -29,6 +29,12 @@ async function login(page: Page, id: 'alice' | 'bob') {
   return idToken as string;
 }
 async function stableScreenshot(page: Page, name: string, scrollTop = true) {
+  if ((page.viewportSize()?.width || 1280) <= 600)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
   if (scrollTop)
     await page
       .locator('ion-content:visible')
@@ -260,13 +266,30 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await expect(bob).toHaveURL(/\/sessions\/[^/]+\/overview/);
   await bob.getByRole('button', { name: /Context · 0 applied/ }).click();
   await expect(
-    bob.getByText('Context Bag', { exact: true }).first(),
+    bob
+      .locator('ion-modal:visible')
+      .getByText('Context Bag', { exact: true })
+      .first(),
   ).toBeVisible();
   await expect(bob.locator('ion-modal:visible')).toContainText('11045');
   await expect(bob.locator('ion-modal:visible')).toContainText(
     'Copied values are not applied automatically.',
   );
   await stableScreenshot(bob, 'private-execution-context-desktop');
+  await bob.getByRole('checkbox', { name: /^Use / }).first().click();
+  await bob.getByRole('button', { name: 'Apply Context', exact: true }).click();
+  await expect(
+    bob
+      .locator('ion-modal:visible')
+      .getByText('Applied selection is current', { exact: true }),
+  ).toBeVisible();
+  await bob
+    .locator('ion-modal:visible')
+    .getByRole('button', { name: 'Done', exact: true })
+    .click();
+  await expect(
+    bob.getByRole('button', { name: /Context · 1 applied/ }),
+  ).toBeVisible();
   await bob.goto(casePath);
   await bob
     .getByRole('link', {
@@ -296,7 +319,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob.getByTestId('run-check-action').click();
   const run = await runResponse;
   expect(run.status()).toBe(200);
-  await expect(bob.getByText(/^completed ·/).first()).toBeVisible();
+  await expect(bob.getByText(/completed · pass/).first()).toBeVisible();
   await bob.goto(specialistCasePath);
   await expect(
     bob.getByRole('heading', {
@@ -330,7 +353,12 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .getByRole('checkbox');
   for (const checkbox of await selectedEntries.all())
     if (await checkbox.isChecked()) await checkbox.click();
-  await bob.getByRole('list', {name:'Context Bag entries'}).getByRole('listitem').filter({hasText: extraSubject === orderSubject ? '11046' : '7201'}).getByRole('checkbox').click();
+  await bob
+    .getByRole('list', { name: 'Context Bag entries' })
+    .getByRole('listitem')
+    .filter({ hasText: extraSubject === orderSubject ? '11046' : '7201' })
+    .getByRole('checkbox')
+    .click();
   await bob
     .getByRole('button', { name: 'Propose to parent', exact: true })
     .click();
@@ -348,9 +376,16 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     extraSubject === orderSubject ? '11046' : '7201',
   );
   await stableScreenshot(page, 'parent-context-proposal-review');
+  const acceptanceResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/work/actions') &&
+      response.request().method() === 'POST',
+  );
   await page
     .getByRole('button', { name: 'Accept proposed context', exact: true })
     .click();
+  expect((await acceptanceResponse).status()).toBe(200);
+  await expect(page.locator('ion-modal:visible')).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Review proposal', exact: true }),
   ).toHaveCount(0);
@@ -373,6 +408,9 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob
     .getByRole('textbox', { name: 'Title', exact: true })
     .fill('Repair shipment allocation for order 11045');
+  await bob.getByRole('textbox',{name:'Title',exact:true}).focus();
+  await bob.keyboard.press('Tab');
+  await expect(bob.getByRole('textbox',{name:'Description',exact:true})).toBeFocused();
   await bob.setViewportSize({ width: 390, height: 844 });
   await stableScreenshot(bob, 'task-form-mobile');
   await bob.setViewportSize({ width: 1280, height: 900 });
@@ -430,7 +468,13 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .scrollIntoViewIfNeeded();
   await stableScreenshot(bob, 'query-work-backlinks-desktop', false);
   await bob.goto(casePath);
-  await bob.getByRole('button', { name: 'Change status', exact: true }).click();
+  const statusTrigger = bob.getByRole('button', {name:'Change status',exact:true});
+  await statusTrigger.click();
+  await expect.poll(() => bob.locator('ion-modal:visible').evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await bob.keyboard.press('Escape');
+  await expect(bob.locator('ion-modal:visible')).toHaveCount(0);
+  await expect(statusTrigger).toBeFocused();
+  await statusTrigger.click();
   await choose(bob, 'ion-select[label="Next status"]', 'Closed');
   await bob
     .getByRole('textbox', { name: 'Reason or resolution summary', exact: true })
@@ -593,7 +637,13 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
   await expect(
     other.getByText('Concurrent verified update.', { exact: true }),
   ).toBeVisible();
+  const staleResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/work/actions') &&
+      response.request().method() === 'POST',
+  );
   await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+  expect((await staleResponse).status()).toBe(409);
   await expect(
     page.getByText(
       'This work changed elsewhere. Reload and review the latest version before submitting again.',

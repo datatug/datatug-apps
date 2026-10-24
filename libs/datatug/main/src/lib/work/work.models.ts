@@ -204,7 +204,19 @@ export const workScopeKey = (scope: WorkScope): string =>
   JSON.stringify([scope.spaceID, scope.projectID]);
 export const workId = (): string =>
   `work_${crypto.randomUUID().replaceAll('-', '')}`;
+export const workNeedsMigration = (error: unknown): boolean => {
+  const response = error as {
+    status?: number;
+    error?: { error?: { code?: string } };
+  };
+  return (
+    response?.status === 409 &&
+    response.error?.error?.code === 'work_migration_required'
+  );
+};
 export function workError(error: unknown): string {
+  if (workNeedsMigration(error))
+    return 'This project has existing Incidents or Cases that need migration. Ask your project owner to complete the Work migration before creating new work.';
   const status = (error as { status?: number })?.status;
   if (status === 401 || status === 403)
     return 'Access is no longer available. Sign in or ask your project owner to review your membership.';
