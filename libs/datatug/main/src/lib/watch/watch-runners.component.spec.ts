@@ -31,6 +31,7 @@ const enrollment: WatchRunnerEnrollment = {
   expiresAt: '2026-11-23T00:00:00Z',
 };
 describe('Scoped runner enrollment consent and credentials', () => {
+  let owner: object;
   const client = {
     identity: signal<WatchIdentity | undefined>(user),
     enrollments: vi.fn(),
@@ -39,9 +40,14 @@ describe('Scoped runner enrollment consent and credentials', () => {
     rotate: vi.fn(),
     revoke: vi.fn(),
     runnerSetup: vi.fn(),
+    ownsConnection: vi.fn(),
+    refreshIdentity: vi.fn(),
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    owner = {};
+    client.ownsConnection.mockImplementation((value) => value === owner);
+    client.refreshIdentity.mockResolvedValue(user);
     client.identity.set(user);
     client.enrollments.mockResolvedValue({ enrollments: [enrollment] });
     client.sources.mockResolvedValue({
@@ -71,6 +77,7 @@ describe('Scoped runner enrollment consent and credentials', () => {
     });
     const fixture = TestBed.createComponent(WatchRunnersComponent);
     fixture.componentRef.setInput('identity', identity);
+    fixture.componentRef.setInput('connectionOwner', owner);
     fixture.detectChanges();
     await fixture.whenStable();
     return fixture;
@@ -140,6 +147,108 @@ describe('Scoped runner enrollment consent and credentials', () => {
     finish({ enrollment, token: 'old-alice-credential' });
     await pending;
     expect(component.token()).toBe('');
+  });
+  it('preserves an issued credential during same-owner metadata refresh and configures only afterward', async () => {
+    const fixture = await mount();
+    const component = fixture.componentInstance as unknown as {
+      start(): void;
+      create(): Promise<void>;
+      sourceIDs: ReturnType<typeof signal<string[]>>;
+      token(): string;
+      setup(): unknown;
+    };
+    let finish!: (value: WatchIdentity) => void;
+    client.refreshIdentity.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    component.start();
+    component.sourceIDs.set(['source-one']);
+    const pending = component.create();
+    await vi.waitFor(() =>
+      expect(component.token()).toBe('one-time-test-token'),
+    );
+    expect(component.setup()).toBeUndefined();
+    const refreshed = {
+      ...user,
+      coordination: {
+        endpoint: 'https://trusted.test/v0/datatug/watch/s/p/dev',
+        namespace: 's',
+      },
+    };
+    client.identity.set(refreshed);
+    fixture.componentRef.setInput('identity', refreshed);
+    await fixture.whenStable();
+    expect(component.token()).toBe('one-time-test-token');
+    finish(refreshed);
+    await pending;
+    expect(component.setup()).toBeDefined();
+  });
+  it.each(['owner', 'account', 'environment', 'permission'])(
+    'clears credentials on %s replacement and refuses a late identity refresh',
+    async (change) => {
+      const fixture = await mount();
+      const component = fixture.componentInstance as unknown as {
+        start(): void;
+        create(): Promise<void>;
+        sourceIDs: ReturnType<typeof signal<string[]>>;
+        token(): string;
+        setup(): unknown;
+      };
+      let finish!: (value: WatchIdentity) => void;
+      client.refreshIdentity.mockImplementationOnce(
+        () => new Promise((resolve) => (finish = resolve)),
+      );
+      component.start();
+      component.sourceIDs.set(['source-one']);
+      const pending = component.create();
+      await vi.waitFor(() =>
+        expect(component.token()).toBe('one-time-test-token'),
+      );
+      if (change === 'owner') {
+        owner = {};
+        fixture.componentRef.setInput('connectionOwner', owner);
+      } else {
+        const replacement = {
+          ...user,
+          ...(change === 'account'
+            ? { id: 'bob' }
+            : change === 'environment'
+              ? { environment: 'prod' }
+              : { canManageRunners: false }),
+        };
+        client.identity.set(replacement);
+        fixture.componentRef.setInput('identity', replacement);
+      }
+      await fixture.whenStable();
+      expect(component.token()).toBe('');
+      finish(user);
+      await pending;
+      expect(component.token()).toBe('');
+      expect(component.setup()).toBeUndefined();
+    },
+  );
+  it('clears the issued credential and configuration when trusted identity refresh disconnects', async () => {
+    const fixture = await mount();
+    const component = fixture.componentInstance as unknown as {
+      start(): void;
+      create(): Promise<void>;
+      sourceIDs: ReturnType<typeof signal<string[]>>;
+      token(): string;
+      setup(): unknown;
+    };
+    client.refreshIdentity.mockImplementationOnce(async () => {
+      client.identity.set(undefined);
+      throw new Error('The project coordinator designation does not match.');
+    });
+    component.start();
+    component.sourceIDs.set(['source-one']);
+    await component.create();
+    await fixture.whenStable();
+    expect(component.token()).toBe('');
+    expect(component.setup()).toBeUndefined();
+    expect(client.runnerSetup).not.toHaveBeenCalled();
+    await component.create();
+    expect(client.enroll).toHaveBeenCalledTimes(1);
   });
   it('shows scoped nonsecret setup separately and requires an explicit native SQL grant', async () => {
     const fixture = await mount();

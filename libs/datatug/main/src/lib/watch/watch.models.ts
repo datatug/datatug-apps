@@ -13,6 +13,8 @@ export interface WatchIdentity {
   tier: string;
   telegramConnected?: boolean;
   channels: Record<WatchChannel, boolean>;
+  providers?: { email?: boolean; sms?: boolean };
+  coordination?: { endpoint: string; namespace: string } | null;
   limits: {
     emailPerDay: number;
     emailPerMinute?: number;
@@ -89,6 +91,7 @@ export interface WatchRun {
   watchId: string;
   state: string;
   dueAt: string;
+  finishedAt?: string;
   executionStatus?: string;
   outcome?: string;
   failureCode?: string;

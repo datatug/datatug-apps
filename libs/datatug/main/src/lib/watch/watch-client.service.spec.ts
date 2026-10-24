@@ -386,12 +386,80 @@ describe('Watch coordinator user transport', () => {
       expect(client.identity()).toBeUndefined();
     },
   );
+  it.each(['endpoint', 'namespace'])(
+    'rejects a foreign hosted coordinator %s without routing credentials to it',
+    async (field) => {
+      TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken(
+        'firebase-alice',
+      );
+      const pending = client.connectHosted(ref, 'demo', 'alice');
+      const rejected = expect(pending).rejects.toThrow('designation');
+      http
+        .expectOne((r) => r.url.endsWith('/identity'))
+        .flush({
+          ...hostedIdentity,
+          coordination: {
+            endpoint: 'https://trusted.test/v0/datatug/watch/_space/p/demo',
+            namespace: '_space',
+            [field]: 'https://untrusted.test',
+          },
+        });
+      await rejected;
+      expect(client.identity()).toBeUndefined();
+      expect(() => client.definitions()).toThrow('Connect');
+      http.expectNone((r) => r.url.includes('untrusted.test'));
+    },
+  );
+  it('allows bootstrap reads without a descriptor, then confirms setup through same-owner identity refresh', async () => {
+    TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken('firebase-alice');
+    const pending = client.connectHosted(ref, 'demo', 'alice', {});
+    http
+      .expectOne((r) => r.url.endsWith('/identity'))
+      .flush({ ...hostedIdentity, coordination: null });
+    await pending;
+    const listed = client.definitions();
+    http
+      .expectOne((r) => r.url.endsWith('/definitions'))
+      .flush({ definitions: [] });
+    await listed;
+    const refreshed = client.refreshIdentity();
+    http
+      .expectOne((r) => r.url.endsWith('/identity'))
+      .flush({
+        ...hostedIdentity,
+        coordination: {
+          endpoint: 'https://trusted.test/v0/datatug/watch/_space/p/demo',
+          namespace: '_space',
+        },
+      });
+    expect((await refreshed)?.coordination?.namespace).toBe('_space');
+    const invalid = client.refreshIdentity();
+    const rejected = expect(invalid).rejects.toThrow('designation');
+    http
+      .expectOne((r) => r.url.endsWith('/identity'))
+      .flush({
+        ...hostedIdentity,
+        coordination: {
+          endpoint: 'https://untrusted.test',
+          namespace: '_space',
+        },
+      });
+    await rejected;
+    expect(client.identity()).toBeUndefined();
+  });
   it('builds a nonsecret runner configuration from only the trusted API and verified enrollment scope', async () => {
     TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken('firebase-alice');
     const connected = client.connectHosted(ref, 'demo', 'alice');
     http
       .expectOne((r) => r.url.endsWith('/identity'))
-      .flush({ ...hostedIdentity, canManageRunners: true });
+      .flush({
+        ...hostedIdentity,
+        canManageRunners: true,
+        coordination: {
+          endpoint: 'https://trusted.test/v0/datatug/watch/_space/p/demo',
+          namespace: '_space',
+        },
+      });
     await connected;
     const enrollment = {
       id: 'enrollment-one',

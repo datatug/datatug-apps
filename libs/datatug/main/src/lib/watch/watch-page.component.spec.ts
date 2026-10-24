@@ -217,6 +217,46 @@ describe('Self-hosted project Watch flow', () => {
       '/store/http-localhost:8989/project/p/checks/shipping-carrier-assignment',
     );
   });
+  it('presents a completed Watch without future scheduling and keeps identifiers in collapsed history details', async () => {
+    client.identity.set({ ...user, providers: { sms: false } });
+    client.definition.mockResolvedValue({
+      definition: { ...watch, lifecycle: 'completed', enabled: false },
+    });
+    client.runs.mockResolvedValue({
+      runs: [
+        {
+          id: 'run-private',
+          watchId: watch.id,
+          state: 'completed',
+          outcome: 'pass',
+          dueAt: '2026-10-23T00:00:00Z',
+          finishedAt: '2026-10-23T00:00:01Z',
+          runnerId: 'runner-private',
+          checkRunRef: 'check-run-private',
+          attempts: 1,
+        },
+      ],
+    });
+    const fixture = await mount();
+    const content = fixture.nativeElement as HTMLElement;
+    expect(content.textContent).toContain('No further evaluations.');
+    expect(content.textContent).not.toContain('Next evaluation:');
+    expect(content.textContent).toContain(
+      'SMS delivery is unavailable on this coordinator.',
+    );
+    expect(content.textContent).not.toContain('SMS limit:');
+    const details =
+      content.querySelector<HTMLDetailsElement>('details.advanced');
+    expect(details?.open).toBe(false);
+    expect(details?.textContent).toContain('runner-private');
+    expect(details?.textContent).toContain('check-run-private');
+    expect(details?.parentElement?.querySelector('p')?.textContent).toContain(
+      'Attempt 1',
+    );
+    expect(
+      details?.parentElement?.querySelector('p')?.textContent,
+    ).not.toContain('runner-private');
+  });
   it('uses the configured bot username and rejects a foreign or credential-bearing connection link', async () => {
     const fixture = await mount();
     const instance = fixture.componentInstance as unknown as {

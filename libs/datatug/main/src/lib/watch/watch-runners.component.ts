@@ -2,6 +2,7 @@ import { DatePipe } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   DestroyRef,
   effect,
   inject,
@@ -66,6 +67,24 @@ import type {
 })
 export class WatchRunnersComponent {
   readonly identity = input.required<WatchIdentity>();
+  readonly connectionOwner = input.required<object>();
+  private readonly scope = computed(() => this.scopeKey(this.identity()));
+  private readonly authority = computed(() =>
+    this.scopeKey(this.client.identity()),
+  );
+  private activeOwner?: object;
+  private scopeKey(user?: WatchIdentity): string {
+    return JSON.stringify(
+      user && [
+        user.id,
+        user.namespace,
+        user.spaceID,
+        user.project,
+        user.environment,
+        user.canManageRunners,
+      ],
+    );
+  }
   private readonly client = inject(WatchClientService);
   private readonly destroy = inject(DestroyRef);
   private generation = 0;
@@ -92,8 +111,11 @@ export class WatchRunnersComponent {
 
   constructor() {
     effect(() => {
-      this.identity();
+      this.scope();
+      this.authority();
+      const owner = this.connectionOwner();
       untracked(() => {
+        this.activeOwner = owner;
         this.generation++;
         this.token.set('');
         this.setup.set(undefined);
@@ -122,8 +144,11 @@ export class WatchRunnersComponent {
     return (
       !this.destroy.destroyed &&
       generation === this.generation &&
-      this.client.identity() === user &&
-      this.identity() === user &&
+      this.activeOwner === this.connectionOwner() &&
+      !!this.activeOwner &&
+      this.client.ownsConnection(this.activeOwner) &&
+      this.scopeKey(this.client.identity()) === this.scopeKey(user) &&
+      this.scopeKey(this.identity()) === this.scopeKey(user) &&
       user.canManageRunners === true
     );
   }
@@ -239,7 +264,6 @@ export class WatchRunnersComponent {
       });
       if (!this.current(user, generation)) return;
       this.token.set(result.token || '');
-      this.showSetup(result.enrollment);
       this.creating.set(false);
       this.message.set(
         result.token
@@ -250,6 +274,9 @@ export class WatchRunnersComponent {
         result.enrollment,
         ...items.filter((item) => item.id !== result.enrollment.id),
       ]);
+      await this.client.refreshIdentity();
+      if (!this.current(user, generation)) return;
+      this.showSetup(result.enrollment);
     } catch (error) {
       if (this.current(user, generation)) this.error.set(watchError(error));
     } finally {

@@ -233,6 +233,15 @@ describe('Hosted Watch account and environment lifecycle', () => {
       'Coordinator user credential',
     );
   });
+  it('keeps Watch management usable before the first environment enrollment', async () => {
+    const fixture = await mount();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Coordinator setup needed for this environment',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Private source health',
+    );
+  });
   it('shows sign-in on a cold signed-out link and preserves its destination', async () => {
     auth.next({ status: 'notAuthenticated' });
     const fixture = await mount();

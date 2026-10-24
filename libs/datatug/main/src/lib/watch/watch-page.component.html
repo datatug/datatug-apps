@@ -145,6 +145,13 @@
           >
         }
       </div>
+      @if (hosted() && !user.coordination) {
+        <p role="status">
+          Coordinator setup needed for this environment. Watches can be saved
+          now; evaluations need an eligible runner. A project manager can enroll
+          one below.
+        </p>
+      }
       @if (isNew || editing()) {
         <ion-card
           ><ion-item-divider color="light"
@@ -215,9 +222,8 @@
                   >
                   @if (user.hosted) {
                     <p>
-                      Personal Watches wait for an eligible runner enrolled by
-                      their owner. Shared Watches can use any eligible project
-                      runner.
+                      Personal Watches use eligible runners enrolled by their
+                      owner. Shared Watches can use any eligible project runner.
                     </p>
                   }
                   <ion-item lines="full"
@@ -422,13 +428,12 @@
                           "
                           >SMS · paid accounts</ion-checkbox
                         >
-                        <ion-note class="channel-description"
-                          >{{ user.limits.smsPerDay }} per day ·
-                          {{ user.limits.smsPerMinute || 0 }} per minute.
-                          @if (!user.channels.sms) {
-                            A paid account and verified phone number are
-                            required.
+                        <ion-note class="channel-description">
+                          @if (user.providers?.sms !== false) {
+                            {{ user.limits.smsPerDay }} per day ·
+                            {{ user.limits.smsPerMinute || 0 }} per minute.
                           }
+                          {{ smsAvailability(user) }}
                         </ion-note>
                       </div></ion-item
                     >
@@ -574,7 +579,10 @@
                       {{ observation()?.lastObservedAt | date: 'medium' }}
                     </p>
                   }
-                  @if (
+                  @if (watch.lifecycle === 'completed') {
+                    <p>No further evaluations.</p>
+                  } @else if (
+                    watch.lifecycle === 'enabled' &&
                     observation()?.nextEvaluation &&
                     !observation()?.nextEvaluation?.startsWith('0001-')
                   ) {
@@ -668,16 +676,28 @@
                             {{ label(run.outcome || 'unknown') }}
                           </h3>
                           <p>
-                            {{ run.dueAt | date: 'medium' }} ·
-                            {{ run.runnerId || 'No eligible runner' }} · attempt
+                            {{ runDate(run) | date: 'medium' }} · Attempt
                             {{ run.attempts }}
                           </p>
                           @if (run.failureCode) {
                             <p>{{ label(run.failureCode) }}</p>
                           }
-                          @if (run.checkRunRef) {
-                            <p>Check run {{ run.checkRunRef }}</p>
-                          }
+                          <details class="advanced">
+                            <summary>Technical details</summary>
+                            <p>
+                              Run <code>{{ run.id }}</code>
+                            </p>
+                            @if (run.runnerId) {
+                              <p>
+                                Runner <code>{{ run.runnerId }}</code>
+                              </p>
+                            }
+                            @if (run.checkRunRef) {
+                              <p>
+                                Check run <code>{{ run.checkRunRef }}</code>
+                              </p>
+                            }
+                          </details>
                         </ion-label></ion-item
                       >
                     } @empty {
@@ -705,8 +725,8 @@
                   @if (user.hosted) {
                     <p>
                       @if (watch.visibility === 'personal') {
-                        This personal Watch waits for an eligible runner
-                        enrolled by you.
+                        Only an eligible runner enrolled by you can evaluate
+                        this personal Watch.
                       } @else {
                         Any eligible project runner can evaluate this shared
                         Watch.
@@ -770,13 +790,12 @@
                             toggleChannel('sms', $event.detail.checked)
                           "
                           >SMS · paid accounts</ion-checkbox
-                        ><ion-note class="channel-description"
-                          >SMS limit: {{ user.limits.smsPerDay }} per day,
-                          {{ user.limits.smsPerMinute || 0 }} per minute.
-                          @if (!user.channels.sms) {
-                            Connect an eligible paid account and verified phone
-                            number to enable SMS.
+                        ><ion-note class="channel-description">
+                          @if (user.providers?.sms !== false) {
+                            SMS limit: {{ user.limits.smsPerDay }} per day,
+                            {{ user.limits.smsPerMinute || 0 }} per minute.
                           }
+                          {{ smsAvailability(user) }}
                         </ion-note>
                       </div></ion-item
                     >
@@ -962,7 +981,10 @@
       }
 
       @if (hosted() && user.canManageRunners) {
-        <sneat-datatug-watch-runners [identity]="user" />
+        <sneat-datatug-watch-runners
+          [identity]="user"
+          [connectionOwner]="connectionOwner"
+        />
       }
       <ion-card
         ><ion-item-divider color="light"

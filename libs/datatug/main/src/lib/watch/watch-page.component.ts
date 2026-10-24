@@ -65,6 +65,7 @@ import type {
   WatchChannel,
   WatchDelivery,
   WatchDefinition,
+  WatchIdentity,
   WatchNotification,
   WatchRun,
   WatchStatus,
@@ -167,7 +168,7 @@ export class WatchPageComponent {
     return this.router.url;
   }
   private alive = true;
-  private readonly connectionOwner = {};
+  protected readonly connectionOwner = {};
   protected readonly identity = computed(() =>
     this.client.ownsConnection(this.connectionOwner)
       ? this.client.identity()
@@ -355,6 +356,20 @@ export class WatchPageComponent {
     return value
       ? labels[value] || value.replaceAll('_', ' ').toLowerCase()
       : 'Awaiting evaluation';
+  }
+
+  protected smsAvailability(user: WatchIdentity): string {
+    if (user.providers?.sms === false)
+      return 'SMS delivery is unavailable on this coordinator.';
+    if (user.channels.sms) return '';
+    return user.providers?.sms === true
+      ? 'SMS requires a paid account and a verified phone number.'
+      : 'SMS is unavailable for this account or coordinator. A paid account and a verified phone number are required when delivery is available.';
+  }
+  protected runDate(run: WatchRun): string {
+    return run.finishedAt && !run.finishedAt.startsWith('0001-')
+      ? run.finishedAt
+      : run.dueAt;
   }
 
   protected statusColor(value: string | undefined): string {

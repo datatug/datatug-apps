@@ -267,6 +267,7 @@ export class WatchClientService {
         throw new Error(
           'The Watch response does not identify this account, Space, project and environment.',
         );
+      this.validateHostedCoordination(session, identity);
       this.identity.set(identity);
     } catch (error) {
       if (this.session !== session) return;
@@ -334,8 +335,10 @@ export class WatchClientService {
   private request() {
     const session = this.session;
     if (!session) throw new Error('Connect to this project coordinator first.');
-    if (session.kind === 'hosted')
+    if (session.kind === 'hosted') {
+      this.validateHostedCoordination(session, this.identity());
       return { session, headers: undefined, params: new HttpParams() };
+    }
     return {
       session,
       headers: new HttpHeaders({ Authorization: `Bearer ${session.token}` }),
@@ -386,6 +389,27 @@ export class WatchClientService {
   private hostedPath(scope: WatchHostedScope, path: string): string {
     return `datatug/watch/${encodeURIComponent(scope.spaceID)}/${encodeURIComponent(scope.project)}/${encodeURIComponent(scope.environment)}/v1/watch/${path}`;
   }
+  private hostedEndpoint(scope: WatchHostedScope): string {
+    const bases = this.injector.get(DatatugApiBaseUrls);
+    const base = coordinatorEndpoint(
+      bases[0] || this.injector.get(DatatugApiBaseUrl),
+    );
+    return `${base}/datatug/watch/${encodeURIComponent(scope.spaceID)}/${encodeURIComponent(scope.project)}/${encodeURIComponent(scope.environment)}`;
+  }
+  private validateHostedCoordination(
+    scope: WatchHostedScope,
+    identity?: WatchIdentity,
+  ): void {
+    const descriptor = identity?.coordination;
+    if (
+      descriptor &&
+      (descriptor.endpoint !== this.hostedEndpoint(scope) ||
+        descriptor.namespace !== scope.spaceID)
+    )
+      throw new Error(
+        'The project coordinator designation does not match this trusted service and Space. Ask a project manager to correct its setup.',
+      );
+  }
   runnerSetup(
     enrollment: WatchRunnerEnrollment,
     sources: readonly WatchRunnerSource[],
@@ -415,11 +439,12 @@ export class WatchClientService {
       throw new Error(
         'Rotate this expired or revoked enrollment before configuring a runner.',
       );
-    const bases = this.injector.get(DatatugApiBaseUrls);
-    const base = coordinatorEndpoint(
-      bases[0] || this.injector.get(DatatugApiBaseUrl),
-    );
-    const endpoint = `${base}/datatug/watch/${encodeURIComponent(session.spaceID)}/${encodeURIComponent(session.project)}/${encodeURIComponent(session.environment)}`;
+    this.validateHostedCoordination(session, this.identity());
+    if (!this.identity()?.coordination)
+      throw new Error(
+        'Coordinator setup needed for this environment. Refresh after enrolling a runner.',
+      );
+    const endpoint = this.hostedEndpoint(session);
     const sourceBindings = Object.fromEntries(
       enrollment.sourceIDs.map((id) => {
         const source = sources.find((value) => value.id === id);
@@ -494,6 +519,14 @@ export class WatchClientService {
       throw new Error(
         'The Watch identity changed. Reopen this project to continue.',
       );
+    }
+    if (session.kind === 'hosted') {
+      try {
+        this.validateHostedCoordination(session, identity);
+      } catch (error) {
+        this.disconnect();
+        throw error;
+      }
     }
     this.identity.set(identity);
     return identity;
