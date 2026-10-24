@@ -165,7 +165,7 @@ async function prepare() {
       env,
       path.join(out, 'build.log'),
     );
-    if ((await once(build, 'exit'))[0] !== 0)
+    if ((await once(build, 'close'))[0] !== 0)
       throw Error('Fixture build failed; inspect private build.log.');
   } finally {
     if (ownsGenerated) {
