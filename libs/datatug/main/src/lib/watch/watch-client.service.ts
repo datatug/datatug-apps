@@ -76,6 +76,7 @@ export class WatchClientService {
   private readonly http = inject(HttpClient);
   private readonly injector = inject(Injector);
   private lifetime = new Subject<void>();
+  private readonly connectionOwner = signal<object | undefined>(undefined);
   readonly identity = signal<WatchIdentity | undefined>(undefined);
   private session?:
     | {
@@ -84,6 +85,7 @@ export class WatchClientService {
         namespace: string;
         project: string;
         token: string;
+        pageScope?: string;
       }
     | ({ kind: 'hosted' } & WatchHostedScope);
   readonly setupNotice = signal('');
@@ -109,8 +111,54 @@ export class WatchClientService {
     this.lifetime.complete();
     this.lifetime = new Subject<void>();
     this.session = undefined;
+    this.connectionOwner.set(undefined);
     this.identity.set(undefined);
     this.setupNotice.set('');
+  }
+  ownsConnection(owner: object): boolean {
+    return this.connectionOwner() === owner && !!this.session;
+  }
+  disconnectOwned(owner: object): void {
+    if (this.ownsConnection(owner)) this.disconnect();
+  }
+  claimSelfhostConnection(owner: object, pageScope: string): boolean {
+    if (this.session?.kind !== 'selfhost' || !this.identity()) return false;
+    if (this.session.pageScope !== pageScope) {
+      if (!this.connectionOwner()) this.disconnect();
+      return false;
+    }
+    this.connectionOwner.set(owner);
+    return true;
+  }
+  handoffConnection(owner: object, destinationScope: string): boolean {
+    if (
+      !this.ownsConnection(owner) ||
+      this.session?.kind !== 'selfhost' ||
+      !this.identity() ||
+      this.session.pageScope !== destinationScope
+    )
+      return false;
+    this.connectionOwner.set(undefined);
+    return true;
+  }
+  /** A destination Watch page can retain a verified self-host session in the same manifest scope. */
+  adoptConnection(
+    owner: object,
+    config: ProjectCoordination,
+    project: string,
+    pageScope?: string,
+  ): boolean {
+    if (
+      !this.identity() ||
+      !this.matches(config, project) ||
+      (pageScope !== undefined &&
+        (this.session?.kind !== 'selfhost' ||
+          this.session.pageScope !== pageScope ||
+          this.connectionOwner() !== owner))
+    )
+      return false;
+    this.connectionOwner.set(owner);
+    return true;
   }
   matchesHosted(scope: WatchHostedScope): boolean {
     return (
@@ -125,6 +173,7 @@ export class WatchClientService {
     ref: IProjectRef,
     environment: string,
     principal: string,
+    owner?: object,
   ): Promise<void> {
     this.disconnect();
     if (
@@ -143,9 +192,10 @@ export class WatchClientService {
       principal,
     };
     this.session = session;
+    this.connectionOwner.set(owner);
     try {
       const identity = await this.get<WatchIdentity>('identity');
-      if (this.session !== session) return;
+      if (this.session !== session || this.connectionOwner() !== owner) return;
       if (
         identity.hosted !== true ||
         identity.id !== principal ||
@@ -182,6 +232,8 @@ export class WatchClientService {
     config: ProjectCoordination,
     project: string,
     token: string,
+    owner?: object,
+    pageScope?: string,
   ): Promise<void> {
     this.disconnect();
     if (
@@ -196,11 +248,13 @@ export class WatchClientService {
       namespace: config.namespace,
       project,
       token: token.trim(),
+      pageScope,
     };
     this.session = session;
+    this.connectionOwner.set(owner);
     try {
       const identity = await this.get<WatchIdentity>('identity');
-      if (this.session !== session) return;
+      if (this.session !== session || this.connectionOwner() !== owner) return;
       if (
         !identity.id ||
         identity.project !== project ||
@@ -276,10 +330,12 @@ export class WatchClientService {
   }
   async refreshIdentity(): Promise<WatchIdentity | undefined> {
     const session = this.session,
-      previous = this.identity();
+      previous = this.identity(),
+      owner = this.connectionOwner();
     if (!session || !previous) return undefined;
     const identity = await this.get<WatchIdentity>('identity');
-    if (this.session !== session) return undefined;
+    if (this.session !== session || this.connectionOwner() !== owner)
+      return undefined;
     if (
       identity.id !== previous.id ||
       identity.namespace !== previous.namespace ||

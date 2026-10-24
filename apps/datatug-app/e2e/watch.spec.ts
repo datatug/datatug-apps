@@ -334,4 +334,15 @@ test('project Watch menu, paused creation consent, cold details and narrow inbox
   await expect(page).toHaveURL(new RegExp('/checks/' + check.id + '$'));
   await expect(view).toBeVisible();
   expect(errors).toEqual([]);
+  // Keeping a credential across Watch subroutes must not retain it after
+  // leaving the feature, including Ionic's cached page return.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page
+    .locator('sneat-datatug-project-menu-top ion-item')
+    .filter({ hasText: /^Watch\s*Beta$/ })
+    .click();
+  await expect(page).toHaveURL(projectPath + '/watch');
+  await expect(
+    page.getByRole('heading', { name: 'Connect to Watch', exact: true }),
+  ).toBeVisible();
 });

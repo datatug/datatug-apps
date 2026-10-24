@@ -36,7 +36,12 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { filter, firstValueFrom, merge } from 'rxjs';
-import { isSharedProjectRef } from '../core/project-context';
+import {
+  isSharedProjectRef,
+  projectRefToString,
+  type IProjectRef,
+} from '../core/project-context';
+import { parseProjectUrl } from '@datatug/project-address';
 import { ProjectEnvironmentStateService } from '../services/project/project-environment-state.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import {
@@ -63,7 +68,6 @@ import type {
   WatchNotification,
   WatchRun,
   WatchStatus,
-  WatchIdentity,
 } from './watch.models';
 
 interface WatchForm {
@@ -163,7 +167,12 @@ export class WatchPageComponent {
     return this.router.url;
   }
   private alive = true;
-  private ownedIdentity?: WatchIdentity;
+  private readonly connectionOwner = {};
+  protected readonly identity = computed(() =>
+    this.client.ownsConnection(this.connectionOwner)
+      ? this.client.identity()
+      : undefined,
+  );
   private generation = 0;
   private viewGeneration = 0;
   private projectIdentity = '';
@@ -220,7 +229,7 @@ export class WatchPageComponent {
     this.checks().find((c) => c.id === this.form().checkId),
   );
   protected readonly canEdit = computed(() => {
-    const user = this.client.identity(),
+    const user = this.identity(),
       current = this.current();
     return (
       !!user &&
@@ -246,8 +255,7 @@ export class WatchPageComponent {
     if (
       field === 'interval' &&
       (!Number.isSafeInteger(form.interval) ||
-        form.interval <
-          (this.client.identity()?.limits.minIntervalSeconds || 10) ||
+        form.interval < (this.identity()?.limits.minIntervalSeconds || 10) ||
         form.interval > 86400)
     )
       return 'Choose a valid evaluation interval.';
@@ -362,8 +370,7 @@ export class WatchPageComponent {
       this.alive = false;
       this.generation++;
       this.token.set('');
-      if (this.ownedIdentity && this.client.identity() === this.ownedIdentity)
-        this.client.disconnect();
+      this.client.disconnectOwned(this.connectionOwner);
     });
     this.route.paramMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -387,9 +394,9 @@ export class WatchPageComponent {
   private contextKey(): string {
     return JSON.stringify([
       this.scope.ref(),
-      this.hosted() ? this.authState()?.user?.uid : '',
-      this.hosted() ? this.authState()?.status : '',
-      this.hosted() ? this.environment() : '',
+      this.authState()?.user?.uid || '',
+      this.authState()?.status || '',
+      this.environment(),
     ]);
   }
   private async loadContext(identity: string) {
@@ -409,13 +416,13 @@ export class WatchPageComponent {
     this.current.set(undefined);
     try {
       if (!ref) {
-        this.client.disconnect();
+        this.client.disconnectOwned(this.connectionOwner);
         return;
       }
       if (isSharedProjectRef(ref)) {
         this.config.set(undefined);
         if (!this.signedIn() || this.authenticating()) {
-          this.client.disconnect();
+          this.client.disconnectOwned(this.connectionOwner);
           this.environments.set([]);
           return;
         }
@@ -436,7 +443,7 @@ export class WatchPageComponent {
           return;
         }
         if (!environment) {
-          this.client.disconnect();
+          this.client.disconnectOwned(this.connectionOwner);
           return;
         }
         if (!state.environments.some((item) => item.id === environment))
@@ -444,18 +451,26 @@ export class WatchPageComponent {
             'This environment is not available in the current project. Choose another environment.',
           );
         const principal = this.authState()?.user?.uid || '';
-        await this.client.connectHosted(ref, environment, principal);
+        await this.client.connectHosted(
+          ref,
+          environment,
+          principal,
+          this.connectionOwner,
+        );
         if (
           !this.alive ||
           generation !== this.generation ||
           identity !== this.contextKey()
         )
           return;
-        this.ownedIdentity = this.client.identity();
         await this.refresh();
         return;
       }
       this.environments.set([]);
+      this.client.claimSelfhostConnection(
+        this.connectionOwner,
+        this.selfhostConnectionScope(ref),
+      );
       const summary = await firstValueFrom(
         this.project
           .watchProjectSummary(ref)
@@ -471,11 +486,18 @@ export class WatchPageComponent {
       if (config) coordinatorEndpoint(config.endpoint);
       this.config.set(config);
       if (!config || !this.client.matches(config, ref.projectId))
-        this.client.disconnect();
-      if (this.client.identity()) await this.refresh();
+        this.client.disconnectOwned(this.connectionOwner);
+      else
+        this.client.adoptConnection(
+          this.connectionOwner,
+          config,
+          ref.projectId,
+          this.selfhostConnectionScope(ref),
+        );
+      if (this.identity()) await this.refresh();
     } catch (e) {
       if (this.alive && generation === this.generation) {
-        this.client.disconnect();
+        this.client.disconnectOwned(this.connectionOwner);
         this.error.set(
           this.hosted() && isSignedOut(e)
             ? 'Sign in to access Watch in this project.'
@@ -515,7 +537,13 @@ export class WatchPageComponent {
     this.busy.set(true);
     this.error.set('');
     try {
-      await this.client.connect(config, ref.projectId, token);
+      await this.client.connect(
+        config,
+        ref.projectId,
+        token,
+        this.connectionOwner,
+        this.selfhostConnectionScope(ref),
+      );
       if (this.alive && generation === this.generation) await this.refresh();
     } catch (e) {
       if (this.alive && generation === this.generation)
@@ -546,7 +574,7 @@ export class WatchPageComponent {
     this.resetReview.set(false);
   }
   protected disconnect() {
-    this.client.disconnect();
+    this.client.disconnectOwned(this.connectionOwner);
     this.definitions.set([]);
     this.current.set(undefined);
     this.notifications.set([]);
@@ -563,8 +591,12 @@ export class WatchPageComponent {
   ionViewWillLeave() {
     this.alive = false;
     this.generation++;
-    if (this.ownedIdentity && this.client.identity() === this.ownedIdentity)
-      this.client.disconnect();
+    const destinationScope = this.watchHandoffScope();
+    if (
+      !destinationScope ||
+      !this.client.handoffConnection(this.connectionOwner, destinationScope)
+    )
+      this.client.disconnectOwned(this.connectionOwner);
     this.definitions.set([]);
     this.notifications.set([]);
     this.status.set(undefined);
@@ -578,8 +610,49 @@ export class WatchPageComponent {
     this.projectIdentity = '';
     void this.loadContext(this.contextKey());
   }
+  private selfhostConnectionScope(
+    ref: IProjectRef,
+    environment = this.environment(),
+  ): string {
+    return JSON.stringify([
+      projectRefToString(ref),
+      this.authState()?.user?.uid || '',
+      environment,
+    ]);
+  }
+  /** Keep a verified credential only while moving within this exact project's Watch pages. */
+  private watchHandoffScope(): string | undefined {
+    const navigation = this.router.currentNavigation?.();
+    const target =
+      navigation?.finalUrl ||
+      navigation?.extractedUrl ||
+      this.router.parseUrl(this.router.url);
+    const parsed = parseProjectUrl(this.router.serializeUrl(target));
+    if (
+      !parsed.ok ||
+      parsed.spaceID ||
+      !/^\/watch(?:\/[A-Za-z0-9_-]{1,128})?\/?$/.test(parsed.rest)
+    )
+      return undefined;
+    const projectApi = target.queryParams['projectApi'];
+    const branch = target.queryParams['branch'];
+    const ref: IProjectRef = {
+      storeId: parsed.storeId,
+      projectId: parsed.projectId,
+      ...(projectApi === 'local' || projectApi === 'cloud'
+        ? { projectApi }
+        : {}),
+      ...(typeof branch === 'string' ? { branch } : {}),
+    };
+    return this.selfhostConnectionScope(
+      ref,
+      typeof target.queryParams['env'] === 'string'
+        ? target.queryParams['env']
+        : '',
+    );
+  }
   protected async refresh() {
-    let user = this.client.identity();
+    let user = this.identity();
     if (!user) return;
     const watchId = this.watchId(),
       generation = ++this.viewGeneration;
@@ -587,14 +660,13 @@ export class WatchPageComponent {
       this.alive &&
       this.watchId() === watchId &&
       this.viewGeneration === generation;
-    const active = () => currentView() && this.client.identity() === user;
+    const active = () => currentView() && this.identity() === user;
     this.busy.set(true);
     this.error.set('');
     try {
       if (user.hosted) {
         user = await this.client.refreshIdentity();
         if (!user || !active()) return;
-        this.ownedIdentity = user;
       }
       const [definitions, status, inbox] = await Promise.all([
         this.client.definitions(),
@@ -650,7 +722,7 @@ export class WatchPageComponent {
         }
       }
     } catch (e) {
-      if (currentView() && (!this.client.identity() || active())) {
+      if (currentView() && (!this.identity() || active())) {
         this.error.set(watchError(e));
         this.status.set(undefined);
         this.current.set(undefined);
@@ -662,18 +734,17 @@ export class WatchPageComponent {
         this.definitions.set([]);
         this.editing.set(false);
         if (this.hosted() && isHostedReadRefused(e)) {
-          this.client.disconnect();
+          this.client.disconnectOwned(this.connectionOwner);
           this.busy.set(false);
         }
       }
     } finally {
-      if (currentView() && (!this.client.identity() || active()))
-        this.busy.set(false);
+      if (currentView() && (!this.identity() || active())) this.busy.set(false);
     }
   }
   private async loadChecks() {
     const context = this.scope.context(),
-      user = this.client.identity();
+      user = this.identity();
     if (!context || !user)
       throw new Error(
         'Open this project through its DataTug agent to choose a saved Check.',
@@ -682,7 +753,7 @@ export class WatchPageComponent {
     const state = await firstValueFrom(this.detective.state(context));
     if (
       !this.alive ||
-      this.client.identity() !== user ||
+      this.identity() !== user ||
       generation !== this.viewGeneration
     )
       return;
@@ -790,7 +861,7 @@ export class WatchPageComponent {
     }
   }
   protected async save() {
-    const user = this.client.identity(),
+    const user = this.identity(),
       check = this.selectedCheck(),
       f = this.form(),
       ref = this.scope.ref();
@@ -800,7 +871,7 @@ export class WatchPageComponent {
       channels = [...this.channels()];
     const active = () =>
       this.alive &&
-      this.client.identity() === user &&
+      this.identity() === user &&
       this.viewGeneration === generation &&
       this.watchId() === watchId;
     this.error.set('');
@@ -987,12 +1058,12 @@ export class WatchPageComponent {
     });
   }
   private async mutate(action: (active: () => boolean) => Promise<void>) {
-    const user = this.client.identity();
+    const user = this.identity();
     const id = this.watchId(),
       generation = this.viewGeneration;
     const active = () =>
       this.alive &&
-      this.client.identity() === user &&
+      this.identity() === user &&
       this.watchId() === id &&
       this.viewGeneration === generation;
     if (!user || this.busy()) return;
@@ -1000,10 +1071,9 @@ export class WatchPageComponent {
     this.error.set('');
     try {
       await action(active);
-      if (this.alive && this.client.identity() === user) await this.refresh();
+      if (this.alive && this.identity() === user) await this.refresh();
     } catch (e) {
-      if (this.alive && this.client.identity() === user)
-        this.error.set(watchError(e));
+      if (this.alive && this.identity() === user) this.error.set(watchError(e));
     } finally {
       if (this.alive) this.busy.set(false);
     }

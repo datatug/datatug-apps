@@ -146,6 +146,87 @@ describe('Watch coordinator user transport', () => {
     spaceID: '_space',
     hosted: true,
   };
+  it.each(['hosted', 'selfhost'])(
+    'cancels the owning pending %s connection and protects a newer owner',
+    async (mode) => {
+      const oldOwner = {},
+        newOwner = {};
+      TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken(
+        'firebase-alice',
+      );
+      const pending =
+        mode === 'hosted'
+          ? client.connectHosted(ref, 'demo', 'alice', oldOwner)
+          : client.connect(config, 'p', 'alice-token', oldOwner);
+      const request = http.expectOne((r) => r.url.endsWith('/identity'));
+      expect(client.ownsConnection(oldOwner)).toBe(true);
+      client.disconnectOwned(oldOwner);
+      expect(request.cancelled).toBe(true);
+      await pending;
+      expect(client.identity()).toBeUndefined();
+      const fresh =
+        mode === 'hosted'
+          ? client.connectHosted(ref, 'demo', 'alice', newOwner)
+          : client.connect(config, 'p', 'alice-token', newOwner);
+      http
+        .expectOne((r) => r.url.endsWith('/identity'))
+        .flush(mode === 'hosted' ? hostedIdentity : identity);
+      await fresh;
+      client.disconnectOwned(oldOwner);
+      expect(client.identity()?.id).toBe('alice');
+      expect(client.ownsConnection(newOwner)).toBe(true);
+      client.disconnectOwned(newOwner);
+      expect(client.identity()).toBeUndefined();
+    },
+  );
+  it('transfers a matching verified self-host session without giving an old owner cancellation rights', async () => {
+    const oldOwner = {},
+      newOwner = {};
+    const pending = client.connect(config, 'p', 'alice-token', oldOwner);
+    http.expectOne((r) => r.url.endsWith('/identity')).flush(identity);
+    await pending;
+    expect(
+      client.adoptConnection(
+        newOwner,
+        { ...config, endpoint: 'https://other.test' },
+        'p',
+      ),
+    ).toBe(false);
+    expect(client.adoptConnection(newOwner, config, 'p')).toBe(true);
+    client.disconnectOwned(oldOwner);
+    expect(client.identity()?.id).toBe('alice');
+    expect(client.ownsConnection(newOwner)).toBe(true);
+  });
+  it('hands off only a verified self-host session within the exact project/account/environment key', async () => {
+    const oldOwner = {},
+      newOwner = {},
+      scope = '["project@agent","alice","demo"]';
+    const pending = client.connect(config, 'p', 'alice-token', oldOwner, scope);
+    expect(client.handoffConnection(oldOwner, scope)).toBe(false);
+    http.expectOne((r) => r.url.endsWith('/identity')).flush(identity);
+    await pending;
+    for (const foreign of [
+      '["other@agent","alice","demo"]',
+      '["project@other-agent","alice","demo"]',
+      '["project@agent","bob","demo"]',
+      '["project@agent","alice","prod"]',
+    ]) {
+      expect(client.handoffConnection(oldOwner, foreign)).toBe(false);
+      expect(client.claimSelfhostConnection(newOwner, foreign)).toBe(false);
+    }
+    expect(client.handoffConnection(oldOwner, scope)).toBe(true);
+    expect(client.ownsConnection(oldOwner)).toBe(false);
+    expect(client.claimSelfhostConnection(newOwner, scope)).toBe(true);
+    expect(client.adoptConnection(oldOwner, config, 'p', scope)).toBe(false);
+    client.disconnectOwned(oldOwner);
+    expect(client.identity()?.id).toBe('alice');
+    expect(client.ownsConnection(newOwner)).toBe(true);
+    expect(client.handoffConnection(newOwner, scope)).toBe(true);
+    expect(client.claimSelfhostConnection({}, 'new-account-or-scope')).toBe(
+      false,
+    );
+    expect(client.identity()).toBeUndefined();
+  });
   it('uses the existing Firebase bridge only for the trusted app API and exact hosted scope', async () => {
     const bridge = TestBed.inject(SneatApiAuthTokenBridge);
     bridge.setExplicitToken('firebase-alice');

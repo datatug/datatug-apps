@@ -5,7 +5,7 @@
     /></ion-buttons>
     <ion-title>Watch <ion-badge color="medium">Beta</ion-badge></ion-title>
     <ion-buttons slot="end">
-      @if (client.identity()) {
+      @if (identity()) {
         <ion-button (click)="refresh()" [disabled]="busy()" aria-label="Refresh"
           ><ion-icon slot="icon-only" name="refresh-outline"
         /></ion-button>
@@ -54,7 +54,7 @@
           >
         </ion-card-content>
       </ion-card>
-    } @else if (hosted() && !client.identity()) {
+    } @else if (hosted() && !identity()) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h1>Project Watch</h1></ion-label></ion-item-divider
@@ -90,7 +90,7 @@
           </p></ion-card-content
         >
       </ion-card>
-    } @else if (!client.identity()) {
+    } @else if (!identity()) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h1>Connect to Watch</h1></ion-label></ion-item-divider
@@ -125,7 +125,7 @@
           </form>
         </ion-card-content>
       </ion-card>
-    } @else if (client.identity(); as user) {
+    } @else if (identity(); as user) {
       <div class="connection-bar" role="status">
         <div>
           <strong>{{ hosted() ? 'Watch cloud' : 'Coordinator' }}</strong>
@@ -133,7 +133,7 @@
             label(status()?.coordinator)
           }}</ion-badge>
           <span
-            >{{ user.id }} · {{ user.environment }} ·
+            >{{ user.environment }} ·
             {{ status()?.runners?.length || 0 }}
             {{ status()?.runners?.length === 1 ? 'runner' : 'runners' }}
             registered</span
@@ -541,7 +541,8 @@
                     }}</ion-badge>
                   </div>
                   <p class="provenance">
-                    Owner {{ watch.owner }} · version {{ watch.version }}
+                    Owner {{ watch.owner === user.id ? 'You' : watch.owner }} ·
+                    version {{ watch.version }}
                   </p>
                   <p>
                     <a [routerLink]="pageLink(['checks', watch.checkId])">{{
@@ -687,7 +688,13 @@
                   ></ion-item-divider
                 >
                 <ion-card-content
-                  ><p>Choose how you receive updates for this Watch.</p>
+                  ><p>
+                    Choose how you receive updates for this Watch.
+                    @if (watch.visibility === 'shared') {
+                      Your subscription is personal. Other project members can
+                      subscribe independently.
+                    }
+                  </p>
                   @if (telegramReconnectRequired()) {
                     <ion-item color="warning" lines="none"
                       ><ion-label class="ion-text-wrap"

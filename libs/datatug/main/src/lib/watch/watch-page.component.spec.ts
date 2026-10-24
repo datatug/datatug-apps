@@ -69,6 +69,11 @@ describe('Self-hosted project Watch flow', () => {
     identity: signal<WatchIdentity | undefined>(user),
     matches: vi.fn(() => true),
     disconnect: vi.fn(),
+    disconnectOwned: vi.fn(),
+    ownsConnection: vi.fn(() => true),
+    adoptConnection: vi.fn(() => true),
+    claimSelfhostConnection: vi.fn(() => true),
+    handoffConnection: vi.fn(() => false),
     definitions: vi.fn(),
     definition: vi.fn(),
     status: vi.fn(),
@@ -427,6 +432,38 @@ describe('Self-hosted project Watch flow', () => {
     },
   );
 
+  it('cancels the self-host session when the signed-in app account changes', async () => {
+    const fixture = await mount();
+    client.disconnectOwned.mockImplementationOnce(() =>
+      client.identity.set(undefined),
+    );
+    fixture.changeDetectorRef.detach();
+    (
+      TestBed.inject(SneatAuthStateService).authState as BehaviorSubject<{
+        user: { uid: string };
+      }>
+    ).next({ user: { uid: 'replacement-account' } });
+    expect(client.disconnectOwned).toHaveBeenCalled();
+    expect(client.identity()).toBeUndefined();
+    expect(
+      (
+        fixture.componentInstance as unknown as {
+          current: () => WatchDefinition | undefined;
+        }
+      ).current(),
+    ).toBeUndefined();
+  });
+  it('explains independent personal subscriptions on a shared Watch and labels its current owner', async () => {
+    client.definition.mockResolvedValue({
+      definition: { ...watch, visibility: 'shared' },
+    });
+    const fixture = await mount();
+    expect(fixture.nativeElement.textContent).toContain('Owner You');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Other project members can subscribe independently',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('alice · demo ·');
+  });
   it('renders a private blocked Telegram connection without changing selected channels or Watch status', async () => {
     client.telegramStatus.mockResolvedValue({
       connected: false,

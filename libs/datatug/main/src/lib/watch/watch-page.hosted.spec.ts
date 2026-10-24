@@ -62,16 +62,30 @@ describe('Hosted Watch account and environment lifecycle', () => {
     summary = vi.fn();
   function makeClient() {
     const current = signal<WatchIdentity | undefined>(undefined);
+    const connectionOwner = signal<object | undefined>(undefined);
     return {
       identity: current,
-      disconnect: vi.fn(() => current.set(undefined)),
+      connectionOwner,
+      ownsConnection: vi.fn((owner: object) => connectionOwner() === owner),
+      disconnect: vi.fn(() => {
+        connectionOwner.set(undefined);
+        current.set(undefined);
+      }),
+      disconnectOwned: vi.fn((owner: object) => {
+        if (connectionOwner() === owner) {
+          connectionOwner.set(undefined);
+          current.set(undefined);
+        }
+      }),
       refreshIdentity: vi.fn(async () => current()),
       connectHosted: vi.fn(
         async (
           ref: { spaceID: string; projectId: string },
           environment: string,
           principal: string,
+          owner: object,
         ) => {
+          connectionOwner.set(owner);
           current.set({
             ...identity,
             id: principal,
@@ -127,7 +141,7 @@ describe('Hosted Watch account and environment lifecycle', () => {
     );
     summary.mockReset();
   });
-  async function mount(path = 'watch/:watchId') {
+  async function mount(path = 'watch/:watchId', waitReady = true) {
     const params = convertToParamMap(
       path === 'watch/:watchId' ? { watchId: 'w' } : {},
     );
@@ -179,15 +193,16 @@ describe('Hosted Watch account and environment lifecycle', () => {
     });
     const fixture = TestBed.createComponent(WatchPageComponent);
     fixture.detectChanges();
-    await vi.waitFor(() =>
-      expect(
-        (
-          fixture.componentInstance as unknown as {
-            manifestLoading: () => boolean;
-          }
-        ).manifestLoading(),
-      ).toBe(false),
-    );
+    if (waitReady)
+      await vi.waitFor(() =>
+        expect(
+          (
+            fixture.componentInstance as unknown as {
+              manifestLoading: () => boolean;
+            }
+          ).manifestLoading(),
+        ).toBe(false),
+      );
     await fixture.whenStable();
     return fixture;
   }
@@ -200,6 +215,7 @@ describe('Hosted Watch account and environment lifecycle', () => {
       project.value.ref,
       'dev',
       'alice',
+      expect.any(Object),
     );
     expect(fixture.nativeElement.textContent).toContain(
       'Private source health',
@@ -241,6 +257,60 @@ describe('Hosted Watch account and environment lifecycle', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'not available in the current project',
     );
+  });
+  it.each(['leave', 'destroy'])(
+    'cancels an initial hosted connection before identity resolves on %s',
+    async (action) => {
+      let resolve!: () => void;
+      const response = new Promise<void>((done) => (resolve = done));
+      client.connectHosted.mockImplementationOnce(
+        async (ref, environment, principal, owner) => {
+          client.connectionOwner.set(owner);
+          await response;
+          if (client.connectionOwner() === owner)
+            client.identity.set({
+              ...identity,
+              id: principal,
+              namespace: ref.spaceID,
+              spaceID: ref.spaceID,
+              project: ref.projectId,
+              environment,
+            });
+        },
+      );
+      const fixture = await mount('watch/:watchId', false);
+      await vi.waitFor(() => expect(client.connectHosted).toHaveBeenCalled());
+      fixture.changeDetectorRef.detach();
+      if (action === 'leave') fixture.componentInstance.ionViewWillLeave();
+      else fixture.destroy();
+      resolve();
+      await response;
+      await vi.waitFor(() => expect(client.identity()).toBeUndefined());
+      expect(client.connectionOwner()).toBeUndefined();
+      expect(client.definitions).not.toHaveBeenCalled();
+    },
+  );
+  it('does not let an old cached page cancel a newer page connection', async () => {
+    const old = await mount();
+    const fresh = TestBed.createComponent(WatchPageComponent);
+    fresh.detectChanges();
+    await vi.waitFor(() =>
+      expect(client.connectHosted).toHaveBeenCalledTimes(2),
+    );
+    await fresh.whenStable();
+    const current = client.identity(),
+      owner = client.connectionOwner();
+    old.changeDetectorRef.detach();
+    old.componentInstance.ionViewWillLeave();
+    expect(client.identity()).toBe(current);
+    expect(client.connectionOwner()).toBe(owner);
+    expect(
+      (
+        fresh.componentInstance as unknown as {
+          identity: () => WatchIdentity | undefined;
+        }
+      ).identity(),
+    ).toBe(current);
   });
   it('clears a disconnected identity refusal and leaves reconnection usable', async () => {
     const fixture = await mount();
