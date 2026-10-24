@@ -4,7 +4,7 @@ import type {
   WorkDetail,
   WorkItem,
   WorkLink,
-} from '../../../libs/datatug/main/src/lib/work/work.models';
+} from '@sneat/datatug-main';
 import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
 
 const firebaseProject = 'demo-local-sneat-app';

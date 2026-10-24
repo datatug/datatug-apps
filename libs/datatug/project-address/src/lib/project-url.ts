@@ -277,6 +277,7 @@ export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
   'variables',
   'watch',
   'widgets',
+  'work',
 ]);
 
 /** Whether a (raw or decoded, ASCII) segment names a project page. */

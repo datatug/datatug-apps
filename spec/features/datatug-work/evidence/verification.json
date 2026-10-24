@@ -109,5 +109,34 @@
     "results": [
       "16 suites206 tests passed; Work/Watch/native/navigation plus current Query and environment contracts"
     ]
+  },
+  {
+    "label": "CI correction: scoped app lint",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-app:lint --output-style=static",
+    "results": [
+      "PASS:0 errors;10 existing warning findings"
+    ]
+  },
+  {
+    "label": "CI correction: portable Work E2E typecheck",
+    "command": "wb run -- pnpm exec tsc --project apps/datatug-app/tsconfig.work-e2e.json --noEmit",
+    "results": [
+      "Exit0; Work and hosted Incident E2E plus dedicated configuration checked",
+      "TypeScript ESNext transpilation independently confirms public type export/import erase from emitted JavaScript"
+    ]
+  },
+  {
+    "label": "CI correction: route registry, guarded Work and shared menus",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/routes/datatug-routing-proj.spec.ts libs/datatug/main/src/lib/routes/github-project-routes.spec.ts libs/datatug/main/src/lib/components/project/project-menu/project-menu.component.spec.ts libs/datatug/main/src/lib/work/work-page.component.spec.ts --maxWorkers=1 --output-style=static",
+    "results": [
+      "4 suites170 tests PASS; Git/local with stale Space params remain hosted-only and invoke no Work API"
+    ]
+  },
+  {
+    "label": "CI correction: short project addresses",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-project-address:test --output-style=static",
+    "results": [
+      "5 suites590 tests PASS; root/new/detail/nested/pinned Work addresses and literal work folder remain distinct"
+    ]
   }
 ]

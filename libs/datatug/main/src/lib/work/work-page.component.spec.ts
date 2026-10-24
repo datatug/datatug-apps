@@ -96,6 +96,27 @@ describe('WorkPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Team Lead');
     expect(fixture.nativeElement.textContent).toContain('Developer');
   });
+  it.each(['github', 'localhost'])(
+    'keeps %s Work unavailable without invoking cloud APIs',
+    async (storeId) => {
+      const { fixture, api, params } = setup();
+      params.next(
+        convertToParamMap({
+          storeId,
+          spaceId: 'space',
+          projectId: 'repo@owner@',
+        }),
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.scope()).toBeUndefined();
+      expect(fixture.nativeElement.textContent).toContain(
+        'Work is available in Space-owned cloud projects',
+      );
+      for (const call of Object.values(api))
+        expect(call).not.toHaveBeenCalled();
+    },
+  );
   it('uses inherited params exposed by an Ionic route proxy with no live ancestors', async () => {
     const { fixture, api } = setup(true);
     api.list.mockResolvedValue(workPageFixture());
