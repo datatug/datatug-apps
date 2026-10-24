@@ -51,9 +51,10 @@ import { WorkItem, WorkLink, workTypeLabel } from './work.models';
 })
 export class WorkArtifactLinksComponent {
   readonly project = input<IProjectRef>();
-  readonly kind = input.required<'check' | 'query'>();
+  readonly kind = input.required<'check' | 'query' | 'watch'>();
   /** A query may use its existing folder-qualified identity. */
   readonly identifier = input.required<string>();
+  readonly environment = input('');
   private readonly injector = inject(Injector);
   private readonly authService = inject(SneatAuthStateService);
   private readonly auth = toSignal(this.authService.authState);
@@ -62,6 +63,7 @@ export class WorkArtifactLinksComponent {
       this.project(),
       this.kind(),
       this.identifier(),
+      this.environment(),
       this.auth()?.user?.uid,
     ]),
   );
@@ -90,6 +92,7 @@ export class WorkArtifactLinksComponent {
       this.links.set([]);
       if (!project || !isSharedProjectRef(project) || !identifier || !actor)
         return;
+      if (this.kind() === 'watch' && !this.environment()) return;
       const signal = this.controller.signal;
       const slash = this.kind() === 'query' ? identifier.lastIndexOf('/') : -1;
       const folder = slash < 0 ? '' : identifier.slice(0, slash),
@@ -102,6 +105,7 @@ export class WorkArtifactLinksComponent {
           id,
           folder,
           signal,
+          this.environment(),
         )
         .then((result) => {
           if (key === this.key() && !signal.aborted) {

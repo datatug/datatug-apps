@@ -18,7 +18,7 @@ import {
 } from './launch-tracking';
 import { registerPosthog } from './register-posthog';
 import indexHtml from './index.html?raw';
-import mainSource from './main.ts?raw';
+import mainSource from './main-application.ts?raw';
 
 /** The body of the first `<script>` element in `html`, found by plain string search. */
 function firstInlineScript(html: string): string | undefined {

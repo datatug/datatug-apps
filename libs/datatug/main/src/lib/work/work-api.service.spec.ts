@@ -176,4 +176,35 @@ describe('WorkApiService', () => {
       ).rejects.toThrow('inconsistent related work');
     }
   });
+  it('requires Watch environment and rejects a response from another environment', async () => {
+    const controller = new AbortController();
+    await expect(
+      service.artifactLinks(scope, 'watch', 'watch1', '', controller.signal),
+    ).rejects.toThrow('environment');
+    expect(api.get).not.toHaveBeenCalled();
+    api.get.mockReturnValue(
+      of({
+        items: [workDetailFixture().item],
+        links: [
+          {
+            id: 'link',
+            sourceId: workDetailFixture().item.id,
+            target: { kind: 'watch', id: 'watch1', environment: 'prod' },
+          },
+        ],
+      }),
+    );
+    await expect(
+      service.artifactLinks(
+        scope,
+        'watch',
+        'watch1',
+        '',
+        controller.signal,
+        'uat',
+      ),
+    ).rejects.toThrow('another artefact');
+    expect(api.get.mock.calls[0][1].get('environment')).toBe('uat');
+    expect(api.get.mock.calls[0][1].has('folder')).toBe(false);
+  });
 });

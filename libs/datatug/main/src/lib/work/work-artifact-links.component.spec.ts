@@ -37,6 +37,7 @@ describe('WorkArtifactLinksComponent', () => {
       'order-receipt',
       'shipping',
       expect.any(AbortSignal),
+      '',
     );
     expect(f.componentInstance.items()).toHaveLength(1);
     auth.next({ user: { uid: '' } });
@@ -66,5 +67,58 @@ describe('WorkArtifactLinksComponent', () => {
     f.detectChanges();
     await f.whenStable();
     expect(api.artifactLinks).not.toHaveBeenCalled();
+  });
+  it('requires an exact Watch environment and clears old titles when it changes', async () => {
+    const api = {
+      artifactLinks: vi
+        .fn()
+        .mockResolvedValue({ items: [workDetailFixture().item], links: [] }),
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        {
+          provide: SneatAuthStateService,
+          useValue: {
+            authState: new BehaviorSubject({ user: { uid: 'lead' } }),
+          },
+        },
+        { provide: WorkApiService, useValue: api },
+      ],
+    });
+    const f = TestBed.createComponent(WorkArtifactLinksComponent);
+    f.componentRef.setInput('project', {
+      storeId: 'firestore',
+      spaceID: 'space',
+      projectId: 'project',
+    });
+    f.componentRef.setInput('kind', 'watch');
+    f.componentRef.setInput('identifier', 'watch1');
+    f.detectChanges();
+    await f.whenStable();
+    expect(api.artifactLinks).not.toHaveBeenCalled();
+    f.componentRef.setInput('environment', 'uat');
+    f.detectChanges();
+    await f.whenStable();
+    expect(api.artifactLinks).toHaveBeenLastCalledWith(
+      { spaceID: 'space', projectID: 'project' },
+      'watch',
+      'watch1',
+      '',
+      expect.any(AbortSignal),
+      'uat',
+    );
+    f.componentRef.setInput('environment', 'prod');
+    f.detectChanges();
+    expect(f.componentInstance.items()).toEqual([]);
+    await f.whenStable();
+    expect(api.artifactLinks).toHaveBeenLastCalledWith(
+      { spaceID: 'space', projectID: 'project' },
+      'watch',
+      'watch1',
+      '',
+      expect.any(AbortSignal),
+      'prod',
+    );
   });
 });

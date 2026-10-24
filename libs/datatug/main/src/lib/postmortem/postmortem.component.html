@@ -1,0 +1,600 @@
+@if (loading()) {
+  <p role="status">Loading report…</p>
+}
+@if (error()) {
+  <p role="alert">{{ error() }}</p>
+}
+@if (notice()) {
+  <p role="status">{{ notice() }}</p>
+}
+@if (pending() && !busy()) {
+  <div class="actions">
+    <ion-button (click)="retry()">Retry original change</ion-button
+    ><ion-button fill="clear" (click)="discardPending()"
+      >Reload latest report</ion-button
+    >
+  </div>
+}
+@if (detail(); as detail) {
+  <ion-card>
+    <ion-item-divider color="light"
+      ><ion-label>Postmortem report</ion-label></ion-item-divider
+    >
+    <ion-card-content>
+      <p>
+        Keep verified facts, hypotheses and unknowns distinct. Citations refer
+        to retained permitted evidence.
+      </p>
+      @if (dirty()) {
+        <p role="status">
+          Unsaved changes. Save before generating or reviewing.
+        </p>
+      }
+      <div class="actions">
+        @if (canEdit()) {
+          <ion-button
+            [disabled]="busy() || !!pending() || !dirty()"
+            (click)="save()"
+            >Save report</ion-button
+          >
+          <ion-button
+            [disabled]="busy() || dirty() || !!pending()"
+            (click)="generate()"
+            >Generate AI draft</ion-button
+          >
+          @if (busy()) {
+            <ion-button fill="clear" (click)="cancelGeneration()"
+              >Cancel request</ion-button
+            >
+          }
+          <ion-button
+            [disabled]="busy() || dirty() || !!pending()"
+            (click)="command('submit')"
+            >Submit for review</ion-button
+          >
+        }
+        @if (canEdit() && detail.work.item.status === 'approved') {
+          <ion-button [disabled]="busy() || dirty()" (click)="command('close')"
+            >Close Postmortem</ion-button
+          >
+        }
+        @if (canEdit() && detail.work.item.status === 'closed') {
+          <ion-button [disabled]="busy()" (click)="command('reopen')"
+            >Reopen for amendment</ion-button
+          >
+        }
+        @if (capability()?.canApprove) {
+          <ion-button
+            [disabled]="busy() || dirty() || !!pending()"
+            (click)="command('approve')"
+            >Approve this revision</ion-button
+          >
+        }
+      </div>
+      @for (section of sections(); track section.name; let i = $index) {
+        <details
+          [open]="i === 0 || !!section.text"
+          [attr.aria-label]="label(section)"
+        >
+          <summary>{{ label(section) | titlecase }}</summary>
+          <ion-select
+            [label]="label(section) + ' classification'"
+            [disabled]="!canEdit() || busy()"
+            [ngModel]="section.classification"
+            (ngModelChange)="updateSection(i, 'classification', $event)"
+          >
+            <ion-select-option value="fact">Verified fact</ion-select-option
+            ><ion-select-option value="hypothesis">Hypothesis</ion-select-option
+            ><ion-select-option value="unknown">Unknown</ion-select-option>
+          </ion-select>
+          <ion-textarea
+            [label]="label(section) | titlecase"
+            labelPlacement="stacked"
+            [autoGrow]="true"
+            [readonly]="!canEdit()"
+            maxlength="49152"
+            [ngModel]="section.text"
+            (ngModelChange)="updateSection(i, 'text', $event)"
+          />
+          @for (id of section.evidenceIds; track id) {
+            <p>
+              <a [href]="'#evidence-' + id">{{ citationLabel(id) }}</a>
+            </p>
+          }
+          @if (canEdit() && evidence().length) {
+            <details>
+              <summary>Select supporting evidence</summary>
+              @for (source of evidence(); track source.id) {
+                <ion-item
+                  ><ion-checkbox
+                    [checked]="section.evidenceIds.includes(source.id)"
+                    (ionChange)="
+                      toggleCitation(i, source.id, $event.detail.checked)
+                    "
+                    >{{ source.summary }}</ion-checkbox
+                  ></ion-item
+                >
+              }
+            </details>
+          }
+        </details>
+      }
+    </ion-card-content>
+  </ion-card>
+  @if (candidate(); as candidate) {
+    <ion-card
+      ><ion-item-divider color="light"
+        ><ion-label>AI draft preview</ion-label></ion-item-divider
+      ><ion-card-content>
+        <p>
+          Review before applying. This candidate has not changed your report.
+        </p>
+        @for (warning of candidate.warnings || []; track warning) {
+          <p>{{ warning }}</p>
+        }
+        @for (section of candidate.draft.sections; track section.name) {
+          <h3>
+            {{ label(section) | titlecase }} · {{ section.classification }}
+          </h3>
+          <p>{{ section.text }}</p>
+          @for (id of section.evidenceIds; track id) {
+            <p>
+              <a [href]="'#evidence-' + id">{{ citationLabel(id) }}</a>
+            </p>
+          }
+        }
+        @for (proposal of candidate.draft.recommendations; track proposal.id) {
+          <p>
+            Proposed {{ proposal.kind }}: {{ proposal.dto['title'] }} ·
+            {{ proposal.rationale }}
+          </p>
+        }
+        <p>
+          Applying creates a report draft. Recommendations remain proposed;
+          nothing is saved to project catalogs or activated.
+        </p>
+        <ion-button
+          [disabled]="busy() || dirty() || !!pending()"
+          (click)="applyGeneration()"
+          >Apply reviewed AI draft</ion-button
+        ><ion-button fill="clear" (click)="this.candidate.set(undefined)"
+          >Discard candidate</ion-button
+        >
+      </ion-card-content></ion-card
+    >
+  }
+  <ion-card
+    ><ion-item-divider color="light"
+      ><ion-label>Evidence</ion-label></ion-item-divider
+    ><ion-card-content>
+      @for (source of evidence(); track source.id) {
+        <section [id]="'evidence-' + source.id">
+          <h3>{{ source.kind }} · {{ source.availability }}</h3>
+          <p>{{ source.summary }}</p>
+          <p class="muted">
+            Captured {{ source.capturedAt | date: 'medium' }} · Source version
+            {{ source.sourceVersion }}
+          </p>
+        </section>
+      } @empty {
+        <p>No retained evidence yet. Missing facts must remain unknown.</p>
+      }
+    </ion-card-content></ion-card
+  >
+  <ion-card
+    ><ion-item-divider color="light"
+      ><ion-label>Preventive recommendations</ion-label></ion-item-divider
+    ><ion-card-content>
+      <p>
+        Approving a proposal keeps it in this report. Saving to the project is a
+        separate action. Watches require separate activation in Watch settings.
+      </p>
+      @for (proposal of recommendations(); track proposal.id) {
+        <section [attr.data-proposal-id]="proposal.id">
+          <h3>
+            {{ proposal.dto['title'] || proposal.kind }}
+            <ion-badge>{{ proposal.state }}</ion-badge>
+          </h3>
+          <p>{{ proposal.rationale }}</p>
+          @if (proposal.decisions?.length) {
+            <details>
+              <summary>Decision history</summary>
+              @for (decision of proposal.decisions; track $index) {
+                <p>
+                  {{ decision.state }} · revision {{ decision.revision }} ·
+                  {{ decision.actorId }} · {{ decision.at | date: 'medium' }}
+                  @if (decision.rationale) {
+                    · {{ decision.rationale }}
+                  }
+                </p>
+              }
+            </details>
+          }
+          @if (proposal.target) {
+            <a [routerLink]="artifactHref(proposal)"
+              >Open saved {{ proposal.kind }}</a
+            >
+          }
+          <p>
+            Revision {{ proposal.revision }}
+            @if (proposal.saveState) {
+              · {{ proposal.saveState }}
+            }
+          </p>
+          @for (
+            validation of proposal.validationErrors || [];
+            track validation
+          ) {
+            <p role="alert">{{ validation }}</p>
+          }
+          <details>
+            <summary>Definition</summary>
+            <pre>{{ proposal.dto | json }}</pre>
+          </details>
+          @if (canEdit()) {
+            <div class="actions">
+              <ion-button
+                [disabled]="busy() || dirty()"
+                (click)="editProposal(proposal)"
+                >Adjust</ion-button
+              ><ion-button
+                [disabled]="busy() || dirty()"
+                (click)="decision(proposal, 'approved')"
+                >Approve proposal</ion-button
+              ><ion-button
+                [disabled]="busy() || dirty()"
+                (click)="decision(proposal, 'rejected')"
+                >Reject</ion-button
+              ><ion-button
+                [disabled]="busy() || dirty()"
+                (click)="decision(proposal, 'ignored')"
+                >Ignore</ion-button
+              >
+              @if (proposal.state === 'approved') {
+                <ion-button
+                  [disabled]="busy() || dirty()"
+                  (click)="promote(proposal)"
+                  >Save to project</ion-button
+                >
+                @if (proposal.state === 'approved') {
+                  <details>
+                    <summary>Reuse an existing project artifact</summary>
+                    <ion-input
+                      label="Existing artifact ID"
+                      [ngModel]="reuseId()"
+                      (ngModelChange)="reuseId.set($event)"
+                    /><ion-input
+                      label="Existing artifact version"
+                      [ngModel]="reuseVersion()"
+                      (ngModelChange)="reuseVersion.set($event)"
+                    />
+                    @if (proposal.kind === 'query') {
+                      <ion-input
+                        label="Existing query folder"
+                        [ngModel]="reuseFolder()"
+                        (ngModelChange)="reuseFolder.set($event)"
+                      />
+                    }
+                    @if (proposal.kind === 'watch') {
+                      <ion-input
+                        label="Existing Watch environment"
+                        [ngModel]="reuseEnvironment()"
+                        (ngModelChange)="reuseEnvironment.set($event)"
+                      />
+                    }
+                    <ion-button
+                      [disabled]="
+                        busy() ||
+                        dirty() ||
+                        !reuseId() ||
+                        !reuseVersion() ||
+                        (proposal.kind === 'watch' && !reuseEnvironment())
+                      "
+                      (click)="reuse(proposal)"
+                      >Reuse selected artifact</ion-button
+                    >
+                  </details>
+                }
+              }
+            </div>
+          }
+        </section>
+      } @empty {
+        <p>No preventive proposals. Generate a draft or add one for review.</p>
+      }
+      @if (canEdit()) {
+        <details>
+          <summary>
+            {{
+              editingProposal() ? 'Adjust recommendation' : 'Add recommendation'
+            }}
+          </summary>
+          <ion-select
+            label="Recommendation type"
+            [ngModel]="proposalKind()"
+            (ngModelChange)="proposalKind.set($event)"
+            ><ion-select-option value="query">Query</ion-select-option
+            ><ion-select-option value="check">Check</ion-select-option
+            ><ion-select-option value="watch"
+              >Watch</ion-select-option
+            ></ion-select
+          >
+          <ion-input
+            label="Recommendation title"
+            labelPlacement="stacked"
+            [ngModel]="proposalTitle()"
+            (ngModelChange)="proposalTitle.set($event)"
+          />
+          <ion-textarea
+            label="Recommendation description"
+            labelPlacement="stacked"
+            [ngModel]="proposalDescription()"
+            (ngModelChange)="proposalDescription.set($event)"
+          />
+          <ion-input
+            label="Artifact ID"
+            labelPlacement="stacked"
+            [ngModel]="proposalNativeId()"
+            (ngModelChange)="proposalNativeId.set($event)"
+          />
+          <ion-textarea
+            label="Why this prevents recurrence"
+            labelPlacement="stacked"
+            [ngModel]="proposalRationale()"
+            (ngModelChange)="proposalRationale.set($event)"
+          />
+          @if (proposalKind() === 'query') {
+            <ion-select
+              label="Query language"
+              [ngModel]="proposalQueryType()"
+              (ngModelChange)="proposalQueryType.set($event)"
+              ><ion-select-option value="SQL">SQL</ion-select-option
+              ><ion-select-option value="TugQL"
+                >TugQL</ion-select-option
+              ></ion-select
+            >
+            <ion-input
+              label="Connection ID"
+              labelPlacement="stacked"
+              [ngModel]="proposalConnection()"
+              (ngModelChange)="proposalConnection.set($event)"
+            />
+            <ion-textarea
+              label="Read-only query"
+              labelPlacement="stacked"
+              [autoGrow]="true"
+              [ngModel]="proposalQueryText()"
+              (ngModelChange)="proposalQueryText.set($event)"
+            />
+          }
+          @if (proposalKind() === 'check') {
+            <ion-input
+              label="Query to check"
+              labelPlacement="stacked"
+              [ngModel]="proposalQueryId()"
+              (ngModelChange)="proposalQueryId.set($event)"
+            />
+          }
+          @if (proposalKind() === 'watch') {
+            <ion-input
+              label="Check to watch"
+              labelPlacement="stacked"
+              [ngModel]="proposalCheckId()"
+              (ngModelChange)="proposalCheckId.set($event)"
+            />
+            <ion-input
+              label="Watch environment"
+              labelPlacement="stacked"
+              [ngModel]="proposalEnvironment()"
+              (ngModelChange)="proposalEnvironment.set($event)"
+            />
+            <ion-input
+              label="Evaluation interval in seconds"
+              type="number"
+              min="60"
+              [ngModel]="proposalInterval()"
+              (ngModelChange)="proposalInterval.set(+$event)"
+            />
+            <p>
+              Saving creates a paused Watch. Open Watch settings separately to
+              review recurring load and activate.
+            </p>
+          }
+          <details>
+            <summary>Supporting evidence and dependencies</summary>
+            @for (source of evidence(); track source.id) {
+              <ion-item
+                ><ion-checkbox
+                  [checked]="proposalEvidence().includes(source.id)"
+                  (ionChange)="
+                    toggleProposalEvidence(source.id, $event.detail.checked)
+                  "
+                  >{{ source.summary }}</ion-checkbox
+                ></ion-item
+              >
+            }
+            @for (dependency of recommendations(); track dependency.id) {
+              @if (dependency.id !== editingProposal()?.id) {
+                <ion-item
+                  ><ion-checkbox
+                    [checked]="proposalDependencyIds().includes(dependency.id)"
+                    (ionChange)="
+                      toggleDependency(dependency.id, $event.detail.checked)
+                    "
+                    >Depends on
+                    {{ dependency.dto['title'] || dependency.kind }} revision
+                    {{ dependency.revision }}</ion-checkbox
+                  ></ion-item
+                >
+              }
+            }
+          </details>
+          <details>
+            <summary>Advanced definition</summary>
+            <ion-textarea
+              label="Definition JSON"
+              labelPlacement="stacked"
+              [autoGrow]="true"
+              [ngModel]="proposalDefinition()"
+              (ngModelChange)="proposalDefinition.set($event)"
+            />
+          </details>
+          <ion-button
+            [disabled]="busy() || !proposalTitle().trim()"
+            (click)="saveProposal()"
+            >Save proposed adjustment</ion-button
+          >
+        </details>
+      }
+    </ion-card-content></ion-card
+  >
+  <ion-card
+    ><ion-item-divider color="light"
+      ><ion-label>Revisions</ion-label></ion-item-divider
+    ><ion-card-content>
+      @for (revision of history(); track revision.revision) {
+        <details>
+          <summary>
+            Revision {{ revision.revision }} · {{ revision.origin }} ·
+            {{ revision.at | date: 'medium' }}
+            @if (revision.approvedAt) {
+              · Approved {{ revision.approvedAt | date: 'medium' }}
+            }
+          </summary>
+          @for (section of revision.draft.sections; track section.name) {
+            <h3>
+              {{ label(section) | titlecase }} · {{ section.classification }}
+            </h3>
+            <p>{{ section.text }}</p>
+          }
+        </details>
+      } @empty {
+        <p>Save the report to create its first revision.</p>
+      }
+    </ion-card-content></ion-card
+  >
+  @if (capability()?.canPublish) {
+    <ion-card
+      ><ion-item-divider color="light"
+        ><ion-label>Publication review</ion-label></ion-item-divider
+      ><ion-card-content>
+        <p>
+          Publish only reviewed safe text. Exclude private names, credentials,
+          internal addresses, raw results and confidential context. A published
+          snapshot stays unchanged when the draft changes.
+        </p>
+        <ion-button
+          [disabled]="
+            busy() ||
+            dirty() ||
+            detail.work.item.postmortem?.approvedRevision !==
+              detail.report.revision
+          "
+          (click)="preparePublication()"
+          >Prepare publication preview</ion-button
+        >
+        @if (publicSections().length) {
+          @for (
+            section of publicSections();
+            track section.name;
+            let i = $index
+          ) {
+            <ion-textarea
+              [label]="'Public ' + label(section)"
+              labelPlacement="stacked"
+              [autoGrow]="true"
+              [ngModel]="section.text"
+              (ngModelChange)="updatePublicSection(i, $event)"
+            /><ion-button fill="clear" (click)="omitPublicSection(i)"
+              >Omit {{ label(section) }}</ion-button
+            >
+          }
+          <ion-checkbox
+            [ngModel]="publicationAcknowledged()"
+            (ngModelChange)="publicationAcknowledged.set($event)"
+            >I reviewed this exact public text for disclosure</ion-checkbox
+          ><ion-button
+            [disabled]="!publicationAcknowledged() || busy() || dirty()"
+            (click)="publish()"
+            >Publish approved snapshot</ion-button
+          >
+        }
+      </ion-card-content></ion-card
+    >
+  }
+  @if (capability()?.canShare) {
+    <ion-card
+      ><ion-item-divider color="light"
+        ><ion-label>Controlled sharing</ion-label></ion-item-divider
+      ><ion-card-content>
+        <ion-select
+          label="Published snapshot"
+          [ngModel]="selectedPublication()"
+          (ngModelChange)="
+            selectedPublication.set($event); token.set(''); shareUrl.set('')
+          "
+        >
+          @for (
+            publication of detail.publications || [];
+            track publication.id
+          ) {
+            <ion-select-option [value]="publication.id">{{
+              'Revision ' + publication.revision
+            }}</ion-select-option>
+          }
+        </ion-select>
+        <ion-button
+          [disabled]="busy() || !selectedPublication()"
+          (click)="createLink()"
+          >Create expiring link</ion-button
+        >
+        @if (shareUrl()) {
+          <p>Copy this link now. It will not be returned again.</p>
+          <a [href]="shareUrl()" target="_blank" rel="noreferrer noopener">{{
+            shareUrl()
+          }}</a>
+        }
+        @for (link of detail.links || []; track link.id) {
+          <p>
+            Expires {{ link.expiresAt | date: 'medium' }}
+            @if (link.revoked) {
+              · Revoked
+            } @else {
+              <ion-button
+                [disabled]="busy()"
+                (click)="command('revoke-link', { linkId: link.id })"
+                >Revoke link</ion-button
+              >
+            }
+          </p>
+        }
+        <ion-input
+          label="Email recipients"
+          labelPlacement="stacked"
+          placeholder="person@example.com"
+          [ngModel]="recipients()"
+          (ngModelChange)="
+            recipients.set($event); recipientsConfirmed.set(false)
+          "
+        />
+        <ion-checkbox
+          [ngModel]="recipientsConfirmed()"
+          (ngModelChange)="recipientsConfirmed.set($event)"
+          >I confirm these recipients may receive the approved
+          report</ion-checkbox
+        >
+        <ion-button
+          [disabled]="
+            busy() || !token() || !recipientsConfirmed() || !recipients().trim()
+          "
+          (click)="sendEmail()"
+          >Send approved report</ion-button
+        >
+        <p class="muted">
+          Revocation blocks future link reads. Previously delivered email or
+          copied content cannot be recalled.
+        </p>
+      </ion-card-content></ion-card
+    >
+  }
+}

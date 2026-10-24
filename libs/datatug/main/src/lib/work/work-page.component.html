@@ -124,6 +124,24 @@
               ></ion-item
             >
           }
+          @if (formDraft()?.type === 'postmortem') {
+            @if (!parent()) {
+              <p role="alert">
+                Open an Incident or Detective Case and choose Create Postmortem
+                to retain its evidence and context.
+              </p>
+            }
+            @if (parent()?.item.lifecycle !== 'done') {
+              <ion-item
+                ><ion-checkbox
+                  [checked]="earlyPostmortem()"
+                  (ionChange)="earlyPostmortem.set($event.detail.checked)"
+                  >Create an early draft before the investigation is
+                  complete</ion-checkbox
+                ></ion-item
+              >
+            }
+          }
           @if (page()!.capabilities.canCreate) {
             <sneat-work-form
               [initial]="formDraft()"
@@ -246,6 +264,9 @@
               (submitted)="save($event)"
               (cancelled)="editing.set(false)"
           /></ion-card>
+        }
+        @if (detail.item.type === 'postmortem') {
+          <sneat-postmortem [work]="detail" (changed)="reportChanged($event)" />
         }
         <div class="detail-columns">
           <main>
@@ -561,6 +582,15 @@
               @if (detail.capabilities.canCreate) {
                 <ion-item
                   ><ion-buttons class="wrapping-actions">
+                    @if (
+                      detail.item.type === 'incident' ||
+                      detail.item.type === 'case'
+                    ) {
+                      <ion-button
+                        [routerLink]="router.parseUrl(childHref('postmortem'))"
+                        >Create Postmortem</ion-button
+                      >
+                    }
                     @if (detail.item.type === 'incident') {
                       <ion-button
                         [routerLink]="router.parseUrl(childHref('case'))"
@@ -682,6 +712,8 @@
               ><ion-label>Cases</ion-label></ion-segment-button
             ><ion-segment-button value="task"
               ><ion-label>Tasks</ion-label></ion-segment-button
+            ><ion-segment-button value="postmortem"
+              ><ion-label>Postmortems</ion-label></ion-segment-button
             ></ion-segment
           >
           @if (activeFilters().length) {

@@ -27,6 +27,19 @@ const loadDatatugHomePage = () =>
 
 export const datatugRoutes: Routes = [
   {
+    path: 'postmortems/shared',
+    canMatch: [
+      () => {
+        location.assign(location.href);
+        return false;
+      },
+    ],
+    loadComponent: () =>
+      import('../postmortem/postmortem-shared.component').then(
+        (m) => m.PostmortemSharedComponent,
+      ),
+  },
+  {
     path: 'native-check-status/:recoveryId',
     loadComponent: () =>
       import('../session-context/session-detective-recovery.component').then(

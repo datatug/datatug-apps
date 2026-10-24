@@ -62,6 +62,7 @@ import {
   ContextSnapshot,
   SessionScope,
 } from '../session-context/session-context-contract';
+import { PostmortemComponent } from '../postmortem/postmortem.component';
 import { WorkApiService } from './work-api.service';
 import { WorkWatchComponent } from './work-watch.component';
 import { WorkContextComponent } from './work-context.component';
@@ -93,6 +94,7 @@ import {
   styleUrl: './work-page.component.scss',
   imports: [
     WorkWatchComponent,
+    PostmortemComponent,
     FormsModule,
     RouterLink,
     DatePipe,
@@ -206,6 +208,7 @@ export class WorkPageComponent {
   readonly targetEnvironment = signal('');
   readonly selection = signal<ContextEntryRef[]>([]);
   readonly inheritance = signal('snapshot');
+  readonly earlyPostmortem = signal(false);
   readonly reviewedProposal = signal('');
   readonly proposalPreview = signal<{ label: string; value: string }[]>([]);
   readonly proposalReviewOpen = signal(false);
@@ -225,7 +228,10 @@ export class WorkPageComponent {
     if (item) return draftFromWork(item);
     const type = this.queryParams().get('type');
     return {
-      type: type === 'incident' || type === 'case' ? type : 'task',
+      type:
+        type === 'incident' || type === 'case' || type === 'postmortem'
+          ? type
+          : 'task',
       title: '',
       priority: 'normal',
       environment: this.parent()?.item.incident?.environment,
@@ -501,6 +507,19 @@ export class WorkPageComponent {
     this.filters.update((f) => ({ ...f, [key]: value, cursor: undefined }));
     void this.load();
   }
+  reportChanged(detail: WorkDetail): void {
+    const current = this.detail()?.item;
+    if (
+      !current ||
+      current.id !== detail.item.id ||
+      current.spaceID !== detail.item.spaceID ||
+      current.projectID !== detail.item.projectID
+    )
+      return;
+    this.detail.set(detail);
+    this.members.set(detail.members);
+    if (detail.context) this.context.set(detail.context);
+  }
   async load(more = false): Promise<void> {
     const epoch = ++this.epoch;
     this.controller.abort();
@@ -725,6 +744,9 @@ export class WorkPageComponent {
       action: item ? 'edit' : 'create',
       ...(item ? { itemId: item.id, expectedVersion: item.version } : {}),
       draft: event.draft,
+      ...(event.draft.type === 'postmortem'
+        ? { earlyDraft: this.earlyPostmortem() }
+        : {}),
       ...(!item ? { contextScope: event.contextScope } : {}),
       ...(parent
         ? {

@@ -1,5 +1,10 @@
 import type { Breadcrumb, ErrorEvent } from '@sentry/browser';
-import { isLinkRoute, redactResultIds, scrubText } from './link-privacy';
+import {
+  hasQuickSearchOrigin,
+  isLinkRoute,
+  redactResultIds,
+  scrubText,
+} from './link-privacy';
 import { TransactionEvent, withSentryLinkPrivacy } from './sentry-privacy';
 
 const BASE = '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook';
@@ -582,4 +587,32 @@ describe('queued Check metadata query-mode Sentry privacy', () => {
     ])
       expect(JSON.stringify(out)).not.toContain(secret);
   });
+});
+
+describe('Postmortem report privacy', () => {
+  it.each([
+    '/space/space/store/firestore/project/project/work/report',
+    '/space/space/store/firestore/project/project/work/new',
+    '/my/work',
+    '/postmortems/shared',
+  ])('marks %s sensitive before render', (path) =>
+    expect(isLinkRoute(path)).toBe(true),
+  );
+  it('removes bare public share capabilities from diagnostic text', () =>
+    expect(
+      scrubText('/postmortems/shared#token=space.project.secret', false),
+    ).not.toContain('secret'));
+});
+
+it('preserves Work/Postmortem telemetry origin sensitivity after navigation away', () => {
+  expect(
+    hasQuickSearchOrigin({
+      url: 'https://api.sneat.cloud/v0/datatug/postmortems/actions',
+    }),
+  ).toBe(true);
+  expect(
+    hasQuickSearchOrigin({
+      url: '/space/space/store/firestore/project/project/work/report',
+    }),
+  ).toBe(true);
 });

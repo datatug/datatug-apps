@@ -133,15 +133,23 @@ export class WorkApiService {
   }
   async artifactLinks(
     scope: WorkScope,
-    kind: 'check' | 'query',
+    kind: 'check' | 'query' | 'watch',
     id: string,
     folder: string,
     signal: AbortSignal,
+    environment = '',
   ): Promise<{ items: WorkItem[]; links: WorkLink[] }> {
+    if (kind === 'watch' && (!environment.trim() || folder))
+      throw new Error('A Watch environment is required for Work references.');
     const result = await this.get<{ items: WorkItem[]; links: WorkLink[] }>(
       'artifact-links',
       scope,
-      { kind, id, ...(folder ? { folder } : {}) },
+      {
+        kind,
+        id,
+        ...(folder ? { folder } : {}),
+        ...(kind === 'watch' ? { environment } : {}),
+      },
       signal,
     );
     if (!Array.isArray(result.items) || !Array.isArray(result.links))
@@ -153,6 +161,7 @@ export class WorkApiService {
           link.target.kind !== kind ||
           link.target.id !== id ||
           (link.target.folder || '') !== folder ||
+          (kind === 'watch' && link.target.environment !== environment) ||
           !result.items.some((item) => item.id === link.sourceId),
       )
     )
@@ -224,7 +233,7 @@ export class WorkApiService {
       item.spaceID !== scope.spaceID ||
       item.projectID !== scope.projectID ||
       !item.id ||
-      !['incident', 'case', 'task'].includes(item.type) ||
+      !['incident', 'case', 'task', 'postmortem'].includes(item.type) ||
       !Number.isSafeInteger(item.version) ||
       item.version < 1 ||
       !item.contextSessionId ||
@@ -263,7 +272,7 @@ export class WorkApiService {
           (item) =>
             !item ||
             !peers.has(item.id) ||
-            !['incident', 'case', 'task'].includes(item.type) ||
+            !['incident', 'case', 'task', 'postmortem'].includes(item.type) ||
             typeof item.title !== 'string' ||
             !item.title.trim() ||
             item.title.length > 4000,

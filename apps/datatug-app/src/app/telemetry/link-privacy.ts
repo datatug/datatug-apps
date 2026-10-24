@@ -34,6 +34,14 @@ function quickSearchPage(
     : undefined;
 }
 
+/** Work reports contain manual content and native proposals; suppress capture on every Work detail. */
+function sensitiveWorkPage(pathname: string): boolean {
+  if (pathname === '/my/work' || /^\/postmortems\/shared\/?$/.test(pathname))
+    return true;
+  const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
+  return project.ok && /^\/work(?:\/[^/]+)?\/?$/.test(project.rest);
+}
+const WORK_API_ROUTE = /^\/(?:v0\/)?datatug\/(?:postmortems|work)\//;
 /** Lifecycle/search requests carry scope identifiers even after the page is left. */
 const QUICK_SEARCH_API_ROUTE =
   /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|preview|enable|refresh|search|disable)\/?$/;
@@ -48,7 +56,12 @@ export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
       const path = address
         .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '')
         .split(/[?#]/)[0];
-      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path);
+      return (
+        !!quickSearchPage(path) ||
+        sensitiveWorkPage(path) ||
+        WORK_API_ROUTE.test(path) ||
+        QUICK_SEARCH_API_ROUTE.test(path)
+      );
     });
   if (!value || typeof value !== 'object') return false;
   return Object.values(value).some((item) =>
@@ -60,6 +73,7 @@ export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
   return (
+    sensitiveWorkPage(path) ||
     !!quickSearchPage(path) ||
     LINK_ROUTE.test(path) ||
     RESULT_ROUTE.test(path) ||
@@ -140,7 +154,7 @@ const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
 const RELATIVE_LINK_PATH =
   /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS =
-  /#(?:[^\s"'<>`#]*&)?(?:code|pk|evidence)=[^\s"'<>`]*/g;
+  /#(?:[^\s"'<>`#]*&)?(?:code|pk|evidence|token)=[^\s"'<>`]*/g;
 
 /**
  * Free text (an error message, a breadcrumb message, a span description) as telemetry may see it: every absolute

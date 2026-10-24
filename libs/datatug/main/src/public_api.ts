@@ -93,6 +93,7 @@ export {
 export type {
   WorkAction,
   WorkDetail,
+  WorkPage,
   WorkItem,
   WorkLink,
 } from './lib/work/work.models';

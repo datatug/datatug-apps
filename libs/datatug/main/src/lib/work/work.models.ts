@@ -5,7 +5,7 @@ import {
   ContextSubject,
   ContextEntryRef,
 } from '../session-context/session-context-contract';
-export type WorkType = 'incident' | 'case' | 'task';
+export type WorkType = 'incident' | 'case' | 'task' | 'postmortem';
 export interface WorkScope {
   readonly spaceID: string;
   readonly projectID: string;
@@ -35,6 +35,11 @@ export interface WorkItem extends WorkScope {
     actorId: string;
     at: string;
     outcome?: string;
+  };
+  readonly postmortem?: {
+    revision: number;
+    approvedRevision?: number;
+    approvedDigest?: string;
   };
   readonly incident?: {
     severity: string;
@@ -183,6 +188,7 @@ export interface WorkAction extends WorkScope {
   relation?: string;
   target?: WorkTarget;
   linkId?: string;
+  earlyDraft?: boolean;
   parentId?: string;
   parentVersion?: number;
   inheritance?: string;
@@ -203,7 +209,12 @@ export type WorkFilters = Partial<
   >
 >;
 export const workTypeLabel = (type: WorkType): string =>
-  ({ incident: 'Incident', case: 'Detective Case', task: 'Task' })[type];
+  ({
+    incident: 'Incident',
+    case: 'Detective Case',
+    task: 'Task',
+    postmortem: 'Postmortem',
+  })[type];
 export const workOverdue = (
   item: Pick<WorkItem, 'dueAt' | 'lifecycle'>,
   now = Date.now(),

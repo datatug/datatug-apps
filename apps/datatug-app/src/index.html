@@ -3,6 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="referrer" content="no-referrer" />
+    <script id="datatug-postmortem-privacy">
+      if (location.pathname.replace(/\/$/, '') === '/postmortems/shared') {
+        window.__datatugOptionalTrackingDisabled = true;
+        window.__datatugPostmortemToken = new URLSearchParams(location.hash.slice(1)).get('token') || '';
+        history.replaceState(null, '', location.pathname);
+      }
+    </script>
     <title>DataTug.app</title>
 
     <base href="/" />

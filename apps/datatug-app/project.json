@@ -91,6 +91,7 @@
         "inlineStyleLanguage": "scss",
         "assets": [
           "apps/datatug-app/src/favicon.ico",
+          "apps/datatug-app/src/_headers",
           "apps/datatug-app/src/assets",
           {
             "glob": "sql-wasm.wasm",
@@ -386,6 +387,14 @@
       "options": {
         "cwd": ".",
         "config": "apps/datatug-app/vite.config.mts"
+      }
+    },
+    "e2e-postmortem": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-postmortem"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.postmortem.config.ts --forbid-only"
       }
     },
     "e2e-work": {

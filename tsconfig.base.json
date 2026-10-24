@@ -30,6 +30,7 @@
       "@datatug/friendly-error": ["./libs/datatug/friendly-error/src/public_api.ts"],
       "@datatug/product-profiles": ["./libs/datatug/product-profiles/src/public_api.ts"],
       "@datatug/ag-grid": ["./libs/datatug/ag-grid/src/public_api.ts"],
+      "@sneat/datatug-main/postmortem-shared": ["./libs/datatug/main/src/lib/postmortem/postmortem-shared.component.ts"],
       "@sneat/datatug-main": ["./libs/datatug/main/src/public_api.ts"],
       "@sneat/datatug-semantic": ["./libs/datatug/semantic/src/public_api.ts"],
       "@sneat/datatug-semantic/fixtures/client-only-source-rights.json": ["./libs/datatug/semantic/src/contract/fixtures/client-only-source-rights.json"],

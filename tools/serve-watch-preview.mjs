@@ -4,6 +4,13 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 const root = path.resolve('dist/apps/datatug-app/browser');
 const port = Number(process.env.DATATUG_WATCH_UI_PORT || 18843);
+const publicHeaders = {
+  'Cache-Control': 'no-store, private',
+  'Referrer-Policy': 'no-referrer',
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy':
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:8090; font-src 'self' data:; img-src 'self' data:; frame-ancestors 'none'; object-src 'none'",
+};
 const types = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -49,6 +56,10 @@ const server = createServer(async (req, res) => {
       .writeHead(200, {
         'Content-Type': types[path.extname(file)] || 'application/octet-stream',
         'Cache-Control': 'no-store',
+        ...(new URL(req.url, 'http://localhost').pathname.replace(/\/$/, '') ===
+        '/postmortems/shared'
+          ? publicHeaders
+          : {}),
       })
       .end(await readFile(file));
   } catch {
