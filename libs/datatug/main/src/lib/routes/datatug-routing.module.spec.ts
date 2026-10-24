@@ -72,6 +72,9 @@ describe('datatugRoutes', () => {
       'cards',
       'boards',
       'sessions',
+      'watch/new',
+      'watch/:watchId',
+      'watch',
       'work/new',
       'work/:workItemId',
       'work',
@@ -92,6 +95,12 @@ describe('datatugRoutes', () => {
       );
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
+    expect(matches([...base, 'watch'])).toBe(true);
+    expect(matches([...base, 'watch', 'new'])).toBe(true);
+    expect(matches([...base, 'watch', 'order-11045-shared'])).toBe(true);
+    expect(matches([...base, 'watch', 'bad.id'])).toBe(false);
+    expect(matches([...base, 'watch', 'x'.repeat(129)])).toBe(false);
+    expect(matches([...base, 'watch', 'id', 'extra'])).toBe(false);
     expect(matches([...base, 'work'])).toBe(true);
     expect(matches([...base, 'work', 'new'])).toBe(true);
     expect(matches([...base, 'work', 'item-1'])).toBe(true);

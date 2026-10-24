@@ -46,6 +46,7 @@ const digest = (value: unknown): string => {
 const exact = (left: unknown, right: unknown): boolean =>
   JSON.stringify(left) === JSON.stringify(right);
 export interface RetainedManifestView {
+  readonly workContext?: readonly RetainedWorkContextRef[];
   readonly ref: string;
   readonly actorId: string;
   readonly incidentRef: string;
@@ -59,6 +60,16 @@ export interface RetainedManifestView {
   readonly environment: string;
   readonly inputs: Readonly<Record<string, TypedValue>>;
   readonly auditSHA256: string;
+}
+export interface RetainedWorkContextRef {
+  readonly workItemId: string;
+  readonly workVersion: number;
+  readonly sessionId: string;
+  readonly sessionVersion: number;
+  readonly bagId: string;
+  readonly bagVersion: number;
+  readonly entryId: string;
+  readonly revisionId: string;
 }
 export interface RetainedOpenScope extends RetainedEvidenceScope {
   /** Current server-admitted private namespace. The hosted route project is
@@ -105,6 +116,7 @@ export function readSelectedManifest(
     'entries',
     'inputs',
     'auditSHA256',
+    'workContext',
   ]);
   if (wire['version'] !== 1) throw new Error('Unsupported selected manifest.');
   const scope = obj(wire['scope'], ['environmentId', 'identityDomain']);
@@ -184,7 +196,28 @@ export function readSelectedManifest(
     throw new Error('Selected applied revision mismatch.');
   integer(slot['version'], 1);
   const inputs = readSelectedInputs(wire['inputs']);
+  let workContext: RetainedWorkContextRef[] | undefined;
+  if (wire['workContext'] !== undefined) {
+    if (!Array.isArray(wire['workContext']) || wire['workContext'].length < 1 || wire['workContext'].length > 2)
+      throw new Error('Invalid canonical Work context audit.');
+    workContext = wire['workContext'].map((value) => {
+      const reference = obj(value, ['workItemId', 'workVersion', 'sessionId', 'sessionVersion', 'bagId', 'bagVersion', 'entryId', 'revisionId']);
+      return {
+        workItemId: txt(reference['workItemId']),
+        workVersion: integer(reference['workVersion'], 1),
+        sessionId: txt(reference['sessionId']),
+        sessionVersion: integer(reference['sessionVersion'], 1),
+        bagId: txt(reference['bagId']),
+        bagVersion: integer(reference['bagVersion'], 1),
+        entryId: txt(reference['entryId']),
+        revisionId: txt(reference['revisionId']),
+      };
+    });
+    if (new Set(workContext.map((reference) => reference.workItemId)).size !== workContext.length)
+      throw new Error('Duplicate canonical Work context audit.');
+  }
   return {
+    ...(workContext ? { workContext } : {}),
     ref: txt(wire['ref']),
     actorId: actor,
     incidentRef: txt(wire['incidentRef']),

@@ -14,6 +14,21 @@
 ></ion-header>
 <ion-content color="light"
   ><main class="watch-page">
+    @if (hostedProject(); as ref) {
+      <sneat-work-watch [project]="ref" [watchId]="watchId()" />
+      @if (!client.identity()) {
+        <ion-button
+          class="coordinator-controls-toggle"
+          fill="clear"
+          (click)="directConnection.set(!directConnection())"
+          >{{
+            directConnection()
+              ? 'Hide coordinator controls'
+              : 'Coordinator monitoring and notification controls'
+          }}</ion-button
+        >
+      }
+    }
     @if (error()) {
       <p role="alert" class="error">{{ error() }}</p>
     }
@@ -27,7 +42,7 @@
       <p role="status">
         <ion-spinner name="dots" /> Loading project coordinator…
       </p>
-    } @else if (!config()) {
+    } @else if (!config() && (!hostedProject() || directConnection())) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label
@@ -47,7 +62,9 @@
           </p></ion-card-content
         >
       </ion-card>
-    } @else if (!client.identity()) {
+    } @else if (
+      !client.identity() && (!hostedProject() || directConnection())
+    ) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h1>Connect to Watch</h1></ion-label></ion-item-divider
@@ -573,6 +590,17 @@
                           (click)="lifecycle('enabled')"
                           >Resume</ion-button
                         >
+                      }
+                      @if (watch.lifecycle === 'completed') {
+                        <ion-button
+                          [disabled]="busy()"
+                          (click)="lifecycle('enabled')"
+                          >Monitor next occurrence</ion-button
+                        >
+                        <p>
+                          Restart monitoring with the last known result. The
+                          completed occurrence stays in history.
+                        </p>
                       }
                       <ion-button
                         fill="clear"

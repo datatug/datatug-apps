@@ -1,0 +1,144 @@
+{
+  "format": "datatug-work-watch-independent-browser/v1",
+  "incidentPath": "/space/space/store/firestore/project/project/work/w-1114471d70bbcf0176804ec834dddfaa",
+  "errors": [],
+  "consoleErrors": [
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+  ],
+  "failures": [
+    {
+      "path": "http://localhost:8989/datatug/agent-info",
+      "error": "net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "path": "http://127.0.0.1:8090/v0/datatug/detective/state",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "path": "http://localhost:8989/datatug/agent-info",
+      "error": "net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "path": "http://localhost:8989/datatug/agent-info",
+      "error": "net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "path": "http://localhost:8989/datatug/agent-info",
+      "error": "net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "path": "http://127.0.0.1:8090/v0/datatug/environments/state",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "path": "http://127.0.0.1:8090/v0/datatug/work/watch-events",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "path": "http://localhost:8989/datatug/agent-info",
+      "error": "net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "path": "http://127.0.0.1:55399/v1/watch/subscriptions",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "path": "http://127.0.0.1:55399/v1/watch/runs",
+      "error": "net::ERR_ABORTED"
+    },
+    {
+      "path": "http://127.0.0.1:55399/v1/watch/deliveries",
+      "error": "net::ERR_ABORTED"
+    }
+  ],
+  "httpErrors": [],
+  "overflow": {
+    "documentWidth": 390,
+    "viewport": 390,
+    "clippedText": []
+  },
+  "mobileControlBounds": {
+    "x": 10,
+    "y": 788.484375,
+    "width": 370,
+    "height": 44
+  },
+  "acknowledged": [
+    {
+      "id": "7342cc93d5bc5d934a553f27dea5814dc1d42655064f49333b0142fbb0093e64",
+      "watchId": "order-11045-one-shot",
+      "event": "change"
+    }
+  ],
+  "oneShotControls": [
+    "Monitor next occurrence"
+  ],
+  "retainedWorkContext": {
+    "runId": "run-5d79ce1296e39c62ec7405e7c41ebe98",
+    "manifestRef": "applied-5fd6832573cabbc585b2ee3a68e00fbfd57efdbfd9f795b445dfae15812eccc3",
+    "actor": "bob",
+    "privateSessionId": "exec_026a1ad432558f82e796a3446b377bb4",
+    "selectedOrderMatchesScenario": true,
+    "canonicalRefs": [
+      {
+        "workItemId": "w-1114471d70bbcf0176804ec834dddfaa",
+        "workVersion": 1,
+        "sessionId": "ws_w-1114471d70bbcf0176804ec834dddfaa",
+        "sessionVersion": 2,
+        "bagId": "wb_w-1114471d70bbcf0176804ec834dddfaa",
+        "bagVersion": 2,
+        "entryId": "we_b0a5dde9c903d383e879653dc8c0f414",
+        "revisionId": "wr_bb3fa559204edd48155a3658539fb72e"
+      },
+      {
+        "workItemId": "w-c4be99a1f3d13881403fe7c13280705e",
+        "workVersion": 3,
+        "sessionId": "ws_w-c4be99a1f3d13881403fe7c13280705e",
+        "sessionVersion": 3,
+        "bagId": "cb_14922fb5f78b8959c2b83f52d36e1c716929a76cc887e4b9845248171c4715ee",
+        "bagVersion": 1,
+        "entryId": "ce_dc35f6e949b734018ee27f2a7fa458a362b2fc7823835360c3a44c54d8577eaf",
+        "revisionId": "cr_fd68fc4904b2bd52693c81cbd076b88c2913bba9337e6f81306316a5b1e884bf"
+      }
+    ]
+  },
+  "workAndSourceReadOnly": true,
+  "oneShotRearmInspection": {
+    "accessibleName": "Monitor next occurrence",
+    "visible": true,
+    "enabled": true,
+    "clicked": false,
+    "bounds": {
+      "x": 388.390625,
+      "y": 459.640625,
+      "width": 261.4375,
+      "height": 36
+    }
+  },
+  "mobileTapProof": {
+    "bounds": {
+      "x": 10,
+      "y": 788.484375,
+      "width": 370,
+      "height": 44
+    },
+    "hit": [
+      {
+        "tag": "ION-BUTTON",
+        "classes": "coordinator-controls-toggle md button button-clear ion-activatable ion-focusable hydrated",
+        "text": "Coordinator monitoring and notification controls"
+      }
+    ],
+    "tapSucceeded": true,
+    "viewport": {
+      "width": 390,
+      "height": 844
+    }
+  },
+  "mobileEmulatorOverlayObservation": "The fixed test-only emulator warning visually overlaps the label tail; actual center hit target and normal tap succeeded. No production footer claim.",
+  "oneShotHumanClosureReceipt": "one-shot-closure-proof.json"
+}

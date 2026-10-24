@@ -200,6 +200,7 @@ export const datatugRoutes: Routes = [
               'detective',
               'incidents',
               'work',
+              'watch',
               'shipping',
               'boards',
               'board',
@@ -208,7 +209,7 @@ export const datatugRoutes: Routes = [
               'meanings',
             ].includes(segments[6].path)) ||
           (segments.length === 8 &&
-            segments[6].path === 'work' &&
+            ['work', 'watch'].includes(segments[6].path) &&
             /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             segments[6].path === 'cards' &&
@@ -456,6 +457,30 @@ export const datatugRoutes: Routes = [
             ],
           },
         ],
+      },
+      {
+        path: 'watch/new',
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
+      },
+      {
+        path: 'watch/:watchId',
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
+      },
+      {
+        path: 'watch',
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
       },
       {
         path: 'work/new',

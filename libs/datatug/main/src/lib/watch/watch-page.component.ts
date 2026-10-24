@@ -35,7 +35,9 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { filter, firstValueFrom } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { ProjectService } from '../services/project/project.service';
+import { WorkWatchComponent } from '../work/work-watch.component';
 import { projectPageHref } from '../nav/project-page-href';
 import { useDetectivePageContext } from '../detective/detective-page-context';
 import { DetectiveClientService } from '../detective/detective-client.service';
@@ -91,6 +93,7 @@ const emptyForm = (): WatchForm => ({
   templateUrl: './watch-page.component.html',
   styleUrl: './watch-page.component.scss',
   imports: [
+    WorkWatchComponent,
     DatePipe,
     RouterLink,
     IonBackButton,
@@ -120,11 +123,17 @@ const emptyForm = (): WatchForm => ({
 export class WatchPageComponent {
   protected readonly client = inject(WatchClientService);
   protected readonly scope = useDetectivePageContext();
+  protected readonly hostedProject = computed(() => {
+    const ref = this.scope.ref();
+    return ref?.storeId === 'firestore' && ref.spaceID ? ref : undefined;
+  });
+  protected readonly directConnection = signal(false);
   private readonly project = inject(ProjectService);
   private readonly detective = inject(DetectiveClientService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly authService = inject(SneatAuthStateService);
   private alive = true;
   private generation = 0;
   private viewGeneration = 0;
@@ -315,6 +324,20 @@ export class WatchPageComponent {
   }
 
   constructor() {
+    let actor: string | undefined;
+    this.authService.authState
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((state) => {
+        const next = state.user?.uid ?? '';
+        this.client.bindPrincipal(next);
+        if (actor !== undefined && actor !== next) {
+          this.generation++;
+          this.disconnect();
+          this.token.set('');
+          this.directConnection.set(false);
+        }
+        actor = next;
+      });
     this.destroyRef.onDestroy(() => {
       this.alive = false;
       this.generation++;
@@ -759,7 +782,13 @@ export class WatchPageComponent {
       const result = await this.client.lifecycle(d, next);
       if (!active()) return;
       this.current.set(result.definition);
-      this.message.set(next === 'paused' ? 'Watch paused.' : 'Watch resumed.');
+      this.message.set(
+        next === 'paused'
+          ? 'Watch paused.'
+          : d.lifecycle === 'completed'
+            ? 'Monitoring restarted for the next occurrence.'
+            : 'Watch resumed.',
+      );
     });
   }
   protected async remove() {

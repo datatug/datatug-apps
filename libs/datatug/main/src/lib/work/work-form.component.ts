@@ -117,7 +117,7 @@ export class WorkFormComponent {
           initialScope
             ? this.scopeKey(e) === this.scopeKey(initialScope)
             : e.environmentId === draft?.environment,
-        ) ?? options[0];
+        ) ?? (initialScope || draft?.environment ? undefined : options[0]);
       this.form.reset({
         type: draft?.type ?? 'task',
         title: draft?.title ?? '',

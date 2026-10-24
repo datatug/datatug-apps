@@ -1,0 +1,18 @@
+
+> nx run datatug-app:stamp-build-info
+
+> cp apps/datatug-app/src/build-info.ts apps/datatug-app/src/build-info.generated.ts
+
+> sneat-stamp-build-info --ts apps/datatug-app/src/build-info.generated.ts --json apps/datatug-app/src/build-info.json
+
+[sneat-stamp-build-info] version=0.1.0+2048 gitHash=4ff1abd buildTimestamp=2026-10-24T09:32:40.132Z
+
+
+
+ NX   Successfully ran target stamp-build-info for project datatug-app
+
+
+  Run duration:      102ms
+  Cache:             0/1 hit (0%)
+  Critical path:     86ms (1 task)
+  Recoverable time:  <1ms

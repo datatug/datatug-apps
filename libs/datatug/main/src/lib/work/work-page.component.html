@@ -147,6 +147,52 @@
           }
         </ion-card>
       } @else if (detail(); as detail) {
+        @if (detail.watchEvidence?.length) {
+          <ion-card>
+            <ion-item-divider color="light"
+              ><ion-label>Retained Watch history</ion-label></ion-item-divider
+            >
+            <ion-list aria-label="Retained Watch evidence">
+              @for (evidence of detail.watchEvidence; track evidence.id) {
+                <ion-item
+                  ><ion-label class="ion-text-wrap"
+                    ><h3>
+                      {{
+                        evidence.event.kind === 'recovery'
+                          ? 'Recovered'
+                          : 'Watch triggered'
+                      }}
+                      · {{ evidence.event.outcome }} ·
+                      {{ evidence.event.environment }}
+                    </h3>
+                    <p>
+                      {{ evidence.event.occurredAt | date: 'medium' }} ·
+                      {{ evidence.event.title }}
+                    </p>
+                    <p>
+                      Check run:
+                      {{ evidence.event.checkRunRef || evidence.event.runId }}
+                    </p>
+                    <p>
+                      Recorded by {{ name(evidence.importedBy) }} ·
+                      {{ evidence.importedAt | date: 'medium' }}
+                    </p></ion-label
+                  ></ion-item
+                >
+              }
+            </ion-list>
+          </ion-card>
+        }
+        @for (link of detail.links; track link.id) {
+          @if (link.target.kind === 'watch') {
+            <sneat-work-watch
+              [project]="project()"
+              [watchId]="link.target.id"
+              [item]="detail.item"
+              (changed)="load()"
+            />
+          }
+        }
         <div class="detail-heading">
           <div>
             <div class="eyebrow">

@@ -1,0 +1,76 @@
+
+> nx run datatug-main:test-focused libs/datatug/main/src/lib/services/repo/datatug-store.service.firestore.spec.ts libs/datatug/main/src/lib/services/project/shared-project-summary.service.spec.ts libs/datatug/main/src/lib/services/project/project.service.spec.ts
+
+> vitest run --config libs/datatug/main/vite.focused.config.mts libs/datatug/main/src/lib/services/repo/datatug-store.service.firestore.spec.ts libs/datatug/main/src/lib/services/project/shared-project-summary.service.spec.ts libs/datatug/main/src/lib/services/project/project.service.spec.ts
+
+(node:1012145) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (libs/datatug/main/vite.config.mts:10:12). Use `import.meta.dirname` instead
+  - import "../../../vite.config.base" without a file extension (libs/datatug/main/vite.config.mts:3:66). Add the file extension
+  - ESM syntax in a file loaded as CommonJS (vite.config.base.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main
+
+(node:1012575) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1012581) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1012588) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/services/repo/datatug-store.service.firestore.spec.ts (10 tests) 26ms
+ ✓ |datatug-main| src/lib/services/project/shared-project-summary.service.spec.ts (8 tests) 27ms
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService > project summary cache > watchProjectSummary() then getSummary() for the same project share one HTTP request
+ProjectService.watchProjectSummary() => creating new subject for demo-project@localhost:8989
+ProjectService.watchProjectSummary() => reusing existing subject
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService > project summary cache > getSummary() then watchProjectSummary() for the same project share one HTTP request
+ProjectService.watchProjectSummary() => creating new subject for demo-project@localhost:8989
+ProjectService.watchProjectSummary() => reusing existing subject
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService > project summary cache > keeps a single cache entry per project, keyed by projectRefToString()
+ProjectService.watchProjectSummary() => creating new subject for demo-project@localhost:8989
+ProjectService.watchProjectSummary() => reusing existing subject
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService > reads a cloud (firestore) project summary from the firestore store service
+ProjectService.watchProjectSummary() => creating new subject for X91FirPb@firestore
+ProjectService.watchProject(X91FirPb@firestore) => summary: { id: 'X91FirPb', title: 'Project 1' }
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService > loads direct GitHub project summaries from the selected branch
+ProjectService.watchProjectSummary() => creating new subject for ["project-ref/2","github.com","repo@owner@folder",null,null,"work"]
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService local summary HTTP context > sends the selected branch to the guarded local project summary endpoint for http-localhost:8989
+ProjectService.watchProjectSummary() => creating new subject for ["common-project/1","local","http-localhost:8989","demo","feature/demo"]
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService local summary HTTP context > sends the selected branch to the guarded local project summary endpoint for localhost:8989
+ProjectService.watchProjectSummary() => creating new subject for ["common-project/1","local","localhost:8989","demo","feature/demo"]
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService local summary HTTP context > blocks qualified summary HTTP when local CLI version is 0.93.0
+ProjectService.watchProjectSummary() => creating new subject for ["common-project/1","local","http-localhost:8989","demo","feature/demo"]
+
+stdout | src/lib/services/project/project.service.spec.ts > ProjectService local summary HTTP context > blocks qualified summary HTTP when local CLI version is dev
+ProjectService.watchProjectSummary() => creating new subject for ["common-project/1","local","http-localhost:8989","demo","feature/demo"]
+
+ ✓ |datatug-main| src/lib/services/project/project.service.spec.ts (20 tests) 58ms
+
+ Test Files  3 passed (3)
+      Tests  38 passed (38)
+   Start at  09:32:20
+   Duration  3.95s (setup 46%, transform 44%, environment 9%, tests 1%, import 1%)
+
+
+
+
+ NX   Successfully ran target test-focused for project datatug-main
+
+
+  Run duration:      30.5s
+  Cache:             0/1 hit (0%)
+  Critical path:     30.5s (1 task)
+  Recoverable time:  <1ms
+
+  Recommendations:
+    - Drastically reduce your run duration by sharing a cache across your team and CI → https://cloud.nx.app/connect/8Hjsh6buft.
+    - Speed up or split the longest tasks on the critical path:
+        datatug-main:test-focused    30.5s

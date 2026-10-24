@@ -15,6 +15,57 @@ describe('WorkApiService', () => {
     });
     service = TestBed.inject(WorkApiService);
   });
+  it('rejects Watch evidence crossing its authorised source environment', async () => {
+    api.get.mockReturnValue(
+      of({
+        watches: [
+          {
+            id: 'watch1',
+            namespace: 'team',
+            project: 'native-project',
+            environment: 'uat',
+          },
+        ],
+        events: [
+          {
+            id: 'event1',
+            watchId: 'watch1',
+            namespace: 'team',
+            project: 'native-project',
+            environment: 'prod',
+          },
+        ],
+        linkedItems: [],
+        capabilities: {},
+      }),
+    );
+    await expect(
+      service.watchEvents(scope, 'watch1', new AbortController().signal),
+    ).rejects.toThrow('another scope');
+    expect(api.get.mock.calls[0][0]).toBe('datatug/work/watch-events');
+    expect(api.get.mock.calls[0][1].get('watchId')).toBe('watch1');
+  });
+  it('freezes Watch handoffs and does not replay them with another principal', async () => {
+    const response = new Subject<ReturnType<typeof workDetailFixture>>();
+    api.post.mockReturnValue(response);
+    const action = {
+      ...scope,
+      operationId: 'handoff1',
+      action: 'create' as const,
+      watchId: 'watch1',
+      eventId: 'event1',
+      sharePersonal: true,
+      draft: { type: 'task' as const, title: 'Original', priority: 'high' },
+    };
+    const pending = service.watchAction(action, new AbortController().signal);
+    action.draft.title = 'Changed';
+    expect(api.post.mock.calls[0][0]).toBe('datatug/work/watch-actions');
+    expect(api.post.mock.calls[0][1].draft.title).toBe('Original');
+    expect(api.post.mock.calls[0][2]).toEqual({ retryUnauthorizedOnce: false });
+    response.next(workDetailFixture());
+    response.complete();
+    await pending;
+  });
   it('sends current project scope and filters through HTTP', async () => {
     api.get.mockReturnValue(of(workPageFixture()));
     await service.list(
