@@ -205,6 +205,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     reducedMotion: 'reduce',
   });
   const page = await context.newPage();
+  const watchPage = page.locator('sneat-datatug-watch-page:visible');
   page.setDefaultTimeout(10000);
   const starts = new Map(),
     snapshots = new Map(),
@@ -264,9 +265,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
       ),
     );
   async function top() {
-    await page
-      .locator('sneat-datatug-watch-page ion-content')
-      .evaluate((e) => e.scrollToTop());
+    await watchPage.locator('ion-content').evaluate((e) => e.scrollToTop());
     await settle();
   }
   async function shot(name) {
@@ -280,7 +279,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     await page.screenshot({ path: out + '/' + name + '.png', fullPage: true });
   }
   async function select(label, text) {
-    await page.locator(`ion-select[label="${label}"]`).click();
+    await watchPage.locator(`ion-select[label="${label}"]`).click();
     await page.getByRole('radio', { name: text, exact: true }).click();
   }
   try {
@@ -429,13 +428,13 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     await expect
       .poll(
         async () => {
-          await page
+          await watchPage
             .getByRole('button', { name: 'Refresh', exact: true })
             .click();
           await expect(
-            page.getByRole('button', { name: 'Refresh', exact: true }),
+            watchPage.getByRole('button', { name: 'Refresh', exact: true }),
           ).toBeEnabled({ timeout: 15000 });
-          return await page.locator('sneat-datatug-watch-page').innerText();
+          return await watchPage.innerText();
         },
         { timeout: 60000, intervals: [2500] },
       )
@@ -481,7 +480,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
       'href',
       base + '/checks/' + ready.checkID + '?env=' + ready.environment,
     );
-    const inbox = page.locator('ion-card').filter({
+    const inbox = watchPage.locator('ion-card').filter({
       has: page.getByRole('heading', { name: 'Inbox', exact: true }),
     });
     const notification = inbox
@@ -500,7 +499,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     await page
       .getByRole('button', { name: 'Enroll runner', exact: true })
       .click();
-    await page.locator('ion-select[label="Allowed sources"]').click();
+    await watchPage.locator('ion-select[label="Allowed sources"]').click();
     await page.getByRole('checkbox', { name: /^native · / }).click();
     await page.keyboard.press('Escape');
     const grantResponse = page.waitForResponse(
@@ -518,7 +517,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     await expect(page.getByLabel('Trusted coordinator endpoint')).toHaveValue(
       watchAPI.replace(/\/v1\/watch\/$/, ''),
     );
-    const setup = page.locator('.setup-config');
+    const setup = watchPage.locator('.setup-config');
     await expect(setup).toContainText('"allowOpaqueSQL": false');
     await expect(setup).not.toContainText(grant.token);
     await page.getByRole('button', { name: 'Dismiss credential' }).click();
@@ -569,6 +568,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     phase = 'pass';
     console.log('ACTUAL_HOST_BROWSER_PASS', watchID);
   } catch (e) {
+    console.error('Diagnostic:', String(e?.message || e).split('\n')[0]);
     console.error(
       'Actual Watch acceptance failed during ' +
         phase +
