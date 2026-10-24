@@ -1,0 +1,43 @@
+{
+  "appsRuntimeCommit": "4e468225",
+  "appsPublishedCheckpoint": "31494b86",
+  "backendProductionCommit": "a53149534bb6775e0952fc4d2fa7d335a87bced0",
+  "coreModule": "v0.79.1-0.20261024001142-c14594e4f0b4",
+  "browser": {
+    "result": "PASS",
+    "tests": 2,
+    "durationSeconds": 54.7,
+    "primarySeconds": 40.2,
+    "isolationSeconds": 13.9,
+    "workHTTPInterception": false,
+    "realShippingCheckEvidence": true,
+    "nativeIncidentColdRead": true,
+    "invalidTransitionStatus": 409,
+    "staleWriteStatus": 409,
+    "viewerMutationStatus": 403,
+    "narrowViewport": {
+      "width": 390,
+      "height": 844
+    },
+    "liveDemoDBRequests": 0,
+    "liveGitHubRequests": 0
+  },
+  "diagnosticClassification": {
+    "pageErrors": 0,
+    "primaryWorkHTTPFailures": 0,
+    "optionalLocalAgent": "localhost:8989 unavailable; existing discovery probes",
+    "cancelledReads": "ERR_ABORTED on route changes; context/action reads cancelled after scope changes",
+    "optionalCheckoutConfiguration": "External TEST checkout/config endpoint lacks localhost CORS; actual Auth sign-in succeeds",
+    "optionalQueryBusinessActivity": "Initial composed fixture omitted the existing route and returned404. Final fixture mounts the real handler:503 activity_unavailable because this personal project has no business binding/ledger/period. Read-only post-restart browser verified the structured response and functional Query backlink, with no other Backend HTTP failures.",
+    "negativeTests": "Deliberate invalid/stale409 and viewer403; versions unchanged"
+  },
+  "backendBrowserFixtureCommit": "39b7dc5",
+  "serviceRestart": {
+    "result": "PASS",
+    "allCollectionsIdentical": true,
+    "allPrivateRecordsIdentical": true,
+    "retainedWorkItems": 5,
+    "retainedCheckRuns": 1,
+    "browserReload": "restart-browser-observation.json"
+  }
+}

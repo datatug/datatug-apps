@@ -2,12 +2,12 @@
 
 The browser uses Chromium against the built Angular/Ionic application, real Firebase Auth and Firestore emulators, the production HTTP handlers in the Backend integration host, and the actual Shipping SQLite source. No Work, session, Check, Query or Incident request is intercepted. Test-only emulator credentials are defined in the fixture and test; no credential/token or Playwright trace is included in this evidence.
 
-> Verification checkpoint: the real two-scenario profile passed49.1 seconds at `2d0ac3dd`, followed by a separately verified true native Incident cold-read. The final `4e468225` rerun is waiting for root-owned Auth/Firestore emulator recovery; no app step or mutation ran in the interrupted attempt. Final receipts will replace this checkpoint after recovery.
+> Final real profile: **2/2 passed in 54.7 seconds** on runtime `4e468225` (primary 40.2s; isolation 13.9s). After a complete Auth/Firestore export, stop and import plus Backend restart, an independent read-only Chromium pass verified the same five Work records, native Check evidence, relationships and native Incident state.
 
 ## Reviewed revisions
 
-- Apps runtime: `4e468225`; checkout compatibility fixture: `f0a36399` plus the reviewed environment-query expectation. Reviewed main integration: `0500101a`, preserving Watch navigation, tests and runtime files.
-- Backend production: `a53149534bb6775e0952fc4d2fa7d335a87bced0`.
+- Apps runtime: `4e468225`; checkout compatibility fixture: `8b27a414`, verified against the same runtime. Reviewed main integration: `0500101a`, preserving Watch navigation, tests and runtime files.
+- Backend production: `a53149534bb6775e0952fc4d2fa7d335a87bced0`; final browser route composition: `39b7dc5` (real optional business-activity handler).
 - Published Core: `v0.79.1-0.20261024001142-c14594e4f0b4`.
 - Draft changes: [Apps PR 540](https://github.com/datatug/datatug-apps/pull/540), [Backend PR 105](https://github.com/datatug/backend/pull/105), [Core PR 410](https://github.com/datatug/datatug-core/pull/410).
 
@@ -48,7 +48,7 @@ Desktop and 390×844 captures verify compact accountability/delegation placement
 |---|---|
 | `pnpm nx run datatug-main:test-focused` with combined Work/Watch/native/navigation suite | 14 suites, 156 tests passed after reviewed main integration |
 | Focused native Incident contract, existing Incident client, hosted resolve, Work API/page | 5 suites, 128 tests passed; includes legacy/current proof and null/fractional/unsafe epoch rejection |
-| Final Work page/form direction and controls | 2 suites, 22 tests passed (`--maxWorkers=1`); subsequent explicit Incident-environment route suite18/18 passed |
+| Final Work page/form direction and controls | 2 suites, 22 tests passed (`--maxWorkers=1`); subsequent explicit Incident-environment route suite 18/18 passed |
 | Native `session-workspace` copied-set regression | 40 tests passed; copied values remain unapplied and explicit named-set choice persists |
 | Project-address suite | 580 tests passed |
 | `pnpm exec tsc --noEmit -p libs/datatug/main/tsconfig.spec.json` | Passed |
@@ -58,11 +58,38 @@ Desktop and 390×844 captures verify compact accountability/delegation placement
 | `node tools/check-zoneless-fields.mjs` | Passed; 198 components, no additions to 8 pre-existing allowed files |
 | `python3 tools/recordsetcompare/consume.py verify-dist` | Passed, 11 pinned emitted files |
 | Generic Chromium `playwright ... --list` | 166 tests/44 files; real Work tests absent from this unrelated profile |
-| Hosted Incident checkout compatibility | Passed 12.2 seconds; canonical create/comment/reload, native cold-read/note/reload, Case delegation and both relationship directions. This separate compatibility test uses its established HTTP fixture and is not counted as real Backend evidence. |
+| Hosted Incident checkout compatibility | Passed 12.9 seconds; canonical create/comment/reload, native cold-read/note/reload, Case delegation and both relationship directions. This separate compatibility test uses its established HTTP fixture and is not counted as real Backend evidence. |
 
-The final real-profile results and sanitised network/console observations are in the adjacent evidence receipts. Expected negative-test 409/403 responses are distinguished from primary-flow errors. No live DemoDB/GitHub request escaped the existing browser guard.
+The final real-profile results and sanitised network/console observations are in [results.json](evidence/results.json), [primary diagnostics](evidence/primary-diagnostics.json), [isolation diagnostics](evidence/isolation-diagnostics.json), and the [passing browser log](evidence/browser-run.txt). Expected negative-test 409/403 responses are distinguished from primary-flow errors. No live DemoDB/GitHub request escaped the existing browser guard.
 
-One parallel local build/test attempt was killed by the host; the same targeted tests passed serially with one worker. A later final-browser attempt encountered Backend 8090 stopped before writes; Auth and Firestore remained intact. Restarting the exact Backend binary preserved every recorded collection field hash, then the clean browser profile was repeated. These interrupted attempts are not claimed as passing acceptance.
+The complete service restart is documented by [the safe emulator receipt](evidence/emulator-restart-receipt.json) and [actual browser reload observations](evidence/restart-browser-observation.json). All 11 collection IDs, counts and complete field hashes, plus private record comparisons, were identical before and after export/import: 5 Work records, 4 links, 25 activity entries, 9 Context entries and 1 retained Check run. No raw database values or Auth export are committed. Reproduce the final read-only browser check after the operator restart with `wb run -- node spec/features/datatug-work/reload-persisted.mjs`; it starts/stops its own static 4201 preview and reads the prior run's receipts.
+
+Console/network observations are classified rather than reported as clean:
+
+| Observation | Disposition |
+|---|---|
+| Existing local agent discovery at `localhost:8989/datatug/agent-info` | Expected unavailable optional local CLI; hosted Work and actual Backend execution are independent |
+| `net::ERR_ABORTED` on route/account scope changes | Deliberate cancellation of obsolete reads and completed-mutation follow-up requests |
+| External TEST `/v0/checkout/config` CORS failure | Optional checkout configuration is not hosted by this fixture; actual Firebase sign-in succeeds |
+| Initial `/v0/datatug/projects/query_activity_context` 404 | Fixed composed-host omission by mounting the existing real handler; final 503 `activity_unavailable` honestly reports the absent business binding/ledger/period. Query definition, references and actual Check execution remain functional |
+| Deliberate invalid transition/stale 409 and viewer 403 | Accepted negative cases; versions/status remain unchanged |
+| JavaScript page errors / primary Work HTTP failures | None; after restart, the only Backend HTTP error is the explicitly expected optional activity 503 |
+
+One parallel local build/test attempt was killed by the host; the same targeted tests passed serially with one worker. An early backend process stop interrupted browser setup without writes. Later the original emulators exited without an export and lost disposable synthetic test records; this was disclosed, and the final scenarios were rerun against a freshly seeded real fixture. The replacement emulators use export/import; the complete successful persistence proof above follows that corrected setup. Interrupted attempts and prior partial/native-navigation assertions are not counted as passing final acceptance.
+
+## Screenshots
+
+| Workflow | Evidence |
+|---|---|
+| Incident accountability/delegation | [Desktop](evidence/incident-desktop.png), [mobile](evidence/incident-mobile.png) |
+| Inherited and private Context Bags | [Case mobile](evidence/case-context-mobile.png), [private execution](evidence/private-execution-context-desktop.png), [parent proposal review](evidence/parent-context-proposal-review.png) |
+| Retained SQL-backed Check evidence | [Native Case](evidence/case-evidence-desktop.png) |
+| Shared forms and explicit criteria | [Task mobile](evidence/task-form-mobile.png), [Case status mobile](evidence/case-status-mobile.png) |
+| Artefact identity and backlinks | [Check](evidence/check-work-backlinks-desktop.png), [Query](evidence/query-work-backlinks-desktop.png) |
+| Closed Incident and specialised entry point | [Canonical Work](evidence/incident-closed-desktop.png), [native Incident](evidence/incident-native-evidence-desktop.png) |
+| Project overview | [Desktop](evidence/project-work-desktop.png), [mobile](evidence/project-work-mobile.png) |
+| Stale-write recovery | [Conflict review](evidence/stale-write-review-desktop.png) |
+| After full service restart | [Query](evidence/query-after-service-restart.png), [native Incident](evidence/incident-after-service-restart.png) |
 
 ## Boundaries and remaining rollout work
 

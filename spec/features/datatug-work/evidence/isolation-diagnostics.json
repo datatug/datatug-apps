@@ -1,0 +1,76 @@
+{
+  "independent": [
+    "/space/space/store/firestore/project/project/work/w-b24d68254db10099e97d16ddf68097b1",
+    "/space/space/store/firestore/project/project/work/w-494b6bde66621d4f1a2bc3b65912b7af"
+  ],
+  "diagnostics": [
+    {
+      "kind": "console",
+      "message": "Access to fetch at 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app/v0/checkout/config?site=datatug&mode=test' from origin 'http://127.0.0.1:4201' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource. @ http://127.0.0.1:4201/subscribe"
+    },
+    {
+      "kind": "request-failed",
+      "message": "https://datatug-checkout-test-354fvnqbaa-ey.a.run.app/v0/checkout/config: net::ERR_FAILED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_FAILED @ https://datatug-checkout-test-354fvnqbaa-ey.a.run.app/v0/checkout/config"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://localhost:8989/datatug/agent-info: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8989/datatug/agent-info"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://127.0.0.1:8090/v0/datatug/work/actions: net::ERR_ABORTED"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://127.0.0.1:8090/v0/datatug/work/context: net::ERR_ABORTED"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://localhost:8989/datatug/agent-info: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8989/datatug/agent-info"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://localhost:8989/datatug/agent-info: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8989/datatug/agent-info"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://127.0.0.1:8090/v0/datatug/work/actions: net::ERR_ABORTED"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://localhost:8989/datatug/agent-info: net::ERR_CONNECTION_REFUSED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:8989/datatug/agent-info"
+    },
+    {
+      "kind": "request-failed",
+      "message": "http://127.0.0.1:8090/v0/datatug/work/context: net::ERR_ABORTED"
+    },
+    {
+      "kind": "console",
+      "message": "Failed to load resource: the server responded with a status of 409 (Conflict) @ http://127.0.0.1:8090/v0/datatug/work/actions"
+    }
+  ],
+  "invalidTransitionStatus": 409,
+  "staleWriteStatus": 409,
+  "viewerMutationStatus": 403,
+  "versionPreserved": true
+}

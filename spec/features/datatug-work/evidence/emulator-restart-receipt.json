@@ -1,0 +1,174 @@
+{
+  "backendProductionCommit": "a53149534bb6775e0952fc4d2fa7d335a87bced0",
+  "backendFixtureCommit": "39b7dc52b74d1a2e6ac7a64f7ab75d934aa56001",
+  "coreModule": "v0.79.1-0.20261024001142-c14594e4f0b4",
+  "project": "demo-local-sneat-app",
+  "URL": "http://127.0.0.1:8090",
+  "oldBackendPID": 823413,
+  "newBackendPID": 826650,
+  "backendSessionID": 76796,
+  "emulatorSessionID": 2630,
+  "oldEmulatorPIDs": [
+    823177,
+    823214
+  ],
+  "sameCollectionIDsAndAllDocumentFieldHashes": true,
+  "privateFullRecordComparisonIdentical": true,
+  "collections": {
+    "workItems": {
+      "count": 5,
+      "sha256": "0ac4341db9b83fb3d808579ee9357d6c4e99d48e57c0c7def736d72a5a447dc8",
+      "ids": [
+        "w-0bf22706997c1ae450702e51ac1528e8",
+        "w-494b6bde66621d4f1a2bc3b65912b7af",
+        "w-a5529e9232ec170f453da8b54ad3e0f1",
+        "w-b24d68254db10099e97d16ddf68097b1",
+        "w-f811f24058191e7189dfa7a198c0dd66"
+      ]
+    },
+    "workLinks": {
+      "count": 4,
+      "sha256": "7d9923810f7c3d857245c60448ea52a195bb998f38fab0bd6187f69b2ed3eabf",
+      "ids": [
+        "0a40015a0e785d7f6d78ea18b21c8e3f75beec7facfcdec193bb26c795fd48dd",
+        "33c24abb07a523d814599aa5f823fa715c0397b9a8158396225200c23eab3944",
+        "69152446f4edb7771b9e03e4670e50c474f4752e30ca087751f13050e24d1104",
+        "c85112ef1dcd0d90fd61214b93a8f83e235d8c8eab51a10cd03e57a201066b55"
+      ]
+    },
+    "workActivity": {
+      "count": 25,
+      "sha256": "0a2d7f1ffaa3a3117ab4d2d9d70b06376b27e85475456db82dddba291f71330d",
+      "ids": [
+        "09223372036854775800",
+        "09223372036854775801",
+        "09223372036854775802",
+        "09223372036854775803",
+        "09223372036854775804",
+        "09223372036854775805",
+        "09223372036854775806",
+        "09223372036854775803",
+        "09223372036854775804",
+        "09223372036854775805",
+        "09223372036854775806",
+        "09223372036854775803",
+        "09223372036854775804",
+        "09223372036854775805",
+        "09223372036854775806",
+        "09223372036854775805",
+        "09223372036854775806",
+        "09223372036854775799",
+        "09223372036854775800",
+        "09223372036854775801",
+        "09223372036854775802",
+        "09223372036854775803",
+        "09223372036854775804",
+        "09223372036854775805",
+        "09223372036854775806"
+      ]
+    },
+    "sessionContextSessions": {
+      "count": 6,
+      "sha256": "6d07bfb49ece72df68c960509e9ceaab9779515e0a8c7120c2229501d2bcd349",
+      "ids": [
+        "exec_7971448beb80f94be0ba33e743872df2",
+        "ws_w-0bf22706997c1ae450702e51ac1528e8",
+        "ws_w-494b6bde66621d4f1a2bc3b65912b7af",
+        "ws_w-a5529e9232ec170f453da8b54ad3e0f1",
+        "ws_w-b24d68254db10099e97d16ddf68097b1",
+        "ws_w-f811f24058191e7189dfa7a198c0dd66"
+      ]
+    },
+    "sessionContextBags": {
+      "count": 10,
+      "sha256": "b02d54fc90542b0220f125091bb33510bd29e8124b306289dc54994e4ecb75b6",
+      "ids": [
+        "bag_exec_7971448beb80f94be0ba33e743872df2",
+        "cb_552aedfcf95adc928e39ebba31aa224d02d2341870eecf24ea28712a195ea935",
+        "cb_835a65efb064d109c1272d05034aa100091b1e79fb69c1cd0bac98ff3918b499",
+        "cb_de02a434da08096353429a8c2a225fa7b5395f2ff9deb94abd019f0abec4271f",
+        "cb_f8480a443e687fcd7c01325996b3230ec3f4277120fd0a3461203fcc000f62aa",
+        "wb_w-0bf22706997c1ae450702e51ac1528e8",
+        "wb_w-494b6bde66621d4f1a2bc3b65912b7af",
+        "wb_w-a5529e9232ec170f453da8b54ad3e0f1",
+        "wb_w-b24d68254db10099e97d16ddf68097b1",
+        "wb_w-f811f24058191e7189dfa7a198c0dd66"
+      ]
+    },
+    "sessionContextEntries": {
+      "count": 9,
+      "sha256": "239c9f24c51f8e2cafb969a9af2cdee255ba6b2c55154a3fea3c4a94a4c59ad2",
+      "ids": [
+        "ce_174b0ecca6f6d571831a57f6d00412b796dd79c210b7209ca2d7360bbdf2c140",
+        "ce_26b93f359017b9436c068dfd6f26bf206009766b903f13afc6a6dbcb8ff123c4",
+        "ce_5ef972df8503f56daafab06a7ff0e565207bcc1633b1cedd1be3014f0a1041ab",
+        "ce_666bec0a22ef0be2c2e5c6cfcb65c45d482571ca113330379f8f506eb4ebdb58",
+        "ce_8fe49afba6f9e4c33c8e3521639cb75d30d481d6a800a93a7e3e05e51a871317",
+        "work_5762786876fe49e7b8b935b3db00e1c4",
+        "work_67dd34d625b848eca44fd95393b1812e",
+        "work_6da11de9df244548b0fff115a7ac6f77",
+        "work_b1b083033f284b4d9bb43a44e3725687"
+      ]
+    },
+    "sessionContextEntryRevisions": {
+      "count": 9,
+      "sha256": "71b0af90dd448bb5ebdc55b8ac3acba8ff135e9896ff2b759ed94d3100ab724f",
+      "ids": [
+        "cr_72d0eb405f4e10f50d2407da05ac276c8bb023ec9cde45e1492919acc7cd1043",
+        "cr_ae4c4c0987434ffabb1bcb1f563ee39a719e6e9731a99bc5b4639f6367b48949",
+        "cr_b3e9a738b204d39ab492eba54e4625ed7bac6a102d91800000d43401da82c234",
+        "cr_be8a16bf16e2f0908b19c720ebb22d44f3f1ed2c1acb7381d411af9aac4d2450",
+        "cr_d3b973b8016302eabc6e7b3a65345bb122537d212d2aff34635ae20c132c5c90",
+        "work_0c6864f8b9dc47658d3622eb632a180a",
+        "work_43788df940ee4d038ffcff44a6bb8c73",
+        "work_8c63ed0b670842bcbdb325511f2bc8cb",
+        "work_a90138e0e90642b0bb55d80cd1be6407"
+      ]
+    },
+    "detectiveRuns": {
+      "count": 1,
+      "sha256": "29a27d37559c52015f8b7074ec2096039ee1fb0b59a1ed6b139a93f3c0242219",
+      "ids": [
+        "run-74a5f1bbd5eef5335241566a2de97ec7"
+      ]
+    },
+    "detectiveCaseRunLinks": {
+      "count": 1,
+      "sha256": "f00a8808dc1bce11b319f92b1236a0ccb9bc6a02e89ab90d91829eebcd004c13",
+      "ids": [
+        "5c06e8f56ee4d8c58bba6dea676d24694e1d64b8dd3660fb89ee23d47056a049"
+      ]
+    },
+    "detectiveCases": {
+      "count": 2,
+      "sha256": "8e104a804919c86b786acecac261a51bc490df214ef6292d2a2e6d72818bc298",
+      "ids": [
+        "w-b24d68254db10099e97d16ddf68097b1",
+        "w-f811f24058191e7189dfa7a198c0dd66"
+      ]
+    },
+    "detectiveIncidentEvents": {
+      "count": 6,
+      "sha256": "1ef8fb2664fbcd3e16a7025f73df53602a641393e4404bbe6e9700b05fc9ffe0",
+      "ids": [
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000001",
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000002",
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000003",
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000004",
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000005",
+        "WI-0bf22706997c1ae450702e51ac1528e8-000000000006"
+      ]
+    }
+  },
+  "binarySHA256": "cfff955eca824b83631a959c97510309afdfe82b014fd3cec2bd1929ee13ac15",
+  "restartSteps": [
+    "Stop owned backend823413 gracefully; confirm8090closed",
+    "firebase emulators:export /tmp/datatug-work-emulator-state --project demo-local-sneat-app --force",
+    "SIGTERM owned Firebase823177; wait clean exit0 and export-on-exit completion",
+    "JAVA_TOOL_OPTIONS=\"-Xms64m -Xmx512m\" firebase emulators:start --only auth,firestore --project demo-local-sneat-app --import /tmp/datatug-work-emulator-state --export-on-exit /tmp/datatug-work-emulator-state",
+    "FIRESTORE_EMULATOR_HOST=127.0.0.1:8180 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-local-sneat-app DATATUG_WORK_BROWSER_HOST=1 /tmp/datatug-work-final-fixture.test -test.run ^TestWorkBrowserHost$ -test.count=1 -test.timeout=0 -test.v"
+  ],
+  "privacy": "Complete before/after REST records retained only in mode0600 private /tmp files. No values, auth users, passwords or tokens are included in this receipt. Root owns private emulator export.",
+  "history": "Earlier unexported disposable emulator state was lost after an unexpected graceful shutdown. This receipt proves a subsequent deliberately exported/imported complete service restart of the freshly rerun passing browser dataset; earlier historical backend-only restart receipts remain separate.",
+  "browserReload": "PASS: actual Chromium read-only reload of all5 retained Work records preserves states; retained Case Check evidence, native Incident uat/closed and linked Case, Task-to-Query backlink. Optional business activity endpoint returns intended503 activity_unavailable; no other backend HTTP errors or page errors reported."
+}
