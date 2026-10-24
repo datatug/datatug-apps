@@ -207,6 +207,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   const starts = new Map(),
+    snapshots = new Map(),
     requests = [],
     mutations = [];
   page.on('request', (r) => {
@@ -244,9 +245,11 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     if (q.method() === 'POST') mutations.push(receipt);
     if (q.method() === 'GET' && /\/(runs|status|definition)$/.test(path)) {
       try {
+        const body = await r.json();
+        snapshots.set(path.split('/').pop(), body);
         fs.writeFileSync(
           out + '/' + path.split('/').pop() + '-last.json',
-          JSON.stringify(await r.json(), null, 2),
+          JSON.stringify(body, null, 2),
         );
       } catch {}
     }
@@ -380,6 +383,13 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
       await expect(
         page.getByRole('region', { name: 'Watch status and evaluations' }),
       ).toContainText('Paused');
+      await expect
+        .poll(() =>
+          mutations.some(
+            (r) => r.path.endsWith('/subscription') && r.status === 503,
+          ),
+        )
+        .toBe(true);
       if (mutations.some((r) => r.path.endsWith('/lifecycle')))
         throw Error('Failed consent must not enable the Watch.');
       for (const width of [1440, 390]) {
@@ -399,6 +409,17 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
         }),
       ).toBeVisible();
       await expect(page.getByRole('alert')).toHaveCount(0);
+      await expect(
+        page.getByRole('region', { name: 'Watch status and evaluations' }),
+      ).toContainText('Paused');
+      await expect
+        .poll(
+          () =>
+            snapshots.get('definition')?.definition?.id === watchID &&
+            snapshots.get('definition')?.definition?.lifecycle === 'paused' &&
+            snapshots.get('runs')?.runs?.length === 0,
+        )
+        .toBe(true);
       phase = 'pass';
       console.log('ACTUAL_HOST_PARTIAL_SETUP_PASS', watchID);
       return;
@@ -422,6 +443,23 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
     await expect(
       page.getByRole('heading', { name: 'Evaluation history', exact: true }),
     ).toBeVisible();
+    await expect
+      .poll(
+        () =>
+          snapshots.get('definition')?.definition?.id === watchID &&
+          snapshots.get('definition')?.definition?.lifecycle === 'completed' &&
+          snapshots
+            .get('runs')
+            ?.runs?.some(
+              (run) =>
+                run.watchId === watchID &&
+                run.state === 'completed' &&
+                run.outcome === 'pass' &&
+                run.runnerId &&
+                run.checkRunRef,
+            ),
+      )
+      .toBe(true);
     for (const width of [1440, 390]) {
       await page.setViewportSize({ width, height: 1000 });
       await top();
@@ -548,6 +586,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
         {
           candidate,
           sourceClean: true,
+          fixtureSourceHead: ready.sourceGitSHA,
           apiBase: ready.apiBase,
           phase,
           case: values.case,
