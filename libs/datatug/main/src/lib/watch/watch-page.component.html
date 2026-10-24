@@ -18,6 +18,7 @@
       <sneat-work-watch [project]="ref" [watchId]="watchId()" />
       @if (!client.identity()) {
         <ion-button
+          class="coordinator-controls-toggle"
           fill="clear"
           (click)="directConnection.set(!directConnection())"
           >{{
