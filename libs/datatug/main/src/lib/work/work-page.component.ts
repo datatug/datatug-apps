@@ -414,11 +414,16 @@ export class WorkPageComponent {
         item.case.legacyCaseId,
       ]);
     if (item?.incident?.legacyRef)
-      return projectPageHref(this.project(), [
-        'incidents',
-        item.incident.legacyRef.storeId,
-        item.incident.legacyRef.incidentId,
-      ]);
+      return withQuery(
+        projectPageHref(this.project(), [
+          'incidents',
+          item.incident.legacyRef.storeId,
+          item.incident.legacyRef.incidentId,
+        ]),
+        new URLSearchParams({
+          environment: item.incident.environment,
+        }).toString(),
+      );
     return '';
   }
   relationLabel(link: WorkDetail['links'][number]): string {

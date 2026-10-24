@@ -363,6 +363,26 @@ describe('WorkPageComponent', () => {
         fixture.componentInstance.relationLabel({ ...link, relation }),
       ).toBe(relation[0].toUpperCase() + relation.slice(1));
   });
+  it('preserves the Incident environment in its specialised route', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const detail = workDetailFixture();
+    detail.item = {
+      ...detail.item,
+      type: 'incident',
+      incident: {
+        severity: 'high',
+        environment: 'uat',
+        legacyRef: { storeId: 'incident-store', incidentId: 'incident1' },
+      },
+    };
+    fixture.componentInstance.detail.set(detail);
+    expect(fixture.componentInstance.specialistHref()).toContain(
+      '/incidents/incident-store/incident1?environment=uat',
+    );
+  });
   it('offers server-admitted Incident resolution without bypassing native proof checks', async () => {
     const { fixture, api } = setup();
     api.list.mockResolvedValue(workPageFixture());

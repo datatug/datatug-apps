@@ -116,7 +116,11 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     p.on('pageerror', (error) => errors.push(error.message));
     p.on('console', (message) => {
       if (message.type() === 'error')
-        diagnostics.push({ kind: 'console', message: message.text() });
+        diagnostics.push({
+          kind: 'console',
+          message:
+            message.text() + ' @ ' + message.location().url.split('?')[0],
+        });
     });
     p.on('requestfailed', (request) =>
       diagnostics.push({
@@ -129,6 +133,11 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       }),
     );
     p.on('response', (response) => {
+      if (response.status() >= 400)
+        diagnostics.push({
+          kind: 'http-error',
+          message: `${response.status()} ${new URL(response.url()).origin}${new URL(response.url()).pathname}`,
+        });
       if (response.url().includes('/datatug/work/') && response.status() >= 400)
         errors.push(`${response.status()} ${response.url()}`);
     });
@@ -558,7 +567,18 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await page
     .getByText('Open Incident evidence and resolution', { exact: true })
     .click();
+  await expect(page).toHaveURL(/\/incidents\/[^/]+\/[^/?]+\?environment=uat$/);
+  await expect(
+    page.locator(
+      'sneat-datatug-hosted-incidents-page.ion-page:not(.ion-page-hidden)',
+    ),
+  ).toBeVisible();
   await page.reload();
+  await expect(
+    page.locator(
+      'sneat-datatug-hosted-incidents-page.ion-page:not(.ion-page-hidden)',
+    ),
+  ).toBeVisible();
   await expect(
     page
       .getByRole('heading')
@@ -567,10 +587,38 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await expect(
     page.getByText('Invalid Incident projection', { exact: false }),
   ).toHaveCount(0);
+  await expect(
+    page
+      .locator('sneat-datatug-hosted-incidents-page')
+      .getByText('closed', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('list', { name: 'Linked Detective Cases' }),
+  ).toContainText('Investigate delayed order 11045');
   await stableScreenshot(page, 'incident-native-evidence-desktop');
+  await writeFile(
+    'coverage/apps/datatug-work/primary-diagnostics.json',
+    JSON.stringify(
+      { errors, diagnostics, incidentPath, casePath, taskPath },
+      null,
+      2,
+    ),
+  );
   await page.goto(base);
-  for (const path of [incidentPath, casePath, taskPath])
-    await expect(page.locator(`ion-item[href="${path}"]`)).toBeVisible();
+  for (const path of [incidentPath, casePath, taskPath]) {
+    const item = page.locator(`ion-item[href="${path}"]`);
+    await expect(page.locator('.work-row').first()).toBeVisible();
+    for (let next = 0; next < 10 && !(await item.count()); next++) {
+      const more = page.getByRole('button', {
+        name: 'Load more work',
+        exact: true,
+      });
+      if (!(await more.count())) break;
+      await more.click();
+      await expect(page.locator('ion-spinner:visible')).toHaveCount(0);
+    }
+    await expect(item).toBeVisible();
+  }
   await stableScreenshot(page, 'project-work-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
   await stableScreenshot(page, 'project-work-mobile');
@@ -608,7 +656,10 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
   );
   page.on('console', (message) => {
     if (message.type() === 'error')
-      diagnostics.push({ kind: 'console', message: message.text() });
+      diagnostics.push({
+        kind: 'console',
+        message: message.text() + ' @ ' + message.location().url.split('?')[0],
+      });
   });
   page.on('requestfailed', (request) =>
     diagnostics.push({

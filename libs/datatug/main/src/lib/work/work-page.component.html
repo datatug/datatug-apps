@@ -234,7 +234,9 @@
                 }
               </ion-card-content>
               @if (specialistHref()) {
-                <ion-item [routerLink]="specialistHref()" detail
+                <ion-item
+                  [routerLink]="router.parseUrl(specialistHref())"
+                  detail
                   ><ion-label>{{
                     detail.item.type === 'case'
                       ? 'Open Detective tools and evidence'
@@ -481,7 +483,9 @@
                 detail.capabilities.transitions.includes('resolved') &&
                 specialistHref()
               ) {
-                <ion-item [routerLink]="specialistHref()" detail
+                <ion-item
+                  [routerLink]="router.parseUrl(specialistHref())"
+                  detail
                   ><ion-label>Review resolution evidence</ion-label></ion-item
                 >
               }
