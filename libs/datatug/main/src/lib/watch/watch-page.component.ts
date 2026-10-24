@@ -1007,7 +1007,7 @@ export class WatchPageComponent {
           result = await this.client.lifecycle(result.definition, 'enabled');
         } catch (setupError) {
           if (!active()) return;
-          const notice = `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError)} Review its current subscription and lifecycle before resuming.`;
+          const notice = `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError).replace(/[.!?]+$/, '')}. Review its current subscription and lifecycle before resuming.`;
           if (user.hosted)
             this.client.stageSetupNotice(
               ref,

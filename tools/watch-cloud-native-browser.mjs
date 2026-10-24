@@ -377,6 +377,7 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
         level: 1,
       }),
     ).toBeVisible();
+    await expect(watchPage).toHaveCount(1);
     if (values.case === 'partial-setup') {
       phase = 'fault-injected partial setup';
       await expect(page.getByRole('alert')).toContainText(

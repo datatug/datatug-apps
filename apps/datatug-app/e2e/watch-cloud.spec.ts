@@ -132,6 +132,11 @@ test('hosted Watch uses real Firebase sign-in, scoped API, environment links and
           id: localId,
           spaceID,
           hosted: true,
+          coordination: {
+            endpoint: `http://127.0.0.1:18290/v0/datatug/watch/${spaceID}/${project}/dev`,
+            namespace: spaceID,
+          },
+          providers: { email: true, sms: false },
           sharedEditor: true,
           canManageRunners: true,
           tier: 'free',
