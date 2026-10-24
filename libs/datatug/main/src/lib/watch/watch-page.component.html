@@ -23,11 +23,54 @@
     @if (message()) {
       <p role="status">{{ message() }}</p>
     }
-    @if (manifestLoading()) {
-      <p role="status">
-        <ion-spinner name="dots" /> Loading project coordinator…
-      </p>
-    } @else if (!config()) {
+    @if (hosted() && signedIn() && environments().length) {
+      <ion-item lines="none" class="environment-selector">
+        <ion-select
+          label="Environment"
+          labelPlacement="stacked"
+          interface="popover"
+          [value]="environment()"
+          (ionChange)="chooseEnvironment($event.detail.value)"
+        >
+          @for (item of environments(); track item.id) {
+            <ion-select-option [value]="item.id">{{
+              item.title || item.id
+            }}</ion-select-option>
+          }
+        </ion-select>
+      </ion-item>
+    }
+    @if (manifestLoading() || (hosted() && authenticating())) {
+      <p role="status"><ion-spinner name="dots" /> Loading Watch…</p>
+    } @else if (hosted() && !signedIn()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label><h1>Sign in to Watch</h1></ion-label></ion-item-divider
+        >
+        <ion-card-content
+          ><p>Use your DataTug account to manage Watches in this project.</p>
+          <ion-button routerLink="/login" [fragment]="returnPath()"
+            >Sign in</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+    } @else if (hosted() && !client.identity()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label><h1>Project Watch</h1></ion-label></ion-item-divider
+        >
+        <ion-card-content>
+          @if (!error() && environments().length) {
+            <p>Choose an environment to view its Watches.</p>
+          } @else if (!error()) {
+            <p>No environments are available in this project.</p>
+          }
+          <ion-button (click)="retryConnection()" fill="clear"
+            >Retry</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+    } @else if (!hosted() && !config()) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label
@@ -85,7 +128,7 @@
     } @else if (client.identity(); as user) {
       <div class="connection-bar" role="status">
         <div>
-          <strong>Coordinator</strong>
+          <strong>{{ hosted() ? 'Watch cloud' : 'Coordinator' }}</strong>
           <ion-badge [color]="status() ? 'success' : 'medium'">{{
             label(status()?.coordinator)
           }}</ion-badge>
@@ -96,9 +139,11 @@
             registered</span
           >
         </div>
-        <ion-button fill="clear" color="medium" (click)="disconnect()"
-          >Disconnect</ion-button
-        >
+        @if (!hosted()) {
+          <ion-button fill="clear" color="medium" (click)="disconnect()"
+            >Disconnect</ion-button
+          >
+        }
       </div>
       @if (isNew || editing()) {
         <ion-card
@@ -398,10 +443,15 @@
                             · @{{ telegramBotUsername() }}
                           }
                         </ion-checkbox>
-                        <ion-note class="channel-description"
-                          >{{ user.limits.telegramPerDay || 0 }} per day ·
-                          {{ user.limits.telegramPerMinute || 0 }} per minute.
-                          @if (!telegramConnected()) {
+                        <ion-note class="channel-description">
+                          @if (user.channels.telegram) {
+                            {{ user.limits.telegramPerDay || 0 }} per day ·
+                            {{ user.limits.telegramPerMinute || 0 }} per minute.
+                          }
+                          @if (!user.channels.telegram) {
+                            Telegram delivery is unavailable on this
+                            coordinator.
+                          } @else if (!telegramConnected()) {
                             Connect your Telegram account first.
                           }
                         </ion-note>
@@ -453,7 +503,7 @@
                   ><ion-button
                     fill="clear"
                     [routerLink]="
-                      isNew ? pageHref('watch') : pageHref(['watch', watchId()])
+                      isNew ? pageLink('watch') : pageLink(['watch', watchId()])
                     "
                     (click)="editing.set(false)"
                     >Cancel</ion-button
@@ -494,7 +544,7 @@
                     Owner {{ watch.owner }} · version {{ watch.version }}
                   </p>
                   <p>
-                    <a [routerLink]="pageHref(['checks', watch.checkId])">{{
+                    <a [routerLink]="pageLink(['checks', watch.checkId])">{{
                       checkTitle(watch.checkId)
                     }}</a>
                     · {{ watch.environment }} · every
@@ -722,10 +772,12 @@
                           @if (telegramBotUsername()) {
                             · @{{ telegramBotUsername() }}
                           }</ion-checkbox
-                        ><ion-note class="channel-description"
-                          >Telegram limit:
-                          {{ user.limits.telegramPerDay || 0 }} per day,
-                          {{ user.limits.telegramPerMinute || 0 }} per minute.
+                        ><ion-note class="channel-description">
+                          @if (user.channels.telegram) {
+                            Telegram limit:
+                            {{ user.limits.telegramPerDay || 0 }} per day,
+                            {{ user.limits.telegramPerMinute || 0 }} per minute.
+                          }
                           @if (!user.channels.telegram) {
                             Telegram delivery is unavailable on this
                             coordinator.
@@ -843,7 +895,7 @@
         } @else if (!busy()) {
           <p>
             No accessible Watch was found.
-            <a [routerLink]="pageHref('watch')">Back to Watch</a>
+            <a [routerLink]="pageLink('watch')">Back to Watch</a>
           </p>
         }
       } @else {
@@ -851,7 +903,7 @@
           ><ion-item-divider color="light"
             ><ion-label><h1>Watches</h1></ion-label
             ><ion-buttons slot="end"
-              ><ion-button [routerLink]="pageHref(['watch', 'new'])"
+              ><ion-button [routerLink]="pageLink(['watch', 'new'])"
                 >Create Watch</ion-button
               ></ion-buttons
             ></ion-item-divider
@@ -859,7 +911,7 @@
           <ion-card-content
             ><ion-list>
               @for (watch of definitions(); track watch.id) {
-                <ion-item [routerLink]="pageHref(['watch', watch.id])" detail
+                <ion-item [routerLink]="pageLink(['watch', watch.id])" detail
                   ><ion-label class="ion-text-wrap"
                     ><h2>{{ watch.title }}</h2>
                     <p>
@@ -884,6 +936,9 @@
         </ion-card>
       }
 
+      @if (hosted() && user.canManageRunners) {
+        <sneat-datatug-watch-runners [identity]="user" />
+      }
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h2>Inbox</h2></ion-label></ion-item-divider

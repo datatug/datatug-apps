@@ -186,6 +186,26 @@
             }
           ]
         },
+        "watch-cloud-e2e": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/datatug-app/src/environments/environment.ts",
+              "with": "apps/datatug-app/src/environments/environment.watch-cloud-e2e.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
+            }
+          ]
+        },
         "business-preview": {
           "optimization": false,
           "extractLicenses": false,
@@ -386,6 +406,14 @@
       "options": {
         "cwd": ".",
         "config": "apps/datatug-app/vite.config.mts"
+      }
+    },
+    "e2e-watch-cloud": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-watch-cloud"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.watch-cloud.config.ts --forbid-only"
       }
     },
     "e2e-watch": {

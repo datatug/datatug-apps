@@ -189,6 +189,7 @@ export const datatugRoutes: Routes = [
               'tags',
               'queries',
               'checks',
+              'watch',
               'detective',
               'incidents',
               'shipping',
@@ -198,6 +199,9 @@ export const datatugRoutes: Routes = [
               'card',
               'meanings',
             ].includes(segments[6].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'watch' &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             segments[6].path === 'cards' &&
             segments[7].path === 'new') ||
@@ -257,6 +261,27 @@ export const datatugRoutes: Routes = [
                     ))))))),
     ],
     children: [
+      {
+        path: 'watch/new',
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
+      },
+      {
+        path: 'watch/:watchId',
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
+      },
+      {
+        path: 'watch',
+        loadComponent: () =>
+          import('../watch/watch-page.component').then(
+            (m) => m.WatchPageComponent,
+          ),
+      },
       {
         path: 'quick-search',
         loadComponent: () =>

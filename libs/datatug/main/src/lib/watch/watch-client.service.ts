@@ -4,10 +4,16 @@ import {
   HttpParams,
   HttpErrorResponse,
 } from '@angular/common/http';
-import { Injectable, inject, signal } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { Injectable, Injector, inject, signal } from '@angular/core';
+import { firstValueFrom, Subject, takeUntil } from 'rxjs';
 import type { ProjectCoordination } from '../models/definition/project';
 import type { CheckDefinition, DetectiveInputValue } from '../detective/models';
+import {
+  type IProjectRef,
+  isSharedProjectRef,
+  projectRefToString,
+} from '../core/project-context';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import type {
   WatchDefinition,
   WatchDelivery,
@@ -16,6 +22,9 @@ import type {
   WatchRun,
   WatchStatus,
   WatchSubscription,
+  WatchHostedScope,
+  WatchRunnerEnrollment,
+  WatchRunnerSource,
 } from './watch.models';
 
 export function coordinatorEndpoint(value: string): string {
@@ -65,16 +74,23 @@ export function watchError(error: unknown): string {
 @Injectable({ providedIn: 'root' })
 export class WatchClientService {
   private readonly http = inject(HttpClient);
+  private readonly injector = inject(Injector);
+  private lifetime = new Subject<void>();
   readonly identity = signal<WatchIdentity | undefined>(undefined);
-  private session?: {
-    endpoint: string;
-    namespace: string;
-    project: string;
-    token: string;
-  };
+  private session?:
+    | {
+        kind: 'selfhost';
+        endpoint: string;
+        namespace: string;
+        project: string;
+        token: string;
+      }
+    | ({ kind: 'hosted' } & WatchHostedScope);
   readonly setupNotice = signal('');
   seed?: {
     project: string;
+    projectRef: string;
+    principal: string;
     check: CheckDefinition;
     environment: string;
     inputs: Record<string, DetectiveInputValue>;
@@ -82,15 +98,85 @@ export class WatchClientService {
 
   matches(config: ProjectCoordination, project: string): boolean {
     return (
-      this.session?.endpoint === coordinatorEndpoint(config.endpoint) &&
+      this.session?.kind === 'selfhost' &&
+      this.session.endpoint === coordinatorEndpoint(config.endpoint) &&
       this.session.namespace === config.namespace &&
       this.session.project === project
     );
   }
   disconnect(): void {
+    this.lifetime.next();
+    this.lifetime.complete();
+    this.lifetime = new Subject<void>();
     this.session = undefined;
     this.identity.set(undefined);
     this.setupNotice.set('');
+  }
+  matchesHosted(scope: WatchHostedScope): boolean {
+    return (
+      this.session?.kind === 'hosted' &&
+      this.session.spaceID === scope.spaceID &&
+      this.session.project === scope.project &&
+      this.session.environment === scope.environment &&
+      this.session.principal === scope.principal
+    );
+  }
+  async connectHosted(
+    ref: IProjectRef,
+    environment: string,
+    principal: string,
+  ): Promise<void> {
+    this.disconnect();
+    if (
+      !isSharedProjectRef(ref) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(environment) ||
+      !principal
+    )
+      throw new Error(
+        'Choose an accessible project and environment, and sign in.',
+      );
+    const session = {
+      kind: 'hosted' as const,
+      spaceID: ref.spaceID,
+      project: ref.projectId,
+      environment,
+      principal,
+    };
+    this.session = session;
+    try {
+      const identity = await this.get<WatchIdentity>('identity');
+      if (this.session !== session) return;
+      if (
+        identity.hosted !== true ||
+        identity.id !== principal ||
+        identity.spaceID !== session.spaceID ||
+        identity.namespace !== session.spaceID ||
+        identity.project !== session.project ||
+        identity.environment !== environment ||
+        !identity.channels ||
+        !identity.limits
+      )
+        throw new Error(
+          'The Watch response does not identify this account, Space, project and environment.',
+        );
+      this.identity.set(identity);
+    } catch (error) {
+      if (this.session !== session) return;
+      if (this.session === session) this.disconnect();
+      throw error;
+    }
+  }
+  seedMatches(
+    ref: IProjectRef,
+    principal: string,
+    environment: string,
+  ): boolean {
+    return (
+      !!this.seed &&
+      this.seed.projectRef === projectRefToString(ref) &&
+      this.seed.principal === principal &&
+      this.seed.environment === environment
+    );
   }
   async connect(
     config: ProjectCoordination,
@@ -105,6 +191,7 @@ export class WatchClientService {
     )
       throw new Error('Enter a valid coordinator user credential.');
     const session = {
+      kind: 'selfhost' as const,
       endpoint: coordinatorEndpoint(config.endpoint),
       namespace: config.namespace,
       project,
@@ -127,6 +214,7 @@ export class WatchClientService {
         );
       this.identity.set(identity);
     } catch (e) {
+      if (this.session !== session) return;
       if (this.session === session) this.disconnect();
       throw e;
     }
@@ -134,6 +222,8 @@ export class WatchClientService {
   private request() {
     const session = this.session;
     if (!session) throw new Error('Connect to this project coordinator first.');
+    if (session.kind === 'hosted')
+      return { session, headers: undefined, params: new HttpParams() };
     return {
       session,
       headers: new HttpHeaders({ Authorization: `Bearer ${session.token}` }),
@@ -147,20 +237,97 @@ export class WatchClientService {
     let scoped = params;
     for (const [key, value] of Object.entries(extra || {}))
       scoped = scoped.set(key, value);
+    if (session.kind === 'hosted')
+      return firstValueFrom(
+        this.injector
+          .get(DatatugApiService)
+          .get<T>(this.hostedPath(session, path), scoped)
+          .pipe(takeUntil(this.lifetime)),
+      );
     return firstValueFrom(
-      this.http.get<T>(`${session.endpoint}/v1/watch/${path}`, {
-        headers,
-        params: scoped,
-      }),
+      this.http
+        .get<T>(`${session.endpoint}/v1/watch/${path}`, {
+          headers,
+          params: scoped,
+        })
+        .pipe(takeUntil(this.lifetime)),
     );
   }
   private post<T>(path: string, body: unknown): Promise<T> {
     const { session, headers, params } = this.request();
+    if (session.kind === 'hosted')
+      return firstValueFrom(
+        this.injector
+          .get(DatatugApiService)
+          .post<T>(this.hostedPath(session, path), body)
+          .pipe(takeUntil(this.lifetime)),
+      );
     return firstValueFrom(
-      this.http.post<T>(`${session.endpoint}/v1/watch/${path}`, body, {
-        headers,
-        params,
-      }),
+      this.http
+        .post<T>(`${session.endpoint}/v1/watch/${path}`, body, {
+          headers,
+          params,
+        })
+        .pipe(takeUntil(this.lifetime)),
+    );
+  }
+  private hostedPath(scope: WatchHostedScope, path: string): string {
+    return `datatug/watch/${encodeURIComponent(scope.spaceID)}/${encodeURIComponent(scope.project)}/${encodeURIComponent(scope.environment)}/v1/watch/${path}`;
+  }
+  async refreshIdentity(): Promise<WatchIdentity | undefined> {
+    const session = this.session,
+      previous = this.identity();
+    if (!session || !previous) return undefined;
+    const identity = await this.get<WatchIdentity>('identity');
+    if (this.session !== session) return undefined;
+    if (
+      identity.id !== previous.id ||
+      identity.namespace !== previous.namespace ||
+      identity.project !== previous.project ||
+      identity.environment !== previous.environment ||
+      !identity.channels ||
+      !identity.limits ||
+      (session.kind === 'hosted' &&
+        (identity.hosted !== true || identity.spaceID !== session.spaceID))
+    ) {
+      this.disconnect();
+      throw new Error(
+        'The Watch identity changed. Reopen this project to continue.',
+      );
+    }
+    this.identity.set(identity);
+    return identity;
+  }
+  enrollments(after?: string) {
+    return this.get<{ enrollments: WatchRunnerEnrollment[]; next?: string }>(
+      'enrollments',
+      after ? { after } : undefined,
+    );
+  }
+  sources() {
+    return this.get<{ sources: WatchRunnerSource[] }>('sources');
+  }
+  enroll(request: {
+    operationId: string;
+    capabilities: string[];
+    sourceIDs: string[];
+    telegramBotId?: string;
+  }) {
+    return this.post<{ enrollment: WatchRunnerEnrollment; token?: string }>(
+      'enrollments',
+      request,
+    );
+  }
+  revoke(enrollment: WatchRunnerEnrollment) {
+    return this.post<{ ok: boolean }>('enrollments/revoke', {
+      id: enrollment.id,
+      expectedRevision: enrollment.revision,
+    });
+  }
+  rotate(enrollment: WatchRunnerEnrollment) {
+    return this.post<{ enrollment: WatchRunnerEnrollment; token?: string }>(
+      'enrollments/rotate',
+      { id: enrollment.id, expectedRevision: enrollment.revision },
     );
   }
   definitions() {
