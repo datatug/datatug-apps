@@ -1070,6 +1070,9 @@ test('Watch events create each canonical type, link existing work and correlate 
     await page.goto(watchPath);
     await page
       .locator('sneat-work-watch')
+      .getByRole('list', { name: 'Watch events', exact: true })
+      .locator('ion-item')
+      .filter({ hasText: 'Watch triggered' })
       .getByRole('button', { name: action, exact: true })
       .first()
       .click();
@@ -1097,6 +1100,9 @@ test('Watch events create each canonical type, link existing work and correlate 
   await page.goto(watchPath);
   await page
     .locator('sneat-work-watch')
+    .getByRole('list', { name: 'Watch events', exact: true })
+    .locator('ion-item')
+    .filter({ hasText: 'Watch triggered' })
     .getByRole('button', { name: 'Link existing work', exact: true })
     .first()
     .click();
@@ -1128,7 +1134,13 @@ test('Watch events create each canonical type, link existing work and correlate 
       name: 'I agree to share this personal Watch event and selected context with the project.',
       exact: true,
     })
-    .check();
+    .click();
+  await expect(
+    page.getByRole('checkbox', {
+      name: 'I agree to share this personal Watch event and selected context with the project.',
+      exact: true,
+    }),
+  ).toBeChecked();
   await page
     .getByRole('textbox', { name: 'Title', exact: true })
     .fill('Follow up completed one-shot order 11045');
