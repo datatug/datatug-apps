@@ -5,6 +5,8 @@ import {
   scrubDeep,
   scrubUrl,
   hasQuickSearchOrigin,
+  hasWatchOrigin,
+  onWatchRoute,
 } from './link-privacy';
 
 /** The transaction event of `beforeSendTransaction` (not exported by `@sentry/browser` itself). */
@@ -17,6 +19,53 @@ const REQUEST_CATEGORIES = new Set(['xhr', 'fetch']);
 /** Breadcrumb categories that can carry page text or logged values: dropped on a link route. */
 const PAGE_TEXT_CATEGORIES = new Set(['console', 'ui.click', 'ui.input']);
 
+function requestDiagnostics(data: Record<string, unknown>) {
+  return {
+    method:
+      typeof data['method'] === 'string' &&
+      /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/.test(data['method'])
+        ? data['method']
+        : undefined,
+    status_code:
+      typeof data['status_code'] === 'number' &&
+      data['status_code'] >= 100 &&
+      data['status_code'] <= 599
+        ? data['status_code']
+        : undefined,
+  };
+}
+
+/** A Watch request keeps no source address, payload, response or private SDK attributes. */
+function watchRequestBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb {
+  return {
+    category: breadcrumb.category,
+    type: 'http',
+    data: { ...requestDiagnostics(breadcrumb.data ?? {}), url: '/watch-api' },
+  };
+}
+
+function watchSpan<T extends object>(span: T): T {
+  const data = span as Record<string, unknown>;
+  const attributes = (data['data'] ?? {}) as Record<string, unknown>;
+  const diagnostics = requestDiagnostics({
+    method: attributes['http.method'],
+    status_code: attributes['http.response.status_code'],
+  });
+  // Span IDs and timestamps are SDK diagnostics; arbitrary span attributes are private.
+  return {
+    span_id: data['span_id'],
+    trace_id: data['trace_id'],
+    parent_span_id: data['parent_span_id'],
+    start_timestamp: data['start_timestamp'],
+    timestamp: data['timestamp'],
+    description: 'Watch operation',
+    data: {
+      'http.method': diagnostics.method,
+      'http.response.status_code': diagnostics.status_code,
+    },
+  } as T;
+}
+
 /**
  * A request breadcrumb as Sentry may keep it: for a loopback agent only the method, the status and the address
  * without its query (no body or response size or anything else the instrumentation adds).
@@ -27,7 +76,11 @@ function scrubRequestBreadcrumb(
 ): Breadcrumb {
   const data = breadcrumb.data ?? {};
   const url = typeof data['url'] === 'string' ? data['url'] : '';
-  if (!loopbackAgentOrigin(url) && !hasQuickSearchOrigin(url)) {
+  if (
+    !loopbackAgentOrigin(url) &&
+    !hasQuickSearchOrigin(url) &&
+    !hasWatchOrigin(url)
+  ) {
     return scrubDeep(breadcrumb, dropQuery);
   }
   return {
@@ -47,8 +100,17 @@ export function scrubSentryBreadcrumb(
   sourceSensitive = false,
 ): Breadcrumb | null {
   const dropQuery =
-    sourceSensitive || onLinkRoute() || hasQuickSearchOrigin(breadcrumb);
+    sourceSensitive ||
+    onLinkRoute() ||
+    hasQuickSearchOrigin(breadcrumb) ||
+    hasWatchOrigin(breadcrumb);
   const category = breadcrumb.category ?? '';
+  if (onWatchRoute() || hasWatchOrigin(breadcrumb)) {
+    if (REQUEST_CATEGORIES.has(category))
+      return watchRequestBreadcrumb(breadcrumb);
+    if (category === 'navigation') return { category: 'navigation' };
+    return null;
+  }
   if (dropQuery && PAGE_TEXT_CATEGORIES.has(category)) {
     return null;
   }
@@ -62,7 +124,9 @@ export function scrubSentryBreadcrumb(
 export function scrubSentryEvent<T extends ErrorEvent | TransactionEvent>(
   event: T,
 ): T {
-  const dropQuery = onLinkRoute() || hasQuickSearchOrigin(event);
+  const watchSensitive = onWatchRoute() || hasWatchOrigin(event);
+  const dropQuery =
+    onLinkRoute() || hasQuickSearchOrigin(event) || watchSensitive;
   const scrubbed = scrubDeep(event, dropQuery);
   if (scrubbed.request) {
     const { url } = scrubbed.request;
@@ -79,9 +143,46 @@ export function scrubSentryEvent<T extends ErrorEvent | TransactionEvent>(
       .map((b: Breadcrumb) => scrubSentryBreadcrumb(b, dropQuery))
       .filter((b): b is Breadcrumb => !!b);
   }
-  if (dropQuery) {
+  if (dropQuery || watchSensitive) {
     // `extra` holds whatever an error logger attached (a serialized HTTP error carries its response body).
     scrubbed.extra = undefined;
+  }
+  if (watchSensitive) {
+    // Watch errors can carry titles, inputs, recipients and one-time credentials in
+    // arbitrary SDK fields. Keep only technical diagnostics, never free page text.
+    return {
+      event_id: scrubbed.event_id,
+      timestamp: scrubbed.timestamp,
+      platform: scrubbed.platform,
+      level: scrubbed.level,
+      type: scrubbed.type,
+      message: scrubbed.message ? 'Watch operation failed' : undefined,
+      transaction: scrubbed.transaction ? 'Watch operation' : undefined,
+      request: scrubbed.request
+        ? {
+            url: '/watch-api',
+            method: requestDiagnostics({ method: scrubbed.request.method })
+              .method,
+          }
+        : undefined,
+      exception: scrubbed.exception
+        ? { values: [{ type: 'WatchError', value: 'Watch operation failed' }] }
+        : undefined,
+      breadcrumbs: scrubbed.breadcrumbs
+        ?.filter(
+          (b) =>
+            REQUEST_CATEGORIES.has(b.category || '') ||
+            b.category === 'navigation',
+        )
+        .map((b) =>
+          REQUEST_CATEGORIES.has(b.category || '')
+            ? watchRequestBreadcrumb(b)
+            : { category: 'navigation' },
+        ),
+      ...('spans' in scrubbed
+        ? { spans: (scrubbed as TransactionEvent).spans?.map(watchSpan) }
+        : {}),
+    } as T;
   }
   return scrubbed;
 }
@@ -113,10 +214,10 @@ export function withSentryLinkPrivacy(options: BrowserOptions): BrowserOptions {
         : scrubbed;
     },
     beforeSendSpan: (span) => {
-      const scrubbed = scrubDeep(
-        span,
-        onLinkRoute() || hasQuickSearchOrigin(span),
-      );
+      const scrubbed =
+        onWatchRoute() || hasWatchOrigin(span)
+          ? watchSpan(span)
+          : scrubDeep(span, onLinkRoute() || hasQuickSearchOrigin(span));
       return beforeSendSpan ? beforeSendSpan(scrubbed) : scrubbed;
     },
     beforeBreadcrumb: (breadcrumb, hint) => {

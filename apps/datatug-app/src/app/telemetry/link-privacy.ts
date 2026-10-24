@@ -19,6 +19,34 @@ const RESULT_ROUTE = /^\/store\/[^/]+\/result\/[^/?#]+\/?$/;
  */
 const RESULT_EDITOR_ROUTE = /^\/store\/[^/]+\/project\/[^/]+\/query\/?$/;
 
+/** Private Watch pages and runner/notification API calls, including queued events after navigation. */
+function watchPage(pathname: string): boolean {
+  const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
+  return (
+    project.ok && /^\/watch(?:\/[A-Za-z0-9_-]{1,128})?\/?$/.test(project.rest)
+  );
+}
+const WATCH_API_ROUTE =
+  /\/(?:v0\/datatug\/watch\/[^/]+\/[^/]+\/[^/]+\/)?v1\/watch(?:\/[^?#]*)?\/?$/;
+export function onWatchRoute(): boolean {
+  return typeof location !== 'undefined' && watchPage(location.pathname);
+}
+export function hasWatchOrigin(value: unknown, depth = 0): boolean {
+  if (depth >= 10) return false;
+  if (typeof value === 'string')
+    return (value.match(SEARCH_ORIGIN_URLS) || []).some((address) => {
+      const path = address
+        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '')
+        .split(/[?#]/)[0];
+      return watchPage(path) || WATCH_API_ROUTE.test(path);
+    });
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    Object.values(value).some((item) => hasWatchOrigin(item, depth + 1))
+  );
+}
+
 /** Only real project search/discovery routes carry this privacy boundary. */
 function quickSearchPage(
   pathname: string,
@@ -38,7 +66,7 @@ function quickSearchPage(
 const QUICK_SEARCH_API_ROUTE =
   /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|preview|enable|refresh|search|disable)\/?$/;
 const SEARCH_ORIGIN_URLS =
-  /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+/g;
+  /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|v1|datatug)\/[^\s"'<>`]+/g;
 
 /** A queued SDK payload retains its originating URLs; never rely only on current location. */
 export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
@@ -61,6 +89,7 @@ export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
   return (
     !!quickSearchPage(path) ||
+    watchPage(path) ||
     LINK_ROUTE.test(path) ||
     RESULT_ROUTE.test(path) ||
     RESULT_EDITOR_ROUTE.test(path)
@@ -116,6 +145,12 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
   const noFragment = url.split('#')[0];
   const path = noFragment.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
   const searchPage = quickSearchPage(path);
+  if (WATCH_API_ROUTE.test(path.split('?')[0])) return '/watch-api';
+  if (watchPage(path))
+    return (
+      '/project/:projectId/watch' +
+      (/\/watch\/[^/]+/.test(path.split('?')[0]) ? '/:watchId' : '')
+    );
   if (searchPage) {
     const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i.exec(noFragment)?.[0] || '';
     return (
@@ -138,7 +173,7 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
 const RELATIVE_LINK_PATH =
-  /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
+  /(^|[\s"'(=:])(\/(?:store|space|project|v0|v1|datatug)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS =
   /#(?:[^\s"'<>`#]*&)?(?:code|pk|evidence)=[^\s"'<>`]*/g;
 

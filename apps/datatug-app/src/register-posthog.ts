@@ -4,7 +4,15 @@ import {
   checkoutPrivacyActive,
   isCheckoutAddress,
 } from './app/checkout/checkout-privacy-state';
-import { isLinkRoute, onLinkRoute, scrubDeep, hasQuickSearchOrigin } from './app/telemetry/link-privacy';
+import {
+  isLinkRoute,
+  onLinkRoute,
+  scrubDeep,
+  hasQuickSearchOrigin,
+  hasWatchOrigin,
+  onWatchRoute,
+  scrubUrl,
+} from './app/telemetry/link-privacy';
 
 let initialized = false;
 /** The autocapture and recording settings PostHog was started with, restored when a link route is left. */
@@ -22,10 +30,44 @@ const ELEMENT_TEXT_PROPERTIES = ['$elements', '$elements_chain', '$el_text'];
  * code, the record key); on a table, view, records or record page also the address query and any element text, and
  * an autocapture event is dropped there altogether.
  */
-export function scrubPosthogEvent<T extends PosthogEvent | null>(event: T): T | null {
+export function scrubPosthogEvent<T extends PosthogEvent | null>(
+  event: T,
+): T | null {
   if (!event) return event;
-  const dropQuery = onLinkRoute() || hasQuickSearchOrigin(event);
-  if (dropQuery && (event.event === '$autocapture' || event.event === '$snapshot')) return null;
+  const watchSensitive = onWatchRoute() || hasWatchOrigin(event);
+  const dropQuery =
+    onLinkRoute() || hasQuickSearchOrigin(event) || watchSensitive;
+  if (
+    dropQuery &&
+    (event.event === '$autocapture' || event.event === '$snapshot')
+  )
+    return null;
+  if (watchSensitive)
+    return {
+      event: ['$pageview', '$pageleave'].includes(event.event)
+        ? event.event
+        : 'watch_operation',
+      properties: {
+        $current_url:
+          typeof event.properties['$current_url'] === 'string' &&
+          hasWatchOrigin(event.properties['$current_url'])
+            ? scrubUrl(event.properties['$current_url'], true)
+            : '/project/:projectId/watch',
+        method:
+          typeof event.properties['method'] === 'string' &&
+          /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS)$/.test(
+            event.properties['method'],
+          )
+            ? event.properties['method']
+            : undefined,
+        status_code:
+          typeof event.properties['status_code'] === 'number' &&
+          event.properties['status_code'] >= 100 &&
+          event.properties['status_code'] <= 599
+            ? event.properties['status_code']
+            : undefined,
+      },
+    } as unknown as T;
   const scrubbed = scrubDeep(event, dropQuery);
   if (dropQuery && scrubbed.properties) {
     for (const key of ELEMENT_TEXT_PROPERTIES) delete scrubbed.properties[key];

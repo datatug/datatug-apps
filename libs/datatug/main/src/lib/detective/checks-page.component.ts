@@ -5,6 +5,10 @@ import { BusinessClockChipComponent } from '../source-workspace/business-clock-c
 import { HttpErrorResponse } from '@angular/common/http';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
 import { WatchClientService } from '../watch/watch-client.service';
+import {
+  isSharedProjectRef,
+  projectRefToString,
+} from '../core/project-context';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
 import {
   EvidenceSharePanelComponent,
@@ -1332,12 +1336,18 @@ export class ChecksPageComponent {
       }
       this.evidenceInjector.get(WatchClientService).seed = {
         project: ref.projectId,
+        projectRef: projectRefToString(ref) || '',
+        principal: this.scope.context()?.principal || '',
         check,
         environment: this.environment(),
         inputs,
       };
       const url = this.router.parseUrl(projectPageHref(ref, ['watch', 'new']));
-      url.queryParams = { ...url.queryParams, checkId: check.id };
+      url.queryParams = {
+        ...url.queryParams,
+        checkId: check.id,
+        ...(isSharedProjectRef(ref) ? { env: this.environment() } : {}),
+      };
       void this.router.navigateByUrl(url);
     } catch (error) {
       this.error.set(

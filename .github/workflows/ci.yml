@@ -409,6 +409,14 @@ jobs:
         run: |
           pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
+      - name: Hosted Watch Firebase authentication and API contract journey
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+        run: |
+          pnpm nx run datatug-app:build --configuration=watch-cloud-e2e
+          pnpm nx run datatug-app:e2e-watch-cloud
+
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
         run: |

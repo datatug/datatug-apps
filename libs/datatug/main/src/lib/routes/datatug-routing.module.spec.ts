@@ -50,6 +50,9 @@ describe('datatugRoutes', () => {
         candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
     expect(route?.children?.map((child) => child.path)).toEqual([
+      'watch/new',
+      'watch/:watchId',
+      'watch',
       'quick-search',
       'tags',
       'search-schema/:dbModelId',
@@ -117,6 +120,11 @@ describe('datatugRoutes', () => {
       matches([...base, 'incidents', 'detective-incidents-9c561d36', 'INC-1']),
     ).toBe(true);
     expect(matches([...base, 'checks'])).toBe(true);
+    expect(matches([...base, 'watch'])).toBe(true);
+    expect(matches([...base, 'watch', 'new'])).toBe(true);
+    expect(matches([...base, 'watch', 'watch-one'])).toBe(true);
+    expect(matches([...base, 'watch', 'bad.id'])).toBe(false);
+    expect(matches([...base, 'watch', 'watch-one', 'extra'])).toBe(false);
     expect(matches([...base, 'checks', 'invoice-check'])).toBe(true);
     expect(matches([...base, 'detective'])).toBe(true);
     expect(matches([...base, 'detective', 'invoice-case'])).toBe(true);

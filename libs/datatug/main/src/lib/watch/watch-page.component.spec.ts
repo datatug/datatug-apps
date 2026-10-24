@@ -64,11 +64,16 @@ const check = {
   steps: [],
 };
 
-describe('Project Watch flow', () => {
+describe('Self-hosted project Watch flow', () => {
   const client = {
     identity: signal<WatchIdentity | undefined>(user),
     matches: vi.fn(() => true),
     disconnect: vi.fn(),
+    disconnectOwned: vi.fn(),
+    ownsConnection: vi.fn(() => true),
+    adoptConnection: vi.fn(() => true),
+    claimSelfhostConnection: vi.fn(() => true),
+    handoffConnection: vi.fn(() => false),
     definitions: vi.fn(),
     definition: vi.fn(),
     status: vi.fn(),
@@ -135,6 +140,7 @@ describe('Project Watch flow', () => {
             routeConfig: { path },
             snapshot: { paramMap: params, queryParamMap: query },
             paramMap: new BehaviorSubject(params),
+            queryParamMap: new BehaviorSubject(query),
           },
         },
         { provide: WatchClientService, useValue: client },
@@ -159,7 +165,7 @@ describe('Project Watch flow', () => {
           provide: DatatugNavContextService,
           useValue: {
             currentProject: of({
-              ref: { storeId: 'firestore', spaceID: 's', projectId: 'p' },
+              ref: { storeId: 'http-localhost:8989', projectId: 'p' },
             }),
             currentEnv: of({ id: 'demo' }),
           },
@@ -170,7 +176,12 @@ describe('Project Watch flow', () => {
             authState: new BehaviorSubject({ user: { uid: 'firebase-user' } }),
           },
         },
-        { provide: AgentContextService, useValue: {} },
+        {
+          provide: AgentContextService,
+          useValue: {
+            contextFor: () => ({ securityContextId: () => 'selfhost' }),
+          },
+        },
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(WatchPageComponent);
@@ -198,7 +209,7 @@ describe('Project Watch flow', () => {
     expect(
       f.nativeElement.querySelector('a[href*="/checks/"]').getAttribute('href'),
     ).toBe(
-      '/space/s/store/firestore/project/p/checks/shipping-carrier-assignment',
+      '/store/http-localhost:8989/project/p/checks/shipping-carrier-assignment',
     );
   });
   it('uses the configured bot username and rejects a foreign or credential-bearing connection link', async () => {
@@ -248,7 +259,7 @@ describe('Project Watch flow', () => {
       client.lifecycle.mock.invocationCallOrder[0],
     );
     expect(navigate).toHaveBeenCalledWith(
-      '/space/s/store/firestore/project/p/watch/watch-one',
+      '/store/http-localhost:8989/project/p/watch/watch-one',
       { replaceUrl: true },
     );
   });
@@ -310,12 +321,12 @@ describe('Project Watch flow', () => {
     expect(client.lifecycle).not.toHaveBeenCalled();
     expect(client.setupNotice()).toContain('not confirmed');
     expect(navigate).toHaveBeenCalledWith(
-      '/space/s/store/firestore/project/p/watch/watch-one',
+      '/store/http-localhost:8989/project/p/watch/watch-one',
       { replaceUrl: true },
     );
   });
 
-  it.each(['disconnect', 'switch identity', 'destroy'])(
+  it.each(['disconnect', 'switch identity', 'destroy', 'leave'])(
     'does not enable or navigate after %s while subscription is pending',
     async (action) => {
       const fixture = await mount('watch/new');
@@ -333,6 +344,7 @@ describe('Project Watch flow', () => {
         input: (name: string, part: 'value', value: string) => void;
         save: () => Promise<void>;
         disconnect: () => void;
+        ionViewWillLeave: () => void;
         current: () => WatchDefinition | undefined;
         busy: () => boolean;
       };
@@ -340,6 +352,7 @@ describe('Project Watch flow', () => {
       const pending = instance.save();
       await vi.waitFor(() => expect(client.subscribe).toHaveBeenCalled());
       if (action === 'destroy') fixture.destroy();
+      else if (action === 'leave') instance.ionViewWillLeave();
       else if (action === 'disconnect') {
         client.identity.set(undefined);
         instance.disconnect();
@@ -396,6 +409,61 @@ describe('Project Watch flow', () => {
     },
   );
 
+  it.each([
+    ['source_changed', 'Source changed', true],
+    ['source_unavailable', 'Source unavailable', false],
+    ['blocked', 'Blocked', false],
+  ])(
+    'shows authoritative %s without requiring a new failed run',
+    async (availability, label, reset) => {
+      client.status.mockResolvedValue({
+        coordinator: 'online',
+        runners: [],
+        observations: [{ watchId: watch.id, value: 'true', availability }],
+      });
+      const fixture = await mount();
+      expect(fixture.nativeElement.textContent).toContain(label);
+      expect(
+        fixture.nativeElement.textContent.includes('Review baseline reset'),
+      ).toBe(reset);
+      expect(fixture.nativeElement.textContent).toContain(
+        'Last observation: Passing',
+      );
+    },
+  );
+
+  it('cancels the self-host session when the signed-in app account changes', async () => {
+    const fixture = await mount();
+    client.disconnectOwned.mockImplementationOnce(() =>
+      client.identity.set(undefined),
+    );
+    fixture.changeDetectorRef.detach();
+    (
+      TestBed.inject(SneatAuthStateService).authState as BehaviorSubject<{
+        user: { uid: string };
+      }>
+    ).next({ user: { uid: 'replacement-account' } });
+    expect(client.disconnectOwned).toHaveBeenCalled();
+    expect(client.identity()).toBeUndefined();
+    expect(
+      (
+        fixture.componentInstance as unknown as {
+          current: () => WatchDefinition | undefined;
+        }
+      ).current(),
+    ).toBeUndefined();
+  });
+  it('explains independent personal subscriptions on a shared Watch and labels its current owner', async () => {
+    client.definition.mockResolvedValue({
+      definition: { ...watch, visibility: 'shared' },
+    });
+    const fixture = await mount();
+    expect(fixture.nativeElement.textContent).toContain('Owner You');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Other project members can subscribe independently',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('alice · demo ·');
+  });
   it('renders a private blocked Telegram connection without changing selected channels or Watch status', async () => {
     client.telegramStatus.mockResolvedValue({
       connected: false,

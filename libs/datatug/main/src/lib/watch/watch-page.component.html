@@ -5,7 +5,7 @@
     /></ion-buttons>
     <ion-title>Watch <ion-badge color="medium">Beta</ion-badge></ion-title>
     <ion-buttons slot="end">
-      @if (client.identity()) {
+      @if (identity()) {
         <ion-button (click)="refresh()" [disabled]="busy()" aria-label="Refresh"
           ><ion-icon slot="icon-only" name="refresh-outline"
         /></ion-button>
@@ -23,11 +23,54 @@
     @if (message()) {
       <p role="status">{{ message() }}</p>
     }
-    @if (manifestLoading()) {
-      <p role="status">
-        <ion-spinner name="dots" /> Loading project coordinator…
-      </p>
-    } @else if (!config()) {
+    @if (hosted() && signedIn() && environments().length) {
+      <ion-item lines="none" class="environment-selector">
+        <ion-select
+          label="Environment"
+          labelPlacement="stacked"
+          interface="popover"
+          [value]="environment()"
+          (ionChange)="chooseEnvironment($event.detail.value)"
+        >
+          @for (item of environments(); track item.id) {
+            <ion-select-option [value]="item.id">{{
+              item.title || item.id
+            }}</ion-select-option>
+          }
+        </ion-select>
+      </ion-item>
+    }
+    @if (manifestLoading() || (hosted() && authenticating())) {
+      <p role="status"><ion-spinner name="dots" /> Loading Watch…</p>
+    } @else if (hosted() && !signedIn()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label><h1>Sign in to Watch</h1></ion-label></ion-item-divider
+        >
+        <ion-card-content
+          ><p>Use your DataTug account to manage Watches in this project.</p>
+          <ion-button routerLink="/login" [fragment]="returnPath()"
+            >Sign in</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+    } @else if (hosted() && !identity()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label><h1>Project Watch</h1></ion-label></ion-item-divider
+        >
+        <ion-card-content>
+          @if (!error() && environments().length) {
+            <p>Choose an environment to view its Watches.</p>
+          } @else if (!error()) {
+            <p>No environments are available in this project.</p>
+          }
+          <ion-button (click)="retryConnection()" fill="clear"
+            >Retry</ion-button
+          >
+        </ion-card-content>
+      </ion-card>
+    } @else if (!hosted() && !config()) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label
@@ -47,7 +90,7 @@
           </p></ion-card-content
         >
       </ion-card>
-    } @else if (!client.identity()) {
+    } @else if (!identity()) {
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h1>Connect to Watch</h1></ion-label></ion-item-divider
@@ -82,23 +125,25 @@
           </form>
         </ion-card-content>
       </ion-card>
-    } @else if (client.identity(); as user) {
+    } @else if (identity(); as user) {
       <div class="connection-bar" role="status">
         <div>
-          <strong>Coordinator</strong>
+          <strong>{{ hosted() ? 'Watch cloud' : 'Coordinator' }}</strong>
           <ion-badge [color]="status() ? 'success' : 'medium'">{{
             label(status()?.coordinator)
           }}</ion-badge>
           <span
-            >{{ user.id }} · {{ user.environment }} ·
+            >{{ user.environment }} ·
             {{ status()?.runners?.length || 0 }}
             {{ status()?.runners?.length === 1 ? 'runner' : 'runners' }}
             registered</span
           >
         </div>
-        <ion-button fill="clear" color="medium" (click)="disconnect()"
-          >Disconnect</ion-button
-        >
+        @if (!hosted()) {
+          <ion-button fill="clear" color="medium" (click)="disconnect()"
+            >Disconnect</ion-button
+          >
+        }
       </div>
       @if (isNew || editing()) {
         <ion-card
@@ -168,6 +213,13 @@
                       ></ion-select
                     ></ion-item
                   >
+                  @if (user.hosted) {
+                    <p>
+                      Personal Watches wait for an eligible runner enrolled by
+                      their owner. Shared Watches can use any eligible project
+                      runner.
+                    </p>
+                  }
                   <ion-item lines="full"
                     ><ion-select
                       interface="popover"
@@ -398,10 +450,15 @@
                             · @{{ telegramBotUsername() }}
                           }
                         </ion-checkbox>
-                        <ion-note class="channel-description"
-                          >{{ user.limits.telegramPerDay || 0 }} per day ·
-                          {{ user.limits.telegramPerMinute || 0 }} per minute.
-                          @if (!telegramConnected()) {
+                        <ion-note class="channel-description">
+                          @if (user.channels.telegram) {
+                            {{ user.limits.telegramPerDay || 0 }} per day ·
+                            {{ user.limits.telegramPerMinute || 0 }} per minute.
+                          }
+                          @if (!user.channels.telegram) {
+                            Telegram delivery is unavailable on this
+                            coordinator.
+                          } @else if (!telegramConnected()) {
                             Connect your Telegram account first.
                           }
                         </ion-note>
@@ -453,7 +510,7 @@
                   ><ion-button
                     fill="clear"
                     [routerLink]="
-                      isNew ? pageHref('watch') : pageHref(['watch', watchId()])
+                      isNew ? pageLink('watch') : pageLink(['watch', watchId()])
                     "
                     (click)="editing.set(false)"
                     >Cancel</ion-button
@@ -491,10 +548,11 @@
                     }}</ion-badge>
                   </div>
                   <p class="provenance">
-                    Owner {{ watch.owner }} · version {{ watch.version }}
+                    Owner {{ watch.owner === user.id ? 'You' : watch.owner }} ·
+                    version {{ watch.version }}
                   </p>
                   <p>
-                    <a [routerLink]="pageHref(['checks', watch.checkId])">{{
+                    <a [routerLink]="pageLink(['checks', watch.checkId])">{{
                       checkTitle(watch.checkId)
                     }}</a>
                     · {{ watch.environment }} · every
@@ -637,7 +695,24 @@
                   ></ion-item-divider
                 >
                 <ion-card-content
-                  ><p>Choose how you receive updates for this Watch.</p>
+                  ><p>
+                    Choose how you receive updates for this Watch.
+                    @if (watch.visibility === 'shared') {
+                      Your subscription is personal. Other project members can
+                      subscribe independently.
+                    }
+                  </p>
+                  @if (user.hosted) {
+                    <p>
+                      @if (watch.visibility === 'personal') {
+                        This personal Watch waits for an eligible runner
+                        enrolled by you.
+                      } @else {
+                        Any eligible project runner can evaluate this shared
+                        Watch.
+                      }
+                    </p>
+                  }
                   @if (telegramReconnectRequired()) {
                     <ion-item color="warning" lines="none"
                       ><ion-label class="ion-text-wrap"
@@ -722,10 +797,12 @@
                           @if (telegramBotUsername()) {
                             · @{{ telegramBotUsername() }}
                           }</ion-checkbox
-                        ><ion-note class="channel-description"
-                          >Telegram limit:
-                          {{ user.limits.telegramPerDay || 0 }} per day,
-                          {{ user.limits.telegramPerMinute || 0 }} per minute.
+                        ><ion-note class="channel-description">
+                          @if (user.channels.telegram) {
+                            Telegram limit:
+                            {{ user.limits.telegramPerDay || 0 }} per day,
+                            {{ user.limits.telegramPerMinute || 0 }} per minute.
+                          }
                           @if (!user.channels.telegram) {
                             Telegram delivery is unavailable on this
                             coordinator.
@@ -843,7 +920,7 @@
         } @else if (!busy()) {
           <p>
             No accessible Watch was found.
-            <a [routerLink]="pageHref('watch')">Back to Watch</a>
+            <a [routerLink]="pageLink('watch')">Back to Watch</a>
           </p>
         }
       } @else {
@@ -851,7 +928,7 @@
           ><ion-item-divider color="light"
             ><ion-label><h1>Watches</h1></ion-label
             ><ion-buttons slot="end"
-              ><ion-button [routerLink]="pageHref(['watch', 'new'])"
+              ><ion-button [routerLink]="pageLink(['watch', 'new'])"
                 >Create Watch</ion-button
               ></ion-buttons
             ></ion-item-divider
@@ -859,7 +936,7 @@
           <ion-card-content
             ><ion-list>
               @for (watch of definitions(); track watch.id) {
-                <ion-item [routerLink]="pageHref(['watch', watch.id])" detail
+                <ion-item [routerLink]="pageLink(['watch', watch.id])" detail
                   ><ion-label class="ion-text-wrap"
                     ><h2>{{ watch.title }}</h2>
                     <p>
@@ -884,6 +961,9 @@
         </ion-card>
       }
 
+      @if (hosted() && user.canManageRunners) {
+        <sneat-datatug-watch-runners [identity]="user" />
+      }
       <ion-card
         ><ion-item-divider color="light"
           ><ion-label><h2>Inbox</h2></ion-label></ion-item-divider
