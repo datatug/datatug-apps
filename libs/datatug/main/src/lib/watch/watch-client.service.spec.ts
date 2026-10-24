@@ -31,6 +31,32 @@ describe('Watch coordinator user transport', () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('drops direct credentials and pending input seeds on application principal switch', async () => {
+    client.bindPrincipal('alice');
+    const connected = client.connect(config, 'p', 'alice-user-token');
+    http.expectOne((r) => r.url.endsWith('/identity')).flush(identity);
+    await connected;
+    expect(client.identity()?.id).toBe('alice');
+    client.seed = {
+      project: 'p',
+      environment: 'demo',
+      inputs: { order_id: { type: 'integer', value: '11045' } },
+      check: {
+        id: 'check1',
+        title: 'Private Check',
+        version: 1,
+        inputs: [],
+        steps: [],
+      },
+    };
+    client.bindPrincipal('bob');
+    expect(client.identity()).toBeUndefined();
+    expect(client.seed).toBeUndefined();
+    expect(() => client.inbox()).toThrow(
+      'Connect to this project coordinator first',
+    );
+    http.expectNone(() => true);
+  });
   it('refuses credential-bearing and nonlocal insecure coordinator descriptors before sending a token', async () => {
     for (const endpoint of [
       'http://remote.test',

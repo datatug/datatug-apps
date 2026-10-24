@@ -120,6 +120,16 @@ export interface WorkProposal {
   selection: ContextEntryRef[];
 }
 export interface WorkDetail {
+  watchEvidence?: {
+    id: string;
+    itemId: string;
+    watchId: string;
+    event: import('./work-watch.models').WorkWatchEvent;
+    importedAt: string;
+    importedBy: string;
+    sharedBy?: string;
+    contextEntryIds: string[];
+  }[];
   relatedItems?: Pick<WorkItem, 'id' | 'type' | 'title'>[];
   environments: WorkEnvironment[];
   proposals: WorkProposal[];

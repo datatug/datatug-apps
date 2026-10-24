@@ -72,6 +72,19 @@ export class WatchClientService {
     project: string;
     token: string;
   };
+  private applicationPrincipal?: string;
+  /** A direct coordinator login is independent of Firebase, but must never
+   * survive switching the person using the hosted application. */
+  bindPrincipal(actor: string): void {
+    if (
+      this.applicationPrincipal !== undefined &&
+      this.applicationPrincipal !== actor
+    ) {
+      this.disconnect();
+      this.seed = undefined;
+    }
+    this.applicationPrincipal = actor;
+  }
   readonly setupNotice = signal('');
   seed?: {
     project: string;

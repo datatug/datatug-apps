@@ -144,17 +144,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   };
   observe(page);
   const token = await login(page, 'alice');
-  await page.goto(base);
-  await expect(page.getByText('Project Work', { exact: true })).toBeVisible();
-  await page.getByRole('link', { name: 'Create work', exact: true }).click();
-  await page
-    .getByRole('textbox', { name: 'Title', exact: true })
-    .fill('Delayed shipment · order 11045');
-  await choose(page, 'ion-select[formControlName="type"]', 'Incident');
-  await page
-    .getByRole('textbox', { name: 'Description', exact: true })
-    .fill('Order 11045 needs shipment investigation and evidence.');
-  // Select from the actual admitted source catalog, including domains sharing an environment ID.
+  const integrated = process.env['DATATUG_WORK_WATCH_E2E'] === '1';
   const catalog = await (
     await page.request.get(`${api}/items?spaceID=space&projectID=project`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -164,17 +154,81 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     catalog.environments.find((e: { identityDomain: string }) =>
       /shipping/i.test(e.identityDomain),
     ) || catalog.environments[0];
-  const scopeOption = page
-    .locator('ion-select[formControlName="environment"] ion-select-option')
-    .filter({ hasText: environment.title });
-  const optionLabel = (await scopeOption.first().textContent())!.trim();
-  await choose(page, 'ion-select[formControlName="environment"]', optionLabel);
-  const incidentPath = await created(page);
+  let incidentPath: string;
   const orderSubject = environment.subjects.find((s: { label: string }) =>
     /order.*id/i.test(s.label),
   );
   expect(orderSubject).toBeTruthy();
-  await addContext(page, orderSubject.label, '11045');
+  if (integrated) {
+    const watchPath = base.replace(/\/work$/, '/watch/order-11045-shared');
+    await page.goto(watchPath);
+    const watchPanel = page.locator('sneat-work-watch');
+    await expect(
+      watchPanel.getByRole('list', { name: 'Watch events', exact: true }),
+    ).toContainText('Watch triggered');
+    await expect(
+      watchPanel.getByRole('list', {
+        name: 'Watch notifications',
+        exact: true,
+      }),
+    ).toContainText('In-app notification');
+    await expect(
+      watchPanel.getByRole('list', {
+        name: 'Watch notification delivery',
+        exact: true,
+      }),
+    ).toContainText('email');
+    await stableScreenshot(page, 'watch-trigger-desktop');
+    await watchPanel
+      .getByRole('button', { name: 'Create Incident', exact: true })
+      .first()
+      .click();
+    await expect(
+      watchPanel.getByText('Review Watch handoff', { exact: true }),
+    ).toBeVisible();
+    await expect(watchPanel).toContainText('11045');
+    await page
+      .getByRole('textbox', { name: 'Title', exact: true })
+      .fill('Delayed shipment · order 11045');
+    await expect(
+      page.getByRole('textbox', { name: 'Description', exact: true }),
+    ).toHaveValue(/Watch order-11045-shared/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await watchPanel
+      .getByRole('heading', { name: 'Review Watch handoff', exact: true })
+      .scrollIntoViewIfNeeded();
+    await stableScreenshot(page, 'watch-handoff-mobile', false);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    incidentPath = await created(page);
+    await expect(
+      page.getByRole('list', { name: 'Context Bag entries', exact: true }),
+    ).toContainText('11045');
+    await expect(
+      page.getByRole('list', { name: 'Retained Watch evidence', exact: true }),
+    ).toContainText('Watch triggered');
+  } else {
+    await page.goto(base);
+    await expect(page.getByText('Project Work', { exact: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Create work', exact: true }).click();
+    await page
+      .getByRole('textbox', { name: 'Title', exact: true })
+      .fill('Delayed shipment · order 11045');
+    await choose(page, 'ion-select[formControlName="type"]', 'Incident');
+    await page
+      .getByRole('textbox', { name: 'Description', exact: true })
+      .fill('Order 11045 needs shipment investigation and evidence.');
+    const scopeOption = page
+      .locator('ion-select[formControlName="environment"] ion-select-option')
+      .filter({ hasText: environment.title });
+    const optionLabel = (await scopeOption.first().textContent())!.trim();
+    await choose(
+      page,
+      'ion-select[formControlName="environment"]',
+      optionLabel,
+    );
+    incidentPath = await created(page);
+    await addContext(page, orderSubject.label, '11045');
+  }
   await stableScreenshot(page, 'incident-desktop');
   await page.setViewportSize({ width: 390, height: 844 });
   await stableScreenshot(page, 'incident-mobile');
@@ -275,6 +329,10 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .getByRole('button', { name: 'Investigate selected context', exact: true })
     .click();
   await expect(bob).toHaveURL(/\/sessions\/[^/]+\/overview/);
+  const executionSessionId = new URL(bob.url()).pathname.match(
+    /\/sessions\/([^/]+)\/overview$/,
+  )?.[1];
+  expect(executionSessionId).toBeTruthy();
   await bob.getByRole('button', { name: /Context · 0 applied/ }).click();
   await expect(
     bob
@@ -322,6 +380,43 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob
     .getByRole('textbox', { name: 'Order ID', exact: true })
     .fill('11045');
+  if (integrated) {
+    await bob
+      .getByRole('button', {
+        name: 'Choose Incident for evidence',
+        exact: true,
+      })
+      .click();
+    await choose(
+      bob,
+      'ion-select[label="Evidence Incident"]',
+      /Delayed shipment · order 11045/,
+    );
+    await bob
+      .getByRole('button', { name: 'Choose applied context', exact: true })
+      .click();
+    const option = bob.locator(
+      `ion-select[aria-label="Existing native Session"] ion-select-option[value="${executionSessionId}"]`,
+    );
+    await expect(option).toHaveCount(1);
+    const title = (await option.textContent())?.trim();
+    expect(title).toBeTruthy();
+    await choose(
+      bob,
+      'ion-select[aria-label="Existing native Session"]',
+      title || '',
+    );
+    await choose(
+      bob,
+      'ion-select[aria-label="Applied scalar revision"]',
+      /order_id.*11045/,
+    );
+    await expect(bob.getByTestId('run-check-action')).toHaveAttribute(
+      'aria-label',
+      'Run Check and attach to Incident',
+    );
+    await stableScreenshot(bob, 'watch-inherited-context-check-binding', false);
+  }
   const runResponse = bob.waitForResponse(
     (response) =>
       response.url().includes('/datatug/detective/action') &&
@@ -330,6 +425,16 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob.getByTestId('run-check-action').click();
   const run = await runResponse;
   expect(run.status()).toBe(200);
+  if (integrated) {
+    const request = run.request().postDataJSON();
+    expect(request.evidence.retention).toBe('project-pinned');
+    expect(request.evidence.context.sessionId).toBe(executionSessionId);
+    expect(request.evidence.context.bindings[0].inputName).toBe('order_id');
+    expect(request.evidence.context.scope).toEqual({
+      environmentId: environment.environmentId,
+      identityDomain: environment.identityDomain,
+    });
+  }
   await expect(bob.getByText(/completed · pass/).first()).toBeVisible();
   await bob.goto(specialistCasePath);
   await expect(
@@ -539,6 +644,62 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     }),
   ).toBeVisible();
   await page.goto(incidentPath);
+  if (integrated) {
+    // Correct/replay only the authoritative hosted revision; the test host exports
+    // its exact accepted bytes for the real native runners.
+    const shipping = 'http://127.0.0.1:8090/v0/datatug/shipping';
+    const shippingScope =
+      '?storage=firestore&spaceID=space&project=project&sourceId=shipping-working-copy';
+    let revision = await (
+      await page.request.get(shipping + '/revision' + shippingScope, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    ).json();
+    for (const action of ['correct', 'replay']) {
+      const response = await page.request.post(shipping + '/action', {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          spaceID: 'space',
+          projectId: 'project',
+          sourceId: 'shipping-working-copy',
+          operationId: `watch-browser-${action}-${crypto.randomUUID()}`,
+          action,
+          expected: {
+            generation: revision.generation,
+            revision: revision.revision,
+            sha256: revision.sha256,
+          },
+          ...(action === 'replay' ? { orderId: 11045 } : {}),
+        },
+      });
+      expect(response.ok(), await response.text()).toBe(true);
+      revision = (await response.json()).current;
+    }
+    const activeWatch = page.locator('sneat-work-watch').first();
+    await expect(async () => {
+      await activeWatch
+        .getByRole('button', { name: 'Refresh evidence', exact: true })
+        .click();
+      await expect(
+        activeWatch.getByRole('list', { name: 'Watch events', exact: true }),
+      ).toContainText('Recovered');
+    }).toPass({ timeout: 45_000 });
+    await expect(page.locator('.badges')).toContainText('Open');
+    await activeWatch
+      .getByRole('button', {
+        name: 'Record latest Watch evidence',
+        exact: true,
+      })
+      .click();
+    await activeWatch
+      .getByRole('button', { name: 'Confirm evidence import', exact: true })
+      .click();
+    await expect(
+      page.getByRole('list', { name: 'Retained Watch evidence', exact: true }),
+    ).toContainText('Recovered');
+    await expect(page.locator('.badges')).toContainText('Open');
+    await stableScreenshot(page, 'watch-recovery-human-resolution');
+  }
   for (const status of ['Investigating', 'Recovering', 'Resolved', 'Closed']) {
     await page
       .getByRole('button', { name: 'Change status', exact: true })
@@ -860,4 +1021,141 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
     }),
     contentType: 'application/json',
   });
+});
+
+test('Watch events create each canonical type, link existing work and correlate another actor', async ({
+  page,
+  browser,
+}) => {
+  test.skip(
+    process.env['DATATUG_WORK_WATCH_E2E'] !== '1',
+    'Requires the owned real Coordinator/Runner integration fixture.',
+  );
+  const token = await login(page, 'alice');
+  const headers = { Authorization: `Bearer ${token}` };
+  const watchPath = base.replace(/\/work$/, '/watch/order-11045-shared');
+  const view = await (
+    await page.request.get(
+      `${api}/watch-events?spaceID=space&projectID=project&watchId=order-11045-shared`,
+      { headers },
+    )
+  ).json();
+  const incident = view.linkedItems.find(
+    (item: { type: string }) => item.type === 'incident',
+  );
+  expect(incident).toBeTruthy();
+  for (const [action, title] of [
+    ['Create Detective Case', 'Watch-linked Detective Case 11045'],
+    ['Create Task', 'Watch-linked Task 11045'],
+  ]) {
+    await page.goto(watchPath);
+    await page
+      .locator('sneat-work-watch')
+      .getByRole('button', { name: action, exact: true })
+      .first()
+      .click();
+    await page.getByRole('textbox', { name: 'Title', exact: true }).fill(title);
+    await created(page);
+    await expect(
+      page.getByRole('list', { name: 'Context Bag entries', exact: true }),
+    ).toContainText('11045');
+    await expect(
+      page.getByRole('list', { name: 'Retained Watch evidence', exact: true }),
+    ).toContainText('Watch triggered');
+  }
+  const work = await (
+    await page.request.get(`${api}/items?spaceID=space&projectID=project`, {
+      headers,
+    })
+  ).json();
+  const remediation = work.items.find(
+    (item: { title: string }) =>
+      item.title === 'Repair shipment allocation for order 11045',
+  );
+  expect(remediation).toBeTruthy();
+  const contextUrl = `${api}/context?spaceID=space&projectID=project&id=${remediation.id}`;
+  const before = await (await page.request.get(contextUrl, { headers })).json();
+  await page.goto(watchPath);
+  await page
+    .locator('sneat-work-watch')
+    .getByRole('button', { name: 'Link existing work', exact: true })
+    .first()
+    .click();
+  await choose(
+    page,
+    'ion-select[label="Existing work item"]',
+    /Repair shipment allocation for order 11045/,
+  );
+  await page.getByRole('button', { name: 'Confirm link', exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/work/${remediation.id}$`));
+  const after = await (await page.request.get(contextUrl, { headers })).json();
+  for (const entry of before.entries)
+    expect(after.entries).toContainEqual(entry);
+  for (const revision of before.revisions)
+    expect(after.revisions).toContainEqual(revision);
+  await expect(
+    page.getByRole('list', { name: 'Retained Watch evidence', exact: true }),
+  ).toContainText('Watch triggered');
+  await stableScreenshot(page, 'watch-existing-link-preserves-context');
+  await page.goto(base.replace(/\/work$/, '/watch/order-11045-one-shot'));
+  const personalPanel = page.locator('sneat-work-watch');
+  await expect(personalPanel).toContainText('completed');
+  await personalPanel
+    .getByRole('button', { name: 'Create Task', exact: true })
+    .first()
+    .click();
+  await page
+    .getByRole('checkbox', {
+      name: 'I agree to share this personal Watch event and selected context with the project.',
+      exact: true,
+    })
+    .check();
+  await page
+    .getByRole('textbox', { name: 'Title', exact: true })
+    .fill('Follow up completed one-shot order 11045');
+  await created(page);
+  await expect(
+    page.getByRole('list', { name: 'Retained Watch evidence', exact: true }),
+  ).toContainText('Recovered');
+  const oneShot = await (
+    await page.request.get(
+      `${api}/watch-events?spaceID=space&projectID=project&watchId=order-11045-one-shot`,
+      { headers },
+    )
+  ).json();
+  expect(oneShot.watches[0].lifecycle).toBe('completed');
+  const recurring = await (
+    await page.request.get(
+      `${api}/watch-events?spaceID=space&projectID=project&watchId=order-11045-shared`,
+      { headers },
+    )
+  ).json();
+  expect(recurring.watches[0].lifecycle).toBe('enabled');
+  await stableScreenshot(page, 'one-shot-followup-context-consent');
+  const bobContext = await browser.newContext({
+    baseURL: 'http://127.0.0.1:4201',
+  });
+  const bob = await bobContext.newPage();
+  await login(bob, 'bob');
+  await bob.goto(watchPath);
+  await bob
+    .locator('sneat-work-watch')
+    .getByRole('button', { name: 'Create Incident', exact: true })
+    .first()
+    .click();
+  await bob
+    .getByRole('textbox', { name: 'Title', exact: true })
+    .fill('Duplicate confirmation must preserve canonical Incident');
+  await created(bob);
+  await expect(bob).toHaveURL(new RegExp(`/work/${incident.id}$`));
+  const current = await (
+    await page.request.get(
+      `${api}/item?spaceID=space&projectID=project&id=${incident.id}`,
+      { headers },
+    )
+  ).json();
+  expect(current.item.title).toBe(incident.title);
+  expect(current.item.version).toBe(incident.version);
+  expect(current.item.status).toBe('closed');
+  await bobContext.close();
 });
