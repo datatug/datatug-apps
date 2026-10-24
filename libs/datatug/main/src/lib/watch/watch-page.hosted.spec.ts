@@ -110,6 +110,9 @@ describe('Hosted Watch account and environment lifecycle', () => {
         subscription: { watchId: 'w', channels: ['email'] },
       })),
       setupNotice: signal(''),
+      preserveSetupNotice: vi.fn(() => false),
+      stageSetupNotice: vi.fn(),
+      consumeSetupNotice: vi.fn(),
       seed: undefined,
       seedMatches: vi.fn(() => false),
       save: vi.fn(async (d: WatchDefinition) => ({
@@ -216,6 +219,7 @@ describe('Hosted Watch account and environment lifecycle', () => {
       'dev',
       'alice',
       expect.any(Object),
+      'w',
     );
     expect(fixture.nativeElement.textContent).toContain(
       'Private source health',
@@ -385,6 +389,41 @@ describe('Hosted Watch account and environment lifecycle', () => {
       expect(navigate).not.toHaveBeenCalled();
     },
   );
+  it('stages a failed consent notice for the returned detail without enabling or retrying', async () => {
+    query.next(convertToParamMap({ env: 'dev', checkId: 'check' }));
+    const fixture = await mount('watch/new');
+    await fixture.whenStable();
+    client.subscribe.mockRejectedValueOnce(
+      new Error('Temporarily unavailable'),
+    );
+    const navigate = vi
+      .spyOn(TestBed.inject(Router), 'navigateByUrl')
+      .mockResolvedValue(true);
+    await (
+      fixture.componentInstance as unknown as { save: () => Promise<void> }
+    ).save();
+    expect(client.subscribe).toHaveBeenCalledTimes(1);
+    expect(client.lifecycle).not.toHaveBeenCalled();
+    expect(client.stageSetupNotice).toHaveBeenCalledWith(
+      project.value.ref,
+      client.identity(),
+      'returned-watch',
+      '/space/s/store/firestore/project/p/watch/returned-watch?env=dev',
+      expect.stringContaining(
+        'Review its current subscription and lifecycle before resuming',
+      ),
+    );
+    expect(navigate).toHaveBeenCalledWith(
+      '/space/s/store/firestore/project/p/watch/returned-watch?env=dev',
+      { replaceUrl: true },
+    );
+    client.preserveSetupNotice.mockReturnValueOnce(true);
+    fixture.componentInstance.ionViewWillLeave();
+    expect(client.disconnectOwned).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      true,
+    );
+  });
   it('retains the paused-subscribe-enable ordering and navigates with returned ID and environment', async () => {
     query.next(convertToParamMap({ env: 'dev', checkId: 'check' }));
     const fixture = await mount('watch/new');

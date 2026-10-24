@@ -90,6 +90,57 @@ export class WatchClientService {
       }
     | ({ kind: 'hosted' } & WatchHostedScope);
   readonly setupNotice = signal('');
+  private pendingSetupNotice?: {
+    context: string;
+    watchID: string;
+    destination: string;
+    message: string;
+  };
+  private setupNoticeContext(
+    ref: IProjectRef,
+    principal: string,
+    environment: string,
+  ) {
+    return JSON.stringify([projectRefToString(ref), principal, environment]);
+  }
+  stageSetupNotice(
+    ref: IProjectRef,
+    user: WatchIdentity,
+    watchID: string,
+    destination: string,
+    message: string,
+  ): void {
+    if (this.identity() !== user || this.session?.kind !== 'hosted') return;
+    this.pendingSetupNotice = {
+      context: this.setupNoticeContext(ref, user.id, user.environment),
+      watchID,
+      destination,
+      message,
+    };
+  }
+  preserveSetupNotice(owner: object, destination: string): boolean {
+    return (
+      this.ownsConnection(owner) &&
+      this.pendingSetupNotice?.destination === destination
+    );
+  }
+  consumeSetupNotice(
+    ref: IProjectRef,
+    user: WatchIdentity,
+    watchID: string,
+  ): void {
+    const pending = this.pendingSetupNotice;
+    if (!pending) return;
+    this.pendingSetupNotice = undefined;
+    this.setupNotice.set(
+      this.identity() === user &&
+        pending.watchID === watchID &&
+        pending.context ===
+          this.setupNoticeContext(ref, user.id, user.environment)
+        ? pending.message
+        : '',
+    );
+  }
   seed?: {
     project: string;
     projectRef: string;
@@ -107,7 +158,8 @@ export class WatchClientService {
       this.session.project === project
     );
   }
-  disconnect(): void {
+  disconnect(preserveSetupNotice = false): void {
+    if (!preserveSetupNotice) this.pendingSetupNotice = undefined;
     this.lifetime.next();
     this.lifetime.complete();
     this.lifetime = new Subject<void>();
@@ -119,8 +171,8 @@ export class WatchClientService {
   ownsConnection(owner: object): boolean {
     return this.connectionOwner() === owner && !!this.session;
   }
-  disconnectOwned(owner: object): void {
-    if (this.ownsConnection(owner)) this.disconnect();
+  disconnectOwned(owner: object, preserveSetupNotice = false): void {
+    if (this.ownsConnection(owner)) this.disconnect(preserveSetupNotice);
   }
   claimSelfhostConnection(owner: object, pageScope: string): boolean {
     if (this.session?.kind !== 'selfhost' || !this.identity()) return false;
@@ -175,8 +227,13 @@ export class WatchClientService {
     environment: string,
     principal: string,
     owner?: object,
+    watchID = '',
   ): Promise<void> {
-    this.disconnect();
+    this.disconnect(
+      this.pendingSetupNotice?.watchID === watchID &&
+        this.pendingSetupNotice.context ===
+          this.setupNoticeContext(ref, principal, environment),
+    );
     if (
       !isSharedProjectRef(ref) ||
       !/^[A-Za-z0-9_-]{1,128}$/.test(environment) ||

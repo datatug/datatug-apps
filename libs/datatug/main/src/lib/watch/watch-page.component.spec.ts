@@ -91,6 +91,9 @@ describe('Self-hosted project Watch flow', () => {
     telegramDisconnect: vi.fn(),
     seed: undefined,
     setupNotice: signal(''),
+    preserveSetupNotice: vi.fn(() => false),
+    stageSetupNotice: vi.fn(),
+    consumeSetupNotice: vi.fn(),
   };
   beforeEach(() => {
     vi.clearAllMocks();

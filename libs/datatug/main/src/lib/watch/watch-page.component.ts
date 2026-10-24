@@ -456,6 +456,7 @@ export class WatchPageComponent {
           environment,
           principal,
           this.connectionOwner,
+          this.watchId(),
         );
         if (
           !this.alive ||
@@ -591,12 +592,21 @@ export class WatchPageComponent {
   ionViewWillLeave() {
     this.alive = false;
     this.generation++;
+    const navigation = this.router.currentNavigation?.();
+    const destination =
+      navigation?.finalUrl ||
+      navigation?.extractedUrl ||
+      this.router.parseUrl(this.router.url);
+    const preserveNotice = this.client.preserveSetupNotice(
+      this.connectionOwner,
+      this.router.serializeUrl(destination),
+    );
     const destinationScope = this.watchHandoffScope();
     if (
       !destinationScope ||
       !this.client.handoffConnection(this.connectionOwner, destinationScope)
     )
-      this.client.disconnectOwned(this.connectionOwner);
+      this.client.disconnectOwned(this.connectionOwner, preserveNotice);
     this.definitions.set([]);
     this.notifications.set([]);
     this.status.set(undefined);
@@ -698,6 +708,9 @@ export class WatchPageComponent {
             : ['in_app'],
         );
       }
+      const ref = this.scope.ref();
+      if (watchId && ref && user.hosted)
+        this.client.consumeSetupNotice(ref, user, watchId);
       this.telegramConnected.set(user.telegramConnected === true);
       if (user.channels.telegram) {
         const linked = await this.client.telegramStatus();
@@ -979,9 +992,16 @@ export class WatchPageComponent {
           result = await this.client.lifecycle(result.definition, 'enabled');
         } catch (setupError) {
           if (!active()) return;
-          this.client.setupNotice.set(
-            `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError)} Review its current subscription and lifecycle before resuming.`,
-          );
+          const notice = `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError)} Review its current subscription and lifecycle before resuming.`;
+          if (user.hosted)
+            this.client.stageSetupNotice(
+              ref,
+              user,
+              result.definition.id,
+              this.pageHref(['watch', result.definition.id]),
+              notice,
+            );
+          else this.client.setupNotice.set(notice);
         }
       }
       if (!active()) return;

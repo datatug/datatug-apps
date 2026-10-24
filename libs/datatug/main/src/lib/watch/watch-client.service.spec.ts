@@ -148,6 +148,100 @@ describe('Watch coordinator user transport', () => {
     spaceID: '_space',
     hosted: true,
   };
+  it.each([
+    'exact',
+    'account',
+    'Space',
+    'project',
+    'environment',
+    'watch',
+    'logout',
+  ])(
+    'hands a partial setup notice through owned hosted cleanup only for %s scope',
+    async (change) => {
+      TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken(
+        'firebase-alice',
+      );
+      const oldOwner = {},
+        newOwner = {},
+        destination = '/watch/created?env=demo';
+      async function host(
+        owner: object,
+        scope = ref,
+        principal = 'alice',
+        environment = 'demo',
+      ) {
+        const pending = client.connectHosted(
+          scope,
+          environment,
+          principal,
+          owner,
+          change === 'watch' ? 'other' : 'created',
+        );
+        http
+          .expectOne((r) => r.url.endsWith('/identity'))
+          .flush({
+            ...hostedIdentity,
+            id: principal,
+            namespace: scope.spaceID,
+            spaceID: scope.spaceID,
+            project: scope.projectId,
+            environment,
+          });
+        await pending;
+      }
+      await host(oldOwner);
+      const actor = client.identity();
+      if (!actor) throw new Error('Verified fixture identity required');
+      client.stageSetupNotice(
+        ref,
+        actor,
+        'created',
+        destination,
+        'Subscription failed; review before resuming.',
+      );
+      expect(client.preserveSetupNotice({}, destination)).toBe(false);
+      expect(
+        client.preserveSetupNotice(oldOwner, '/watch/other?env=demo'),
+      ).toBe(false);
+      const preserve = client.preserveSetupNotice(oldOwner, destination);
+      client.disconnectOwned(oldOwner, preserve);
+      expect(client.identity()).toBeUndefined();
+      expect(client.setupNotice()).toBe('');
+      if (change === 'logout') client.disconnect();
+      const scope = {
+        ...ref,
+        ...(change === 'Space' ? { spaceID: 'other' } : {}),
+        ...(change === 'project' ? { projectId: 'other' } : {}),
+      };
+      await host(
+        newOwner,
+        scope,
+        change === 'account' ? 'bob' : 'alice',
+        change === 'environment' ? 'prod' : 'demo',
+      );
+      client.disconnectOwned(oldOwner);
+      const current = client.identity();
+      if (!current) throw new Error('Reconnected fixture identity required');
+      client.consumeSetupNotice(
+        scope,
+        current,
+        change === 'watch' ? 'other' : 'created',
+      );
+      expect(client.setupNotice()).toBe(
+        change === 'exact'
+          ? 'Subscription failed; review before resuming.'
+          : '',
+      );
+      // A consumed, discarded or logged-out notice cannot reappear later.
+      client.setupNotice.set('');
+      await host(newOwner);
+      const original = client.identity();
+      if (!original) throw new Error('Restored fixture identity required');
+      client.consumeSetupNotice(ref, original, 'created');
+      expect(client.setupNotice()).toBe('');
+    },
+  );
   it.each(['hosted', 'selfhost'])(
     'cancels the owning pending %s connection and protects a newer owner',
     async (mode) => {
