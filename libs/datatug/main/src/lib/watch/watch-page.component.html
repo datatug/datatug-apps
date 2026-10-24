@@ -3,7 +3,7 @@
     <ion-buttons slot="start"
       ><ion-menu-button /><ion-back-button [defaultHref]="pageHref('watch')"
     /></ion-buttons>
-    <ion-title>Watch</ion-title>
+    <ion-title>Watch <ion-badge color="medium">Beta</ion-badge></ion-title>
     <ion-buttons slot="end">
       @if (client.identity()) {
         <ion-button (click)="refresh()" [disabled]="busy()" aria-label="Refresh"

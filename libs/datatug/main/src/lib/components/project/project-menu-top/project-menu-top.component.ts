@@ -3,6 +3,7 @@ import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, UrlTree } from '@angular/router';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
+  IonBadge,
   IonButton,
   IonButtons,
   IonIcon,
@@ -61,6 +62,7 @@ interface IProjectTopLevelPage {
   selector: 'sneat-datatug-project-menu-top',
   templateUrl: './project-menu-top.component.html',
   imports: [
+    IonBadge,
     IonItem,
     IonMenuToggle,
     RouterLink,
