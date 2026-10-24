@@ -8,7 +8,7 @@ import {
   convertToParamMap,
   provideRouter,
 } from '@angular/router';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
 import { WatchPageComponent } from './watch-page.component';
