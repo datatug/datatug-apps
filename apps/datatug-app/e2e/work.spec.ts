@@ -220,7 +220,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     const scopeOption = page
       .locator('ion-select[formControlName="environment"] ion-select-option')
       .filter({ hasText: environment.title });
-    const optionLabel = (await scopeOption.first().textContent())!.trim();
+    const optionLabel = (await scopeOption.first().textContent())?.trim() || '';
     await choose(
       page,
       'ion-select[formControlName="environment"]',
@@ -880,7 +880,7 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
     await choose(
       page,
       'ion-select[formControlName="environment"]',
-      (await option.textContent())!.trim(),
+      (await option.textContent())?.trim() || '',
     );
     const path = await created(page);
     independent.push(path);

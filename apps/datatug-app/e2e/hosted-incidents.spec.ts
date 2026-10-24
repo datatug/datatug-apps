@@ -217,8 +217,8 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
       await route.fulfill({
         json:
           endpoint === 'context'
-            ? workDetail(item!).context
-            : workDetail(item!),
+            ? workDetail(required(item)).context
+            : workDetail(required(item)),
       });
       return;
     }
@@ -232,7 +232,7 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
     workWrites.push(body);
     let item: WorkItem;
     if (body.action === 'create') {
-      const draft = body.draft!;
+      const draft = required(body.draft);
       expect(body.contextScope).toEqual({
         environmentId: 'demo',
         identityDomain: 'fixture-orders',
@@ -245,7 +245,7 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
         type: draft.type,
         title: draft.title,
         description: draft.description,
-        ownerId: draft.ownerId!,
+        ownerId: required(draft.ownerId),
         assigneeIds: draft.assigneeIds || [],
         primaryAssigneeId: draft.primaryAssigneeId,
         status: draft.type === 'case' ? 'active' : 'open',
@@ -259,7 +259,7 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
         ...(draft.type === 'incident'
           ? {
               incident: {
-                severity: draft.severity!,
+                severity: required(draft.severity),
                 environment: 'demo',
                 legacyRef: incidentRef,
               },
@@ -316,10 +316,10 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
       ]);
     } else {
       expect(body.action).toBe('comment');
-      const previous = workItems.get(body.itemId!)!;
+      const previous = required(workItems.get(required(body.itemId)));
       expect(body.expectedVersion).toBe(previous.version);
       item = { ...previous, version: previous.version + 1 };
-      workActivity.get(item.id)!.push({
+      required(workActivity.get(item.id)).push({
         id: 'comment_1',
         itemId: item.id,
         version: item.version,
@@ -567,3 +567,9 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
     page.getByRole('list', { name: 'Project Incidents' }),
   ).toContainText('INC-1 — Order 11039 is missing');
 });
+
+function required<T>(value: T | undefined | null): T {
+  if (value === undefined || value === null)
+    throw new Error('Missing required Incident fixture value');
+  return value;
+}
