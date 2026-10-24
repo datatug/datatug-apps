@@ -397,7 +397,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       .getByRole('button', { name: 'Choose applied context', exact: true })
       .click();
     const options = bob.locator(
-      'ion-select[aria-label="Existing native Session"] ion-select-option',
+      'ion-select[label="Native Session"] ion-select-option',
     );
     await expect
       .poll(() =>
@@ -422,15 +422,11 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       executionSessionId,
     );
     expect(title).toBeTruthy();
-    await choose(
-      bob,
-      'ion-select[aria-label="Existing native Session"]',
-      title || '',
-    );
+    await choose(bob, 'ion-select[label="Native Session"]', title || '');
     await bob.getByRole('button', { name: 'OK', exact: true }).click();
     await choose(
       bob,
-      'ion-select[aria-label="Applied scalar revision"]',
+      'ion-select[label="Applied scalar revision"]',
       /order_id.*11045/,
     );
     await bob.getByRole('button', { name: 'OK', exact: true }).click();
