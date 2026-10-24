@@ -121,6 +121,21 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'watch/new',
+    loadComponent: () =>
+      import('../watch/watch-page.component').then((m) => m.WatchPageComponent),
+  },
+  {
+    path: 'watch/:watchId',
+    loadComponent: () =>
+      import('../watch/watch-page.component').then((m) => m.WatchPageComponent),
+  },
+  {
+    path: 'watch',
+    loadComponent: () =>
+      import('../watch/watch-page.component').then((m) => m.WatchPageComponent),
+  },
+  {
     path: 'checks/:checkId',
     loadComponent: () =>
       import('../detective/checks-page.component').then(

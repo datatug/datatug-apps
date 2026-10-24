@@ -19,7 +19,13 @@ export enum ProjectItem {
 
 export type ProjectItemType = `${ProjectItem}`;
 
+export interface ProjectCoordination {
+  readonly endpoint: string;
+  readonly namespace: string;
+}
+
 export interface IProjectBase {
+  readonly coordination?: ProjectCoordination;
   readonly environmentOrder?: readonly string[];
   id: string;
   title: string;

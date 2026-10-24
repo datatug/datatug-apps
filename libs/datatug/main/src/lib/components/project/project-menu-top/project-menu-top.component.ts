@@ -178,6 +178,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
     ...ProjectMenuTopComponent.sortProjectPages([
       { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
       { path: 'data-models', title: 'Data models', icon: 'layers-outline' },
+      { path: 'watch', title: 'Watch', icon: 'eye-outline' },
       { path: 'incidents', title: 'Incidents', icon: 'warning-outline' },
       {
         path: 'sessions',
@@ -270,9 +271,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
   constructor() {
     const syncSession = () => {
       this.currentUrl.set(this.router?.url || location.href);
-      const parsed = this.router
-        ? parseProjectUrl(this.router.url)
-        : undefined;
+      const parsed = this.router ? parseProjectUrl(this.router.url) : undefined;
       this.inSessionWorkspace.set(
         !!parsed?.ok && /^\/sessions\/[^/]+(?:\/|$)/.test(parsed.rest),
       );
@@ -356,6 +355,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'quick-search',
           'queries',
           'checks',
+          'watch',
           'detective',
           'sessions',
           'boards',

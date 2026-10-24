@@ -94,6 +94,11 @@ describe('ProjectContextMenuComponent', () => {
         `${base}/sessions/session-a/overview`,
       );
       expect(component.projectPageUrl('checks')).toBe(`${base}/checks`);
+      expect(component.projectPageUrl('watch')).toBe(`${base}/watch`);
+      expect(
+        component.projTopLevelPages.find((page) => page.path === 'watch')
+          ?.title,
+      ).toBe('Watch');
       expect(component.projectPageUrl('detective')).toBe(`${base}/detective`);
       expect(component.projectPageUrl('sessions')).toBe(`${base}/sessions`);
       if (!('spaceID' in ref))
@@ -136,7 +141,10 @@ describe('ProjectContextMenuComponent', () => {
     );
     if (physicalModels) expect(physicalModels.title).toBe('DB models');
     expect(datatugProjectRoutes.map((route) => route.path)).toEqual(
-      expect.arrayContaining(['data-models', 'data-models/:modelId/versions/:commit']),
+      expect.arrayContaining([
+        'data-models',
+        'data-models/:modelId/versions/:commit',
+      ]),
     );
   });
   it('places Cards alphabetically between Boards and Chat, with routes for the list, new card and a card', () => {
