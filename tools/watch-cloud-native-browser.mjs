@@ -429,10 +429,13 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
       .poll(
         async () => {
           await watchPage
+            .locator('ion-header')
             .getByRole('button', { name: 'Refresh', exact: true })
             .click();
           await expect(
-            watchPage.getByRole('button', { name: 'Refresh', exact: true }),
+            watchPage
+              .locator('ion-header')
+              .getByRole('button', { name: 'Refresh', exact: true }),
           ).toBeEnabled({ timeout: 15000 });
           return await watchPage.innerText();
         },
