@@ -39,7 +39,7 @@
         >
       </div>
       <ion-note
-        >Use this credential in the runner's private configuration. It expires
+        >Set this credential in the runner's private environment. It expires
         after 30 days. Never put it in the project manifest or a URL.</ion-note
       >
     }
@@ -55,15 +55,21 @@
             (ionChange)="sourceIDs.set($event.detail.value)"
           >
             @for (source of sources(); track source.id) {
-              <ion-select-option [value]="source.id">{{
-                sourceLabel(source)
-              }}</ion-select-option>
+              <ion-select-option
+                [value]="source.id"
+                [disabled]="source.kind === 'demo'"
+                >{{ sourceLabel(source) }}</ion-select-option
+              >
             }
           </ion-select></ion-item
         >
         @if (!sources().length) {
           <p>No admitted sources are available for this environment.</p>
         }
+        <ion-note
+          >Cloud runners support approved OVDB and native sources. Embedded demo
+          sources are unavailable.</ion-note
+        >
         <ion-item
           ><ion-input
             label="Capabilities (comma-separated, optional)"
@@ -96,6 +102,67 @@
         </div>
       </form>
     }
+    @if (setup(); as configured) {
+      <ion-accordion-group value="setup">
+        <ion-accordion value="setup">
+          <ion-item slot="header"
+            ><ion-label>Configure runner</ion-label></ion-item
+          >
+          <div slot="content" class="ion-padding">
+            <p>
+              Enrollment {{ configured.enrollmentID }} ·
+              {{ identity().namespace }} / {{ identity().project }} /
+              {{ identity().environment }}
+            </p>
+            <ion-item
+              ><ion-input
+                label="Trusted coordinator endpoint"
+                labelPlacement="stacked"
+                readonly
+                [value]="configured.endpoint"
+            /></ion-item>
+            <p>
+              Save this configuration outside your project repository. Replace
+              the private paths and each native source's SQLite catalog alias
+              from your local source project. OVDB bindings already use their
+              exact approved origin; keep those values. Keep the credential
+              separately in
+              <code>DATATUG_WATCH_RUNNER_TOKEN</code> using your secret manager.
+            </p>
+            <ion-item class="ion-text-wrap">
+              <ion-checkbox
+                labelPlacement="end"
+                [checked]="allowOpaqueSQL()"
+                (ionChange)="setSQLPermission($event.detail.checked)"
+                >Allow this runner to execute native SQL</ion-checkbox
+              >
+            </ion-item>
+            <p>
+              Enable only if you authorise native SQL for these sources,
+              including the shipping Check. The runner currently supports local
+              owner access; secured local project assets remain unavailable.
+            </p>
+            <pre class="setup-config">{{ configured.config }}</pre>
+            <ion-button fill="outline" (click)="copySetup()"
+              >Copy configuration</ion-button
+            >
+            <p>
+              Start the runner with
+              <code
+                >datatug daemon --run --watch-config
+                /private/path/watch.json</code
+              >. The command contains no credential.
+            </p>
+            <a
+              href="https://github.com/datatug/datatug-cli/blob/main/docs/watch-daemon.md#shared-cloud-runner"
+              target="_blank"
+              rel="noopener noreferrer"
+              >Runner setup documentation</a
+            >
+          </div>
+        </ion-accordion>
+      </ion-accordion-group>
+    }
     @if (review(); as pending) {
       <p role="alert">
         {{
@@ -127,6 +194,14 @@
               {{ item.scope.environment }} · {{ item.sourceIDs.length }}
               {{ item.sourceIDs.length === 1 ? 'source' : 'sources' }} · Expires
               {{ item.expiresAt | date: 'mediumDate' }}
+            </p>
+            <p>
+              Owner:
+              {{
+                item.ownerId === identity().id
+                  ? 'You'
+                  : 'Another project member'
+              }}
             </p></ion-label
           >
           @if (item.revoked) {
@@ -135,12 +210,19 @@
             @if (expired(item)) {
               <ion-badge color="medium">Expired</ion-badge>
             }
-            <ion-buttons slot="end"
-              ><ion-button
-                (click)="review.set({ item, action: 'rotate' })"
-                [disabled]="busy()"
-                >Rotate</ion-button
-              ><ion-button
+            <ion-buttons slot="end">
+              @if (item.ownerId === identity().id) {
+                <ion-button
+                  (click)="showSetup(item)"
+                  [disabled]="busy() || expired(item)"
+                  >Setup</ion-button
+                ><ion-button
+                  (click)="review.set({ item, action: 'rotate' })"
+                  [disabled]="busy()"
+                  >Rotate</ion-button
+                >
+              }
+              <ion-button
                 color="danger"
                 (click)="review.set({ item, action: 'revoke' })"
                 [disabled]="busy()"

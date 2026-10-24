@@ -10,11 +10,14 @@ import {
   untracked,
 } from '@angular/core';
 import {
+  IonAccordion,
+  IonAccordionGroup,
   IonBadge,
   IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
+  IonCheckbox,
   IonInput,
   IonItem,
   IonItemDivider,
@@ -38,15 +41,18 @@ import type {
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './watch-runners.component.html',
   styles: [
-    ':host { display:block; } ion-card { margin:0 0 16px; } h2 { margin:0; font-size:1.15rem; } .credential { overflow-wrap:anywhere; } .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }',
+    ':host { display:block; } ion-card { margin:0 0 16px; } h2 { margin:0; font-size:1.15rem; } .credential { overflow-wrap:anywhere; } ion-checkbox::part(label) { white-space:normal; } .setup-config { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; line-height:1.5; max-height:22rem; overflow:auto; } code { overflow-wrap:anywhere; } .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }',
   ],
   imports: [
+    IonAccordion,
+    IonAccordionGroup,
     DatePipe,
     IonBadge,
     IonButton,
     IonButtons,
     IonCard,
     IonCardContent,
+    IonCheckbox,
     IonInput,
     IonItem,
     IonItemDivider,
@@ -74,6 +80,11 @@ export class WatchRunnersComponent {
   protected readonly error = signal('');
   protected readonly message = signal('');
   protected readonly token = signal('');
+  protected readonly allowOpaqueSQL = signal(false);
+  private configuredEnrollment?: WatchRunnerEnrollment;
+  protected readonly setup = signal<
+    ReturnType<WatchClientService['runnerSetup']> | undefined
+  >(undefined);
   protected readonly review = signal<
     { item: WatchRunnerEnrollment; action: 'revoke' | 'rotate' } | undefined
   >(undefined);
@@ -85,6 +96,9 @@ export class WatchRunnersComponent {
       untracked(() => {
         this.generation++;
         this.token.set('');
+        this.setup.set(undefined);
+        this.configuredEnrollment = undefined;
+        this.allowOpaqueSQL.set(false);
         this.items.set([]);
         this.next.set('');
         this.sources.set([]);
@@ -100,6 +114,8 @@ export class WatchRunnersComponent {
     this.destroy.onDestroy(() => {
       this.generation++;
       this.token.set('');
+      this.setup.set(undefined);
+      this.configuredEnrollment = undefined;
     });
   }
   private current(user: WatchIdentity, generation: number) {
@@ -176,6 +192,9 @@ export class WatchRunnersComponent {
   protected start() {
     this.creating.set(true);
     this.token.set('');
+    this.setup.set(undefined);
+    this.configuredEnrollment = undefined;
+    this.allowOpaqueSQL.set(false);
     this.operationID = crypto.randomUUID();
     this.error.set('');
   }
@@ -220,6 +239,7 @@ export class WatchRunnersComponent {
       });
       if (!this.current(user, generation)) return;
       this.token.set(result.token || '');
+      this.showSetup(result.enrollment);
       this.creating.set(false);
       this.message.set(
         result.token
@@ -242,6 +262,10 @@ export class WatchRunnersComponent {
     const user = this.identity(),
       generation = this.generation;
     if (!this.current(user, generation)) return;
+    if (review.action === 'rotate' && review.item.ownerId !== user.id) {
+      this.error.set('Only the enrollment owner can rotate its credential.');
+      return;
+    }
     this.busy.set(true);
     this.error.set('');
     this.token.set('');
@@ -250,6 +274,7 @@ export class WatchRunnersComponent {
         const result = await this.client.rotate(review.item);
         if (!this.current(user, generation)) return;
         this.token.set(result.token || '');
+        this.showSetup(result.enrollment);
         this.message.set(
           'Old credential revoked. Copy the new credential now.',
         );
@@ -259,6 +284,9 @@ export class WatchRunnersComponent {
         this.message.set(
           'Runner enrollment revoked. It cannot claim or renew work.',
         );
+        this.setup.set(undefined);
+        this.configuredEnrollment = undefined;
+        this.allowOpaqueSQL.set(false);
       }
       this.review.set(undefined);
       await this.refresh();
@@ -282,6 +310,60 @@ export class WatchRunnersComponent {
       if (this.current(user, generation))
         this.error.set(
           'Clipboard unavailable. Select and copy the credential.',
+        );
+    }
+  }
+  protected showSetup(item: WatchRunnerEnrollment) {
+    if (!this.current(this.identity(), this.generation)) return;
+    if (item.ownerId !== this.identity().id) {
+      this.error.set('Only the enrollment owner can configure its runner.');
+      return;
+    }
+    this.setup.set(undefined);
+    this.configuredEnrollment = undefined;
+    this.allowOpaqueSQL.set(false);
+    try {
+      const setup = this.client.runnerSetup(item, this.sources());
+      this.configuredEnrollment = item;
+      this.setup.set(setup);
+    } catch (error) {
+      this.error.set(watchError(error));
+    }
+  }
+  protected setSQLPermission(allowed: boolean) {
+    if (
+      !this.current(this.identity(), this.generation) ||
+      !this.configuredEnrollment
+    )
+      return;
+    try {
+      this.setup.set(
+        this.client.runnerSetup(
+          this.configuredEnrollment,
+          this.sources(),
+          allowed,
+        ),
+      );
+      this.allowOpaqueSQL.set(allowed);
+    } catch (error) {
+      this.error.set(watchError(error));
+    }
+  }
+  protected async copySetup() {
+    const setup = this.setup(),
+      user = this.identity(),
+      generation = this.generation;
+    if (!setup || !this.current(user, generation)) return;
+    try {
+      await navigator.clipboard.writeText(setup.config);
+      if (this.current(user, generation))
+        this.message.set(
+          'Configuration copied. Replace the private paths and native SQLite catalog aliases. Keep approved OVDB origins unchanged.',
+        );
+    } catch {
+      if (this.current(user, generation))
+        this.error.set(
+          'Clipboard unavailable. Select and copy the configuration.',
         );
     }
   }

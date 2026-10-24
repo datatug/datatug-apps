@@ -290,6 +290,94 @@ describe('Watch coordinator user transport', () => {
       expect(client.identity()).toBeUndefined();
     },
   );
+  it('builds a nonsecret runner configuration from only the trusted API and verified enrollment scope', async () => {
+    TestBed.inject(SneatApiAuthTokenBridge).setExplicitToken('firebase-alice');
+    const connected = client.connectHosted(ref, 'demo', 'alice');
+    http
+      .expectOne((r) => r.url.endsWith('/identity'))
+      .flush({ ...hostedIdentity, canManageRunners: true });
+    await connected;
+    const enrollment = {
+      id: 'enrollment-one',
+      scope: { namespace: '_space', project: 'p', environment: 'demo' },
+      ownerId: 'alice',
+      sourceIDs: ['a'.repeat(64)],
+      capabilities: [],
+      revision: 1,
+      revoked: false,
+      createdAt: '2026-10-24T00:00:00Z',
+      updatedAt: '2026-10-24T00:00:00Z',
+      expiresAt: '2026-11-23T00:00:00Z',
+    };
+    const sources = [{ id: 'a'.repeat(64), kind: 'native' }];
+    const setup = client.runnerSetup(enrollment, sources);
+    expect(setup.endpoint).toBe(
+      'https://trusted.test/v0/datatug/watch/_space/p/demo',
+    );
+    expect(setup.enrollmentID).toBe(enrollment.id);
+    const config = JSON.parse(setup.config);
+    expect(config.namespace).toBe('_space');
+    expect(config.runner.cloud).toEqual({
+      spaceID: '_space',
+      projectID: 'p',
+      sourceBindings: {
+        ['a'.repeat(64)]: 'REPLACE_WITH_LOCAL_SQLITE_CATALOG_ALIAS',
+      },
+    });
+    expect(setup.config).not.toContain('firebase-alice');
+    expect(config.runner.tokenEnv).toBe('DATATUG_WATCH_RUNNER_TOKEN');
+    expect(config.runner.allowOpaqueSQL).toBe(false);
+    expect(
+      JSON.parse(client.runnerSetup(enrollment, sources, true).config).runner
+        .allowOpaqueSQL,
+    ).toBe(true);
+    expect(
+      JSON.parse(
+        client.runnerSetup(enrollment, [
+          {
+            id: 'a'.repeat(64),
+            kind: 'ovdb',
+            origin: 'https://approved.test/ovdb/',
+          },
+        ]).config,
+      ).runner.cloud.sourceBindings['a'.repeat(64)],
+    ).toBe('https://approved.test/ovdb/');
+    expect(() =>
+      client.runnerSetup(enrollment, [
+        { id: 'a'.repeat(64), kind: 'demo', sourceId: 'pinned-demo' },
+      ]),
+    ).toThrow('Embedded demo sources');
+    expect(() => client.runnerSetup(enrollment, [])).toThrow(
+      'Approved source details',
+    );
+    expect(() =>
+      client.runnerSetup({ ...enrollment, revoked: true }, sources),
+    ).toThrow();
+    expect(() =>
+      client.runnerSetup({ ...enrollment, ownerId: 'bob' }, sources),
+    ).toThrow();
+    await expect(
+      client.rotate({ ...enrollment, ownerId: 'bob' }),
+    ).rejects.toThrow('Only the enrollment owner');
+    http.expectNone((request) => request.url.endsWith('/enrollments/rotate'));
+    expect(() =>
+      client.runnerSetup(
+        { ...enrollment, expiresAt: '2000-01-01T00:00:00Z' },
+        sources,
+      ),
+    ).toThrow();
+    expect(() =>
+      client.runnerSetup(
+        {
+          ...enrollment,
+          scope: { ...enrollment.scope, environment: 'foreign' },
+        },
+        sources,
+      ),
+    ).toThrow();
+    client.disconnect();
+    expect(() => client.runnerSetup(enrollment, sources)).toThrow();
+  });
   it('cancels a queued hosted mutation before a replacement account token becomes available', async () => {
     const bridge = TestBed.inject(SneatApiAuthTokenBridge);
     bridge.setExplicitToken('firebase-alice');

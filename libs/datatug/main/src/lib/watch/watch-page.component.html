@@ -213,6 +213,13 @@
                       ></ion-select
                     ></ion-item
                   >
+                  @if (user.hosted) {
+                    <p>
+                      Personal Watches wait for an eligible runner enrolled by
+                      their owner. Shared Watches can use any eligible project
+                      runner.
+                    </p>
+                  }
                   <ion-item lines="full"
                     ><ion-select
                       interface="popover"
@@ -695,6 +702,17 @@
                       subscribe independently.
                     }
                   </p>
+                  @if (user.hosted) {
+                    <p>
+                      @if (watch.visibility === 'personal') {
+                        This personal Watch waits for an eligible runner
+                        enrolled by you.
+                      } @else {
+                        Any eligible project runner can evaluate this shared
+                        Watch.
+                      }
+                    </p>
+                  }
                   @if (telegramReconnectRequired()) {
                     <ion-item color="warning" lines="none"
                       ><ion-label class="ion-text-wrap"

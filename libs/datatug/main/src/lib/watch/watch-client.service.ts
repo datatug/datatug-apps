@@ -14,6 +14,7 @@ import {
   projectRefToString,
 } from '../core/project-context';
 import { DatatugApiService } from '../services/base/datatug-api.service';
+import { DatatugApiBaseUrl, DatatugApiBaseUrls } from '@sneat/datatug-semantic';
 import type {
   WatchDefinition,
   WatchDelivery,
@@ -328,6 +329,92 @@ export class WatchClientService {
   private hostedPath(scope: WatchHostedScope, path: string): string {
     return `datatug/watch/${encodeURIComponent(scope.spaceID)}/${encodeURIComponent(scope.project)}/${encodeURIComponent(scope.environment)}/v1/watch/${path}`;
   }
+  runnerSetup(
+    enrollment: WatchRunnerEnrollment,
+    sources: readonly WatchRunnerSource[],
+    allowOpaqueSQL = false,
+  ): {
+    endpoint: string;
+    enrollmentID: string;
+    config: string;
+  } {
+    const session = this.session;
+    if (
+      session?.kind !== 'hosted' ||
+      !this.identity()?.canManageRunners ||
+      enrollment.ownerId !== this.identity()?.id ||
+      enrollment.scope.namespace !== session.spaceID ||
+      enrollment.scope.project !== session.project ||
+      enrollment.scope.environment !== session.environment
+    )
+      throw new Error(
+        'Open this runner enrollment in its authorised project and environment.',
+      );
+    if (
+      enrollment.revoked ||
+      !Number.isFinite(Date.parse(enrollment.expiresAt)) ||
+      Date.parse(enrollment.expiresAt) <= Date.now()
+    )
+      throw new Error(
+        'Rotate this expired or revoked enrollment before configuring a runner.',
+      );
+    const bases = this.injector.get(DatatugApiBaseUrls);
+    const base = coordinatorEndpoint(
+      bases[0] || this.injector.get(DatatugApiBaseUrl),
+    );
+    const endpoint = `${base}/datatug/watch/${encodeURIComponent(session.spaceID)}/${encodeURIComponent(session.project)}/${encodeURIComponent(session.environment)}`;
+    const sourceBindings = Object.fromEntries(
+      enrollment.sourceIDs.map((id) => {
+        const source = sources.find((value) => value.id === id);
+        if (source?.kind === 'native')
+          return [id, 'REPLACE_WITH_LOCAL_SQLITE_CATALOG_ALIAS'];
+        if (source?.kind === 'ovdb' && source.origin) {
+          coordinatorEndpoint(source.origin);
+          return [id, source.origin];
+        }
+        if (source?.kind === 'demo')
+          throw new Error(
+            'Embedded demo sources are not supported by cloud runners. Enroll a runner for an approved OVDB or native source.',
+          );
+        throw new Error(
+          'Approved source details are unavailable. Refresh the source inventory before configuring this runner.',
+        );
+      }),
+    );
+    return {
+      endpoint,
+      enrollmentID: enrollment.id,
+      config: JSON.stringify(
+        {
+          namespace: session.spaceID,
+          runner: {
+            coordinatorEndpoint: endpoint,
+            tokenEnv: 'DATATUG_WATCH_RUNNER_TOKEN',
+            projectDir: '/private/operator/source-project',
+            environment: session.environment,
+            principal: 'operator-local-owner',
+            evidenceDir: '/private/operator/evidence',
+            allowOpaqueSQL,
+            cloud: {
+              spaceID: session.spaceID,
+              projectID: session.project,
+              sourceBindings,
+            },
+            ...(enrollment.telegramBotId
+              ? {
+                  telegram: {
+                    botID: enrollment.telegramBotId,
+                    secretEnv: 'DATATUG_OWN_BOT_SECRET',
+                  },
+                }
+              : {}),
+          },
+        },
+        null,
+        2,
+      ),
+    };
+  }
   async refreshIdentity(): Promise<WatchIdentity | undefined> {
     const session = this.session,
       previous = this.identity(),
@@ -380,7 +467,9 @@ export class WatchClientService {
       expectedRevision: enrollment.revision,
     });
   }
-  rotate(enrollment: WatchRunnerEnrollment) {
+  async rotate(enrollment: WatchRunnerEnrollment) {
+    if (enrollment.ownerId !== this.identity()?.id)
+      throw new Error('Only the enrollment owner can rotate its credential.');
     return this.post<{ enrollment: WatchRunnerEnrollment; token?: string }>(
       'enrollments/rotate',
       { id: enrollment.id, expectedRevision: enrollment.revision },

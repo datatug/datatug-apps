@@ -38,6 +38,7 @@ describe('Scoped runner enrollment consent and credentials', () => {
     enroll: vi.fn(),
     rotate: vi.fn(),
     revoke: vi.fn(),
+    runnerSetup: vi.fn(),
   };
   beforeEach(() => {
     vi.clearAllMocks();
@@ -55,6 +56,11 @@ describe('Scoped runner enrollment consent and credentials', () => {
       token: 'rotated-test-token',
     });
     client.revoke.mockResolvedValue({ ok: true });
+    client.runnerSetup.mockReturnValue({
+      endpoint: 'https://trusted.test/v0/datatug/watch/s/p/dev',
+      enrollmentID: enrollment.id,
+      config: '{"namespace":"s"}',
+    });
   });
   async function mount(identity = user) {
     TestBed.configureTestingModule({
@@ -135,6 +141,43 @@ describe('Scoped runner enrollment consent and credentials', () => {
     await pending;
     expect(component.token()).toBe('');
   });
+  it('shows scoped nonsecret setup separately and requires an explicit native SQL grant', async () => {
+    const fixture = await mount();
+    const component = fixture.componentInstance as unknown as {
+      showSetup: (item: WatchRunnerEnrollment) => void;
+      setSQLPermission: (allowed: boolean) => void;
+      allowOpaqueSQL: () => boolean;
+      setup: () => unknown;
+    };
+    component.showSetup(enrollment);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Configure runner');
+    expect(fixture.nativeElement.textContent).toContain(
+      'secured local project assets remain unavailable',
+    );
+    expect(component.allowOpaqueSQL()).toBe(false);
+    component.setSQLPermission(true);
+    expect(client.runnerSetup).toHaveBeenLastCalledWith(
+      enrollment,
+      expect.any(Array),
+      true,
+    );
+    expect(component.allowOpaqueSQL()).toBe(true);
+    client.runnerSetup.mockImplementationOnce(() => {
+      throw new Error('Approved source details are unavailable.');
+    });
+    component.showSetup(enrollment);
+    expect(component.setup()).toBeUndefined();
+    expect(component.allowOpaqueSQL()).toBe(false);
+    component.showSetup(enrollment);
+    const bob = { ...user, id: 'bob' };
+    client.identity.set(bob);
+    fixture.componentRef.setInput('identity', bob);
+    await fixture.whenStable();
+    expect(component.setup()).toBeUndefined();
+    expect(component.allowOpaqueSQL()).toBe(false);
+    expect(fixture.nativeElement.textContent).not.toContain('Configure runner');
+  });
   it('requires review before revocation and sends the observed revision', async () => {
     const fixture = await mount();
     await fixture.whenStable();
@@ -148,6 +191,41 @@ describe('Scoped runner enrollment consent and credentials', () => {
     };
     await component.confirm();
     expect(client.revoke).not.toHaveBeenCalled();
+    component.review.set({ item: enrollment, action: 'revoke' });
+    await component.confirm();
+    expect(client.revoke).toHaveBeenCalledWith(enrollment);
+  });
+  it('lets a manager revoke another owner enrollment without exposing setup or rotation', async () => {
+    const bob = { ...user, id: 'bob' };
+    client.identity.set(bob);
+    const fixture = await mount(bob);
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      expect(fixture.nativeElement.textContent).toContain(
+        'Owner: Another project member',
+      );
+    });
+    const labels = Array.from(
+      fixture.nativeElement.querySelectorAll('ion-button'),
+    ).map((element) => (element as HTMLElement).textContent?.trim());
+    expect(labels).not.toContain('Setup');
+    expect(labels).not.toContain('Rotate');
+    expect(labels).toContain('Revoke');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Owner: Another project member',
+    );
+    const component = fixture.componentInstance as unknown as {
+      review: ReturnType<
+        typeof signal<
+          | { item: WatchRunnerEnrollment; action: 'rotate' | 'revoke' }
+          | undefined
+        >
+      >;
+      confirm: () => Promise<void>;
+    };
+    component.review.set({ item: enrollment, action: 'rotate' });
+    await component.confirm();
+    expect(client.rotate).not.toHaveBeenCalled();
     component.review.set({ item: enrollment, action: 'revoke' });
     await component.confirm();
     expect(client.revoke).toHaveBeenCalledWith(enrollment);

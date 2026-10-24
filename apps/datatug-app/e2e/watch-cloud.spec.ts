@@ -296,6 +296,36 @@ test('hosted Watch uses real Firebase sign-in, scoped API, environment links and
   await expect(page.getByLabel('One-time runner credential')).toHaveValue(
     'mock-one-time-runner-credential',
   );
+  await expect(page.getByLabel('Trusted coordinator endpoint')).toHaveValue(
+    `http://127.0.0.1:18290/v0/datatug/watch/${spaceID}/${project}/dev`,
+  );
+  const setup = page.locator('sneat-datatug-watch-runners .setup-config');
+  await expect(setup).toContainText('"allowOpaqueSQL": false');
+  await expect(setup).toContainText('REPLACE_WITH_LOCAL_SQLITE_CATALOG_ALIAS');
+  await expect(setup).not.toContainText('mock-one-time-runner-credential');
+  await page
+    .getByRole('checkbox', {
+      name: 'Allow this runner to execute native SQL',
+      exact: true,
+    })
+    .click();
+  await expect(setup).toContainText('"allowOpaqueSQL": true');
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page
+      .getByText('Configure runner', { exact: true })
+      .evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`hosted-runner-setup-${width}.png`),
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: 'Dismiss credential' }).click();
   await expect(page.getByLabel('One-time runner credential')).toHaveCount(0);
   await page.getByRole('button', { name: 'Revoke', exact: true }).click();
