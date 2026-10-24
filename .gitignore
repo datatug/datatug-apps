@@ -80,3 +80,6 @@ apps/datatug-app/src/ag-grid-license.generated.ts
 
 # wrangler dev local state
 .wrangler/
+
+# Local-only actual Watch/Firebase fixture build configuration (contains no credentials).
+apps/datatug-app/src/environments/environment.watch-native.generated.ts

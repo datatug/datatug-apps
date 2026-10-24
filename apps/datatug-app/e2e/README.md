@@ -494,3 +494,22 @@ DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL=... DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD
 The target serves `datatug-app:serve:business-preview` itself and refuses an
 occupied port 18782 (free it first). The port and the host name `localhost` matter:
 datatug-cloud-preview admits only the origin `http://localhost:18782`.
+
+## Watch cloud acceptance against the actual backend
+
+`datatug-app:e2e-watch-cloud` checks the browser contract with mocked Watch HTTP responses and real Firebase emulators. The separate opt-in `datatug-app:e2e-watch-cloud-native` target uses a running backend fixture, Firestore, Firebase authentication and actual native CLI runners. It does not mock Watch requests.
+
+The backend owner starts `api4datatug/watch_native_integration_test.go::TestWatchCloudNativeJourney` with `DATATUG_WATCH_NATIVE_HOLD=1`, `DATATUG_WATCH_NATIVE_EXTENDED=1`, its source-built `DATATUG_WATCH_NATIVE_BINARY`, exact `DATATUG_WATCH_NATIVE_SOURCE_SHA`, and an owned `DATATUG_WATCH_NATIVE_OUTPUT` directory. Its governed Go command is `go test -tags=integration ./api4datatug -run '^TestWatchCloudNativeJourney$' -count=1 -timeout=20m -v`. The owner also provides the isolated emulators required by that fixture. Wait for its `WATCH_NATIVE_BROWSER_READY` message and use the emitted `ready.json`; keep the backend owner responsible for its processes and stop file.
+
+Run the browser from a clean, published WB checkout. Supply `DATATUG_WATCH_BROWSER_EMAIL` and `DATATUG_WATCH_BROWSER_PASSWORD` privately in the environment using the fixture's emulator-only account. Do not put credentials in arguments, source, screenshots or receipts. Set `DATATUG_WATCH_NATIVE_READY` to the emitted ready file, then run:
+
+```sh
+wb run -- pnpm nx run datatug-app:e2e-watch-cloud-native --output-style=static -- --case healthy --output-dir /private/tmp/watch-native-healthy
+wb run -- pnpm nx run datatug-app:e2e-watch-cloud-native --output-style=static -- --case partial-setup --output-dir /private/tmp/watch-native-partial
+```
+
+The healthy case signs in, creates a personal Watch with email and in-app consent, verifies the returned detail's accepted Core run and completed state, cold-reloads it, opens its exact inbox notification, and enrolls/configures/revokes a runner before signing out. The setup credential stays separate from the nonsecret configuration and is dismissed before screenshots. Native SQL requires an explicit operator grant.
+
+The partial-setup case requires the fixture's private `subscriptionTimeoutFile`. It requests one deliberate DALGO transaction timeout, checks the actual HTTP 503, verifies the paused detail and visible notice, and confirms that cold reload consumes the notice without enabling or evaluating the Watch. This injected fault case is separate from the healthy proof; it adds no production hook or automatic retry.
+
+The tool accepts only explicit loopback services in a `demo-` Firebase project. It builds an ignored temporary environment configuration, starts its own foreground preview on port 18848 and browser, then removes/stops only those resources. An occupied preview port or existing generated configuration is an error. Screenshots and credential-free request timings/receipts stay in the private temporary output directory. Receipts identify the clean UI source and fixture CLI source; backend and emulator teardown remains with the fixture owner.

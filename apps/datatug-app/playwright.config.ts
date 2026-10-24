@@ -37,6 +37,7 @@ export default defineConfig({
     'hosted-incidents.spec.ts',
     // Real Auth/Firestore + paired Backend prerequisites: dedicated e2e-work profile.
     'work.spec.ts',
+    'watch-cloud.spec.ts', // Own isolated Firebase ports and app build: e2e-watch-cloud.
     'project-ai.spec.ts',
     'checkout-provider.spec.ts',
     'business-project-preview.spec.ts',
@@ -113,6 +114,7 @@ export default defineConfig({
         'hosted-incidents.spec.ts',
         // Real Auth/Firestore + paired Backend prerequisites: dedicated e2e-work profile.
         'work.spec.ts',
+        'watch-cloud.spec.ts',
         'project-ai.spec.ts',
         'checkout-provider.spec.ts',
         'business-project-preview.spec.ts',

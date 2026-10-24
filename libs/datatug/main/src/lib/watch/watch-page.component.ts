@@ -2,12 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  Injector,
   computed,
-  effect,
   inject,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatePipe } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
@@ -34,7 +35,20 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { filter, firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, merge } from 'rxjs';
+import {
+  isSharedProjectRef,
+  projectRefToString,
+  type IProjectRef,
+} from '../core/project-context';
+import { parseProjectUrl } from '@datatug/project-address';
+import { ProjectEnvironmentStateService } from '../services/project/project-environment-state.service';
+import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
+import {
+  isHostedReadRefused,
+  isSignedOut,
+} from '../services/project/hosted-read-refused';
+import { WatchRunnersComponent } from './watch-runners.component';
 import { ProjectService } from '../services/project/project.service';
 import { projectPageHref } from '../nav/project-page-href';
 import { useDetectivePageContext } from '../detective/detective-page-context';
@@ -51,6 +65,7 @@ import type {
   WatchChannel,
   WatchDelivery,
   WatchDefinition,
+  WatchIdentity,
   WatchNotification,
   WatchRun,
   WatchStatus,
@@ -115,6 +130,7 @@ const emptyForm = (): WatchForm => ({
     IonSpinner,
     IonTitle,
     IonToolbar,
+    WatchRunnersComponent,
   ],
 })
 export class WatchPageComponent {
@@ -125,7 +141,39 @@ export class WatchPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly injector = inject(Injector);
+  private readonly auth = inject(SneatAuthStateService);
+  private readonly navigation = inject(DatatugNavContextService);
+  private readonly authState = toSignal(this.auth.authState, {
+    initialValue: undefined,
+  });
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
+  protected readonly hosted = computed(() => {
+    const ref = this.scope.ref();
+    return !!ref && isSharedProjectRef(ref);
+  });
+  protected readonly signedIn = computed(() => !!this.authState()?.user?.uid);
+  protected readonly authenticating = computed(
+    () => this.authState()?.status === 'authenticating',
+  );
+  protected readonly environments = signal<
+    readonly { id: string; title: string }[]
+  >([]);
+  protected readonly environment = computed(
+    () => this.queryParams()?.get('env') || '',
+  );
+  protected returnPath() {
+    return this.router.url;
+  }
   private alive = true;
+  protected readonly connectionOwner = {};
+  protected readonly identity = computed(() =>
+    this.client.ownsConnection(this.connectionOwner)
+      ? this.client.identity()
+      : undefined,
+  );
   private generation = 0;
   private viewGeneration = 0;
   private projectIdentity = '';
@@ -152,12 +200,13 @@ export class WatchPageComponent {
   protected readonly sourceChanged = computed(() => {
     const observation = this.observation();
     return (
-      !!observation?.lastRunId &&
-      this.runs().some(
-        (run) =>
-          run.id === observation.lastRunId &&
-          run.failureCode === 'SOURCE_CHANGED',
-      )
+      observation?.availability === 'source_changed' ||
+      (!!observation?.lastRunId &&
+        this.runs().some(
+          (run) =>
+            run.id === observation.lastRunId &&
+            run.failureCode === 'SOURCE_CHANGED',
+        ))
     );
   });
   protected readonly checks = signal<CheckDefinition[]>([]);
@@ -181,7 +230,7 @@ export class WatchPageComponent {
     this.checks().find((c) => c.id === this.form().checkId),
   );
   protected readonly canEdit = computed(() => {
-    const user = this.client.identity(),
+    const user = this.identity(),
       current = this.current();
     return (
       !!user &&
@@ -207,8 +256,7 @@ export class WatchPageComponent {
     if (
       field === 'interval' &&
       (!Number.isSafeInteger(form.interval) ||
-        form.interval <
-          (this.client.identity()?.limits.minIntervalSeconds || 10) ||
+        form.interval < (this.identity()?.limits.minIntervalSeconds || 10) ||
         form.interval > 86400)
     )
       return 'Choose a valid evaluation interval.';
@@ -298,12 +346,30 @@ export class WatchPageComponent {
       TELEGRAM_RATE_LIMITED: 'Telegram is temporarily limiting messages',
       PROVIDER_UNAVAILABLE: 'Delivery provider is temporarily unavailable',
       SOURCE_CHANGED: 'Source changed — review and reset the baseline',
+      source_changed: 'Source changed — review and reset the baseline',
+      source_unavailable:
+        'Source unavailable — check project access and runner configuration',
+      blocked: 'Blocked — review project access and source configuration',
       QUOTA_EXCEEDED: 'Delivery limit reached — waiting to retry',
       UNAVAILABLE: 'Temporarily unavailable',
     };
     return value
       ? labels[value] || value.replaceAll('_', ' ').toLowerCase()
       : 'Awaiting evaluation';
+  }
+
+  protected smsAvailability(user: WatchIdentity): string {
+    if (user.providers?.sms === false)
+      return 'SMS delivery is unavailable on this coordinator.';
+    if (user.channels.sms) return '';
+    return user.providers?.sms === true
+      ? 'SMS requires a paid account and a verified phone number.'
+      : 'SMS is unavailable for this account or coordinator. A paid account and a verified phone number are required when delivery is available.';
+  }
+  protected runDate(run: WatchRun): string {
+    return run.finishedAt && !run.finishedAt.startsWith('0001-')
+      ? run.finishedAt
+      : run.dueAt;
   }
 
   protected statusColor(value: string | undefined): string {
@@ -319,6 +385,7 @@ export class WatchPageComponent {
       this.alive = false;
       this.generation++;
       this.token.set('');
+      this.client.disconnectOwned(this.connectionOwner);
     });
     this.route.paramMap
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -330,26 +397,96 @@ export class WatchPageComponent {
           void this.refresh();
         }
       });
-    effect(() => {
-      const ref = this.scope.ref();
-      if (!ref) return;
-      const identity = JSON.stringify(ref);
-      void this.loadManifest(identity);
-    });
+    merge(
+      this.auth.authState,
+      this.navigation.currentProject,
+      this.navigation.currentEnv,
+      this.route.queryParamMap,
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => void this.loadContext(this.contextKey()));
   }
-  private async loadManifest(identity: string) {
+  private contextKey(): string {
+    return JSON.stringify([
+      this.scope.ref(),
+      this.authState()?.user?.uid || '',
+      this.authState()?.status || '',
+      this.environment(),
+    ]);
+  }
+  private async loadContext(identity: string) {
+    if (!this.alive) return;
     const ref = this.scope.ref();
-    if (!ref) return;
+    if (identity === this.projectIdentity) return;
     if (this.projectIdentity && this.projectIdentity !== identity) {
       this.disconnect();
       this.token.set('');
+      this.client.seed = undefined;
     }
     this.projectIdentity = identity;
     const generation = ++this.generation;
     this.manifestLoading.set(true);
     this.error.set('');
+    this.message.set('');
     this.current.set(undefined);
     try {
+      if (!ref) {
+        this.client.disconnectOwned(this.connectionOwner);
+        return;
+      }
+      if (isSharedProjectRef(ref)) {
+        this.config.set(undefined);
+        if (!this.signedIn() || this.authenticating()) {
+          this.client.disconnectOwned(this.connectionOwner);
+          this.environments.set([]);
+          return;
+        }
+        const state = await firstValueFrom(
+          this.injector.get(ProjectEnvironmentStateService).read(ref),
+        );
+        if (
+          !this.alive ||
+          generation !== this.generation ||
+          identity !== this.contextKey()
+        )
+          return;
+        this.environments.set(state.environments);
+        let environment = this.environment();
+        if (!environment && state.environments.length === 1) {
+          environment = state.environments[0].id;
+          await this.chooseEnvironment(environment);
+          return;
+        }
+        if (!environment) {
+          this.client.disconnectOwned(this.connectionOwner);
+          return;
+        }
+        if (!state.environments.some((item) => item.id === environment))
+          throw new Error(
+            'This environment is not available in the current project. Choose another environment.',
+          );
+        const principal = this.authState()?.user?.uid || '';
+        await this.client.connectHosted(
+          ref,
+          environment,
+          principal,
+          this.connectionOwner,
+          this.watchId(),
+        );
+        if (
+          !this.alive ||
+          generation !== this.generation ||
+          identity !== this.contextKey()
+        )
+          return;
+        await this.refresh();
+        return;
+      }
+      this.environments.set([]);
+      this.client.claimSelfhostConnection(
+        this.connectionOwner,
+        this.selfhostConnectionScope(ref),
+      );
       const summary = await firstValueFrom(
         this.project
           .watchProjectSummary(ref)
@@ -358,44 +495,81 @@ export class WatchPageComponent {
       if (
         !this.alive ||
         generation !== this.generation ||
-        JSON.stringify(this.scope.ref()) !== identity
+        this.contextKey() !== identity
       )
         return;
       const config = summary?.coordination;
       if (config) coordinatorEndpoint(config.endpoint);
       this.config.set(config);
       if (!config || !this.client.matches(config, ref.projectId))
-        this.client.disconnect();
-      if (this.client.identity()) await this.refresh();
+        this.client.disconnectOwned(this.connectionOwner);
+      else
+        this.client.adoptConnection(
+          this.connectionOwner,
+          config,
+          ref.projectId,
+          this.selfhostConnectionScope(ref),
+        );
+      if (this.identity()) await this.refresh();
     } catch (e) {
-      if (this.alive && generation === this.generation)
-        this.error.set(watchError(e));
+      if (this.alive && generation === this.generation) {
+        this.client.disconnectOwned(this.connectionOwner);
+        this.error.set(
+          this.hosted() && isSignedOut(e)
+            ? 'Sign in to access Watch in this project.'
+            : watchError(e),
+        );
+      }
     } finally {
       if (this.alive && generation === this.generation)
         this.manifestLoading.set(false);
     }
   }
   protected pageHref(page: string | string[]) {
-    return projectPageHref(this.scope.ref(), page);
+    const href = projectPageHref(this.scope.ref(), page);
+    if (!this.hosted() || !this.environment()) return href;
+    const url = this.router.parseUrl(href);
+    url.queryParams = { ...url.queryParams, env: this.environment() };
+    return this.router.serializeUrl(url);
+  }
+  protected pageLink(page: string | string[]) {
+    return this.router.parseUrl(this.pageHref(page));
+  }
+  protected async chooseEnvironment(environment: string) {
+    if (!this.environments().some((item) => item.id === environment)) return;
+    const url = this.router.parseUrl(this.router.url);
+    url.queryParams = { ...url.queryParams, env: environment };
+    // Clear private state synchronously, before route navigation or any new response.
+    this.disconnect();
+    await this.router.navigateByUrl(url, { replaceUrl: true });
   }
   protected async connect() {
     const config = this.config(),
       ref = this.scope.ref();
     if (!config || !ref || this.busy()) return;
     const token = this.token();
+    const generation = this.generation;
     this.token.set('');
     this.busy.set(true);
     this.error.set('');
     try {
-      await this.client.connect(config, ref.projectId, token);
-      if (this.alive) await this.refresh();
+      await this.client.connect(
+        config,
+        ref.projectId,
+        token,
+        this.connectionOwner,
+        this.selfhostConnectionScope(ref),
+      );
+      if (this.alive && generation === this.generation) await this.refresh();
     } catch (e) {
-      if (this.alive) this.error.set(watchError(e));
+      if (this.alive && generation === this.generation)
+        this.error.set(watchError(e));
     } finally {
-      if (this.alive) this.busy.set(false);
+      if (this.alive && generation === this.generation) this.busy.set(false);
     }
   }
   private resetView() {
+    this.saveOperation = undefined;
     this.telegramConnected.set(false);
     this.telegramReconnectRequired.set(false);
     this.telegramConnectionError.set('');
@@ -416,7 +590,7 @@ export class WatchPageComponent {
     this.resetReview.set(false);
   }
   protected disconnect() {
-    this.client.disconnect();
+    this.client.disconnectOwned(this.connectionOwner);
     this.definitions.set([]);
     this.current.set(undefined);
     this.notifications.set([]);
@@ -426,19 +600,99 @@ export class WatchPageComponent {
     this.busy.set(false);
     this.message.set('Disconnected.');
   }
+  protected retryConnection() {
+    this.projectIdentity = '';
+    void this.loadContext(this.contextKey());
+  }
+  ionViewWillLeave() {
+    this.alive = false;
+    this.generation++;
+    const navigation = this.router.currentNavigation?.();
+    const destination =
+      navigation?.finalUrl ||
+      navigation?.extractedUrl ||
+      this.router.parseUrl(this.router.url);
+    const preserveNotice = this.client.preserveSetupNotice(
+      this.connectionOwner,
+      this.router.serializeUrl(destination),
+    );
+    const destinationScope = this.watchHandoffScope();
+    if (
+      !destinationScope ||
+      !this.client.handoffConnection(this.connectionOwner, destinationScope)
+    )
+      this.client.disconnectOwned(this.connectionOwner, preserveNotice);
+    this.definitions.set([]);
+    this.notifications.set([]);
+    this.status.set(undefined);
+    this.resetView();
+    this.busy.set(false);
+    this.token.set('');
+  }
+  ionViewWillEnter() {
+    if (this.alive) return;
+    this.alive = true;
+    this.projectIdentity = '';
+    void this.loadContext(this.contextKey());
+  }
+  private selfhostConnectionScope(
+    ref: IProjectRef,
+    environment = this.environment(),
+  ): string {
+    return JSON.stringify([
+      projectRefToString(ref),
+      this.authState()?.user?.uid || '',
+      environment,
+    ]);
+  }
+  /** Keep a verified credential only while moving within this exact project's Watch pages. */
+  private watchHandoffScope(): string | undefined {
+    const navigation = this.router.currentNavigation?.();
+    const target =
+      navigation?.finalUrl ||
+      navigation?.extractedUrl ||
+      this.router.parseUrl(this.router.url);
+    const parsed = parseProjectUrl(this.router.serializeUrl(target));
+    if (
+      !parsed.ok ||
+      parsed.spaceID ||
+      !/^\/watch(?:\/[A-Za-z0-9_-]{1,128})?\/?$/.test(parsed.rest)
+    )
+      return undefined;
+    const projectApi = target.queryParams['projectApi'];
+    const branch = target.queryParams['branch'];
+    const ref: IProjectRef = {
+      storeId: parsed.storeId,
+      projectId: parsed.projectId,
+      ...(projectApi === 'local' || projectApi === 'cloud'
+        ? { projectApi }
+        : {}),
+      ...(typeof branch === 'string' ? { branch } : {}),
+    };
+    return this.selfhostConnectionScope(
+      ref,
+      typeof target.queryParams['env'] === 'string'
+        ? target.queryParams['env']
+        : '',
+    );
+  }
   protected async refresh() {
-    const user = this.client.identity();
+    let user = this.identity();
     if (!user) return;
     const watchId = this.watchId(),
       generation = ++this.viewGeneration;
-    const active = () =>
+    const currentView = () =>
       this.alive &&
-      this.client.identity() === user &&
       this.watchId() === watchId &&
       this.viewGeneration === generation;
+    const active = () => currentView() && this.identity() === user;
     this.busy.set(true);
     this.error.set('');
     try {
+      if (user.hosted) {
+        user = await this.client.refreshIdentity();
+        if (!user || !active()) return;
+      }
       const [definitions, status, inbox] = await Promise.all([
         this.client.definitions(),
         this.client.status(),
@@ -469,6 +723,9 @@ export class WatchPageComponent {
             : ['in_app'],
         );
       }
+      const ref = this.scope.ref();
+      if (watchId && ref && user.hosted)
+        this.client.consumeSetupNotice(ref, user, watchId);
       this.telegramConnected.set(user.telegramConnected === true);
       if (user.channels.telegram) {
         const linked = await this.client.telegramStatus();
@@ -493,8 +750,8 @@ export class WatchPageComponent {
         }
       }
     } catch (e) {
-      if (active()) this.error.set(watchError(e));
-      if (active()) {
+      if (currentView() && (!this.identity() || active())) {
+        this.error.set(watchError(e));
         this.status.set(undefined);
         this.current.set(undefined);
         this.runs.set([]);
@@ -504,20 +761,30 @@ export class WatchPageComponent {
         this.notifications.set([]);
         this.definitions.set([]);
         this.editing.set(false);
+        if (this.hosted() && isHostedReadRefused(e)) {
+          this.client.disconnectOwned(this.connectionOwner);
+          this.busy.set(false);
+        }
       }
     } finally {
-      if (active()) this.busy.set(false);
+      if (currentView() && (!this.identity() || active())) this.busy.set(false);
     }
   }
   private async loadChecks() {
     const context = this.scope.context(),
-      user = this.client.identity();
+      user = this.identity();
     if (!context || !user)
       throw new Error(
         'Open this project through its DataTug agent to choose a saved Check.',
       );
+    const generation = this.viewGeneration;
     const state = await firstValueFrom(this.detective.state(context));
-    if (!this.alive || this.client.identity() !== user) return;
+    if (
+      !this.alive ||
+      this.identity() !== user ||
+      generation !== this.viewGeneration
+    )
+      return;
     this.checks.set(state.checks);
     const seed = this.client.seed;
     const selected =
@@ -530,7 +797,17 @@ export class WatchPageComponent {
         checkId: check?.id || '',
         title: check ? `${check.title} Watch` : '',
       }));
-      if (seed && seed.project === user.project && seed.check.id === selected) {
+      const ref = this.scope.ref();
+      if (
+        seed &&
+        ref &&
+        this.client.seedMatches(
+          ref,
+          this.authState()?.user?.uid || '',
+          user.environment,
+        ) &&
+        seed.check.id === selected
+      ) {
         this.form.update((f) => ({
           ...f,
           inputs: this.inputText(seed.inputs),
@@ -612,7 +889,7 @@ export class WatchPageComponent {
     }
   }
   protected async save() {
-    const user = this.client.identity(),
+    const user = this.identity(),
       check = this.selectedCheck(),
       f = this.form(),
       ref = this.scope.ref();
@@ -622,7 +899,7 @@ export class WatchPageComponent {
       channels = [...this.channels()];
     const active = () =>
       this.alive &&
-      this.client.identity() === user &&
+      this.identity() === user &&
       this.viewGeneration === generation &&
       this.watchId() === watchId;
     this.error.set('');
@@ -730,9 +1007,16 @@ export class WatchPageComponent {
           result = await this.client.lifecycle(result.definition, 'enabled');
         } catch (setupError) {
           if (!active()) return;
-          this.client.setupNotice.set(
-            `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError)} Review its current subscription and lifecycle before resuming.`,
-          );
+          const notice = `Watch saved. Notification setup or enabling was not confirmed: ${watchError(setupError).replace(/[.!?]+$/, '')}. Review its current subscription and lifecycle before resuming.`;
+          if (user.hosted)
+            this.client.stageSetupNotice(
+              ref,
+              user,
+              result.definition.id,
+              this.pageHref(['watch', result.definition.id]),
+              notice,
+            );
+          else this.client.setupNotice.set(notice);
         }
       }
       if (!active()) return;
@@ -792,8 +1076,8 @@ export class WatchPageComponent {
         channels: this.channels(),
         unsubscribed: unsubscribe,
       });
-      this.subscribed.set(!unsubscribe);
       if (!active()) return;
+      this.subscribed.set(!unsubscribe);
       this.message.set(
         unsubscribe
           ? 'You have unsubscribed. Other subscribers are unchanged.'
@@ -809,12 +1093,12 @@ export class WatchPageComponent {
     });
   }
   private async mutate(action: (active: () => boolean) => Promise<void>) {
-    const user = this.client.identity();
+    const user = this.identity();
     const id = this.watchId(),
       generation = this.viewGeneration;
     const active = () =>
       this.alive &&
-      this.client.identity() === user &&
+      this.identity() === user &&
       this.watchId() === id &&
       this.viewGeneration === generation;
     if (!user || this.busy()) return;
@@ -822,10 +1106,9 @@ export class WatchPageComponent {
     this.error.set('');
     try {
       await action(active);
-      if (this.alive && this.client.identity() === user) await this.refresh();
+      if (this.alive && this.identity() === user) await this.refresh();
     } catch (e) {
-      if (this.alive && this.client.identity() === user)
-        this.error.set(watchError(e));
+      if (this.alive && this.identity() === user) this.error.set(watchError(e));
     } finally {
       if (this.alive) this.busy.set(false);
     }

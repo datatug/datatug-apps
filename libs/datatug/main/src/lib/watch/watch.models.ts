@@ -2,6 +2,9 @@ import type { DetectiveInputValue } from '../detective/models';
 
 export type WatchChannel = 'in_app' | 'email' | 'sms' | 'telegram';
 export interface WatchIdentity {
+  hosted?: boolean;
+  spaceID?: string;
+  canManageRunners?: boolean;
   id: string;
   namespace: string;
   project: string;
@@ -10,6 +13,8 @@ export interface WatchIdentity {
   tier: string;
   telegramConnected?: boolean;
   channels: Record<WatchChannel, boolean>;
+  providers?: { email?: boolean; sms?: boolean };
+  coordination?: { endpoint: string; namespace: string } | null;
   limits: {
     emailPerDay: number;
     emailPerMinute?: number;
@@ -20,6 +25,33 @@ export interface WatchIdentity {
     watchesPerUser?: number;
     minIntervalSeconds?: number;
   };
+}
+export interface WatchHostedScope {
+  spaceID: string;
+  project: string;
+  environment: string;
+  principal: string;
+}
+export interface WatchRunnerEnrollment {
+  id: string;
+  scope: { namespace: string; project: string; environment: string };
+  ownerId: string;
+  capabilities: string[];
+  sourceIDs: string[];
+  telegramBotId?: string;
+  revision: number;
+  revoked: boolean;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+}
+export interface WatchRunnerSource {
+  id: string;
+  kind: string;
+  origin?: string;
+  database?: string;
+  collection?: string;
+  sourceId?: string;
 }
 export interface WatchDefinition {
   id: string;
@@ -59,6 +91,7 @@ export interface WatchRun {
   watchId: string;
   state: string;
   dueAt: string;
+  finishedAt?: string;
   executionStatus?: string;
   outcome?: string;
   failureCode?: string;
