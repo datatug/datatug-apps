@@ -1,4 +1,4 @@
-import { BrowserContext, Page } from '@playwright/test';
+import { BrowserContext, Page, Route } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,6 +23,49 @@ const CANONICAL_START_CHAT = `${CANONICAL_PROJECT}/-/start-chat`;
 const EN_QUESTION = `Which countries listen to the most jazz per person? ${MARKER} <b>bold</b> <img src=x onerror="window.__pwned=1">`;
 const RU_QUESTION = `Какие страны слушают больше всего джаза на душу населения? ${MARKER} 🎷`;
 const SCENARIO = 'countries-music-per-capita';
+
+interface OwnedRoute {
+  url: string;
+  handler: (route: Route) => Promise<void>;
+  pending: Set<Promise<void>>;
+}
+const ownedRoutes = new WeakMap<BrowserContext, OwnedRoute[]>();
+
+async function routeForTest(
+  context: BrowserContext,
+  url: string,
+  handler: (route: Route) => Promise<void>,
+): Promise<void> {
+  const pending = new Set<Promise<void>>();
+  const tracked = async (route: Route): Promise<void> => {
+    const completion = handler(route);
+    pending.add(completion);
+    try {
+      await completion;
+    } finally {
+      pending.delete(completion);
+    }
+  };
+  const routes = ownedRoutes.get(context) ?? [];
+  routes.push({ url, handler: tracked, pending });
+  ownedRoutes.set(context, routes);
+  await context.route(url, tracked);
+}
+
+test.afterEach(async ({ context }) => {
+  // Stop new lazy loads while all privacy guards are still installed, then
+  // drain only this spec's callbacks before their request context is disposed.
+  // Keep the shared DemoDB/GitHub guard and its assertions intact; handler
+  // failures remain test failures rather than being ignored during teardown.
+  for (const page of context.pages()) {
+    if (!page.isClosed()) await page.goto('about:blank');
+  }
+  for (const route of ownedRoutes.get(context) ?? []) {
+    await context.unroute(route.url, route.handler);
+    await Promise.all(route.pending);
+  }
+  ownedRoutes.delete(context);
+});
 
 const SENTENCE = {
   en: {
@@ -49,7 +92,7 @@ async function stubExternal(
   own: (origin: string) => boolean,
 ): Promise<External[]> {
   const seen: External[] = [];
-  await context.route('**/*', async (route) => {
+  await routeForTest(context, '**/*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     if (own(url.origin)) return route.continue();
@@ -161,14 +204,15 @@ async function onProductionLikeHost(
     context,
     (o) => o === HANDOFF_HOST || o === baseURL,
   );
-  await context.route(`${HANDOFF_HOST}/**`, async (route) => {
+  await routeForTest(context, `${HANDOFF_HOST}/**`, async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({
       url: baseURL + url.pathname + url.search,
     });
     await route.fulfill({ response });
   });
-  await context.route(
+  await routeForTest(
+    context,
     'https://www.googletagmanager.com/**',
     async (route) => {
       external.push({ url: route.request().url(), method: 'GET', body: '' });
@@ -666,7 +710,7 @@ test.describe('the hand-off holding page', () => {
       context,
       (o) => o === HOST || o === baseURL,
     );
-    await context.route(`${HOST}/**`, async (route) => {
+    await routeForTest(context, `${HOST}/**`, async (route) => {
       const url = new URL(route.request().url());
       const response = await route.fetch({
         url: (baseURL ?? '') + url.pathname + url.search,
@@ -1496,14 +1540,15 @@ test.describe('a question on a project address that is not a hand-off address is
         context,
         (o) => o === HOST || o === baseURL,
       );
-      await context.route(`${HOST}/**`, async (route) => {
+      await routeForTest(context, `${HOST}/**`, async (route) => {
         const url = new URL(route.request().url());
         const response = await route.fetch({
           url: (baseURL ?? '') + url.pathname + url.search,
         });
         await route.fulfill({ response });
       });
-      await context.route(
+      await routeForTest(
+        context,
         'https://www.googletagmanager.com/**',
         async (route) => {
           external.push({
@@ -1810,14 +1855,15 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
       context,
       (o) => o === HOST || o === baseURL,
     );
-    await context.route(`${HOST}/**`, async (route) => {
+    await routeForTest(context, `${HOST}/**`, async (route) => {
       const url = new URL(route.request().url());
       const response = await route.fetch({
         url: (baseURL ?? '') + url.pathname + url.search,
       });
       await route.fulfill({ response });
     });
-    await context.route(
+    await routeForTest(
+      context,
       'https://www.googletagmanager.com/**',
       async (route) => {
         external.push({ url: route.request().url(), method: 'GET', body: '' });
