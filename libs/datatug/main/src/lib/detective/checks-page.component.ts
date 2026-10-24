@@ -1,3 +1,4 @@
+import {WorkArtifactLinksComponent} from '../work/work-artifact-links.component';
 import { EvidenceCopyLinkComponent } from '../evidence/evidence-copy-link.component';
 import type { EvidenceLink } from '../evidence/evidence-link';
 import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
@@ -120,6 +121,7 @@ type RetainedRunLink = EvidenceLink;
   styleUrl: './detective-pages.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    WorkArtifactLinksComponent,
     EvidenceCopyLinkComponent,
     BusinessClockChipComponent,
     SessionDetectiveRunComponent,

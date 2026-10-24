@@ -2141,6 +2141,7 @@
     <ng-container *ngTemplateOutlet="queryEditor" />
     <ng-container *ngTemplateOutlet="queryResults" />
   }
+  <sneat-work-artifact-links [project]="project?.ref" kind="query" [identifier]="queryId || ''" />
 </ion-content>
 
 <ion-modal

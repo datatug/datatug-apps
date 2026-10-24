@@ -12,6 +12,7 @@ import {
   WorkDetail,
   WorkFilters,
   WorkItem,
+  WorkLink,
   WorkPage,
   WorkScope,
 } from './work.models';
@@ -30,7 +31,13 @@ export class WorkApiService {
       )
     )
       throw new Error('Invalid Work project scope.');
-    return new HttpParams({ fromObject: { ...scope, ...extra } });
+    return new HttpParams({
+      fromObject: {
+        spaceID: scope.spaceID,
+        projectID: scope.projectID,
+        ...extra,
+      },
+    });
   }
   private async get<T>(
     path: string,
@@ -70,6 +77,34 @@ export class WorkApiService {
       throw new Error('Invalid Work list response.');
     page.items.forEach((item) => this.validate(item, scope));
     return page;
+  }
+  async artifactLinks(
+    scope: WorkScope,
+    kind: 'check' | 'query',
+    id: string,
+    folder: string,
+    signal: AbortSignal,
+  ): Promise<{ items: WorkItem[]; links: WorkLink[] }> {
+    const result = await this.get<{ items: WorkItem[]; links: WorkLink[] }>(
+      'artifact-links',
+      scope,
+      { kind, id, ...(folder ? { folder } : {}) },
+      signal,
+    );
+    if (!Array.isArray(result.items) || !Array.isArray(result.links))
+      throw new Error('Invalid Work references response.');
+    result.items.forEach((item) => this.validate(item, scope));
+    if (
+      result.links.some(
+        (link) =>
+          link.target.kind !== kind ||
+          link.target.id !== id ||
+          (link.target.folder || '') !== folder ||
+          !result.items.some((item) => item.id === link.sourceId),
+      )
+    )
+      throw new Error('The Work references belong to another artefact.');
+    return result;
   }
   async activity(
     scope: WorkScope,

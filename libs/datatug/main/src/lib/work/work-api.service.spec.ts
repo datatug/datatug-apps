@@ -28,6 +28,22 @@ describe('WorkApiService', () => {
     expect(params.get('projectID')).toBe('project');
     expect(params.get('search')).toBe('shipment');
   });
+  it('whitelists only project scope when a wider mutation object is passed to a follow-up read', async () => {
+    api.get.mockReturnValue(of(workDetailFixture()));
+    const wider = {
+      ...scope,
+      operationId: 'private-op',
+      action: 'context',
+      contextCommand: { value: 'private-value' },
+    };
+    await service.read(wider, 'task1', new AbortController().signal);
+    expect(api.get.mock.calls[0][1].keys().sort()).toEqual([
+      'id',
+      'projectID',
+      'spaceID',
+    ]);
+    expect(api.get.mock.calls[0][1].toString()).not.toContain('private');
+  });
   it('rejects an item from another project before exposing it', async () => {
     const detail = workDetailFixture();
     detail.item = { ...detail.item, projectID: 'private' };

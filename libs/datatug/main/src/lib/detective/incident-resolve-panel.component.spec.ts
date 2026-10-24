@@ -219,6 +219,7 @@ describe('generic human Resolve selection using actual same-chain source fragmen
       useValue: {
         read: vi.fn().mockResolvedValue({
           item: { criteria: 'Confirm customer receipt', version: 14 },
+          capabilities: { transitions: ['resolved'] },
         }),
       },
     });
@@ -233,6 +234,10 @@ describe('generic human Resolve selection using actual same-chain source fragmen
       'Confirm customer receipt',
     );
     expect(f.componentInstance.manualAccepted()).toBe(false);
+    expect(f.nativeElement.textContent).toContain(
+      'I verified these closure criteria',
+    );
+    expect(f.nativeElement.querySelector('ion-checkbox')).not.toBeNull();
     expect(f.componentInstance.canReview()).toBe(false);
     f.componentInstance.confirm();
     expect(prepared).not.toHaveBeenCalled();

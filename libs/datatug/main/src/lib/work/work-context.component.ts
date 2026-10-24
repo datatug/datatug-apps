@@ -1,5 +1,9 @@
 import {
   ChangeDetectionStrategy,
+  afterNextRender,
+  inject,
+  Injector,
+  viewChild,
   Component,
   computed,
   effect,
@@ -55,6 +59,9 @@ import { WorkEnvironment, workId } from './work.models';
   templateUrl: './work-context.component.html',
 })
 export class WorkContextComponent {
+  private readonly injector = inject(Injector);
+  private readonly valueInput = viewChild<IonTextarea>('valueInput');
+  private editTrigger?: HTMLElement;
   readonly snapshot = input.required<ContextSnapshot>();
   readonly environments = input<WorkEnvironment[]>([]);
   readonly editable = input(false);
@@ -72,11 +79,37 @@ export class WorkContextComponent {
   readonly error = signal('');
   readonly bagTitle = signal('');
   readonly bagMode = signal<'create' | 'rename' | undefined>(undefined);
-  readonly bag = computed(
-    () =>
-      this.snapshot().bags.find((b) => b.id === this.bagId()) ??
-      this.snapshot().bags[0],
-  );
+  readonly bag = computed(() => {
+    const snapshot = this.snapshot(),
+      bags = snapshot.bags;
+    const chosen = bags.find((bag) => bag.id === this.bagId());
+    if (chosen) return chosen;
+    const primary = bags.find(
+      (bag) => bag.id === snapshot.session.defaultBagId,
+    );
+    const populated = (bag: (typeof bags)[number]) =>
+      snapshot.entries.some((entry) => entry.bagId === bag.id);
+    return (
+      (primary && populated(primary) ? primary : bags.find(populated)) ??
+      primary ??
+      bags[0]
+    );
+  });
+  bagLabel(id: string, title: string): string {
+    const entries = this.snapshot().entries.filter(
+      (entry) => entry.bagId === id,
+    );
+    const inherited = entries.some((entry) => this.inherited(entry));
+    const local = entries.some((entry) => !this.inherited(entry));
+    return (
+      title +
+      (inherited
+        ? local
+          ? ' · inherited + local'
+          : ' · inherited'
+        : ' · local')
+    );
+  }
   readonly entries = computed(() =>
     this.snapshot().entries.filter((e) => e.bagId === this.bag()?.id),
   );
@@ -143,7 +176,11 @@ export class WorkContextComponent {
       (r) => r.id === entry.currentRevisionId,
     )?.value.keys?.length;
   }
-  edit(entry?: ContextEntry): void {
+  edit(entry?: ContextEntry, event?: Event): void {
+    this.editTrigger = event
+      ?.composedPath()
+      .find((node) => node instanceof HTMLButtonElement) as
+      HTMLElement | undefined;
     if (entry && !this.canEdit(entry)) return;
     this.editing.set(entry);
     this.alias.set(entry?.alias ?? '');
@@ -166,6 +203,26 @@ export class WorkContextComponent {
     );
     this.error.set('');
     this.editorOpen.set(true);
+    afterNextRender(
+      () => {
+        if (this.editorOpen())
+          void this.valueInput()
+            ?.getInputElement()
+            .then((element) => {
+              if (this.editorOpen()) element.focus();
+            });
+      },
+      { injector: this.injector },
+    );
+  }
+  cancelEntry(): void {
+    this.editorOpen.set(false);
+    afterNextRender(
+      () => {
+        if (this.editTrigger?.isConnected) this.editTrigger.focus();
+      },
+      { injector: this.injector },
+    );
   }
   base(action: ContextCommand['action']): ContextCommand {
     const s = this.snapshot();

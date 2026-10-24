@@ -75,6 +75,31 @@ const snapshot = (): ContextSnapshot => ({
   },
 });
 describe('WorkContextComponent', () => {
+  it('opens populated inherited context when the child keeps an empty local default set', async () => {
+    const fixture = TestBed.createComponent(WorkContextComponent);
+    const source = snapshot();
+    fixture.componentRef.setInput('snapshot', {
+      ...source,
+      session: {
+        ...source.session,
+        defaultBagId: 'local',
+        bagIds: ['local', ...source.session.bagIds],
+      },
+      bags: [
+        { ...source.bags[0], id: 'local', title: 'Context Bag', entryIds: [] },
+        ...source.bags,
+      ],
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.bag()?.id).toBe('bag');
+    expect(fixture.componentInstance.bagLabel('bag', 'Context Bag')).toContain(
+      'inherited',
+    );
+    fixture.componentInstance.chooseBag('local');
+    expect(fixture.componentInstance.entries()).toEqual([]);
+  });
+
   function setup() {
     const fixture = TestBed.createComponent(WorkContextComponent);
     fixture.componentRef.setInput('snapshot', snapshot());

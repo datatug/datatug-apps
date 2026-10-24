@@ -7,7 +7,9 @@
     (ionChange)="chooseBag($event.detail.value)"
   >
     @for (bag of snapshot().bags; track bag.id) {
-      <ion-select-option [value]="bag.id">{{ bag.title }}</ion-select-option>
+      <ion-select-option [value]="bag.id">{{
+        bagLabel(bag.id, bag.title)
+      }}</ion-select-option>
     }</ion-select
   ><ion-buttons slot="end">
     @if (editable()) {
@@ -71,7 +73,7 @@
           <ion-button
             slot="end"
             fill="clear"
-            (click)="edit(entry)"
+            (click)="edit(entry, $event)"
             [disabled]="busy()"
             >Edit</ion-button
           >
@@ -88,7 +90,9 @@
   @if (editable()) {
     <ion-item lines="none"
       ><ion-buttons
-        ><ion-button (click)="edit()" [disabled]="busy() || !subjects().length"
+        ><ion-button
+          (click)="edit(undefined, $event)"
+          [disabled]="busy() || !subjects().length"
           >Add value</ion-button
         ><ion-button (click)="apply()" [disabled]="busy() || !entries().length"
           >Apply selected context</ion-button
@@ -139,6 +143,8 @@
     <ion-item
       ><ion-textarea
         label="Context value"
+        #valueInput
+        (keydown.escape)="cancelEntry()"
         labelPlacement="stacked"
         [autoGrow]="true"
         [ngModel]="text()"
@@ -153,7 +159,7 @@
     }
     <ion-item lines="none"
       ><ion-buttons slot="end"
-        ><ion-button (click)="editorOpen.set(false)" [disabled]="busy()"
+        ><ion-button (click)="cancelEntry()" [disabled]="busy()"
           >Cancel</ion-button
         ><ion-button
           fill="solid"

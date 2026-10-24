@@ -1,8 +1,11 @@
+import { By } from '@angular/platform-browser';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  RouterLink,
+  Router,
 } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { Firestore } from 'firebase/firestore';
@@ -208,6 +211,99 @@ describe('WorkPageComponent', () => {
     expect(href).toBe(
       '/space/space/store/firestore/project/project/query/shipping%2Forder-receipt?id=shipping%2Forder-receipt&environment=uat',
     );
+  });
+  it('purges a sensitive proposal preview after access is revoked during acceptance', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const c = fixture.componentInstance;
+    c.detail.set(workDetailFixture());
+    c.proposalPreview.set([{ label: 'Private order', value: 'secret-value' }]);
+    c.proposalReviewOpen.set(true);
+    c.reviewedProposal.set('proposal');
+    api.action.mockRejectedValue({ status: 403 });
+    await c.acceptProposal('proposal');
+    expect(c.proposalReviewOpen()).toBe(false);
+    expect(c.proposalPreview()).toEqual([]);
+    expect(c.reviewedProposal()).toBe('');
+    expect(c.detail()).toBeUndefined();
+    expect(c.error()).not.toBe('');
+  });
+  it('binds delegation as a URL tree so parent and type stay query parameters', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const detail = workDetailFixture();
+    detail.item = { ...detail.item, type: 'incident' };
+    fixture.componentInstance.detail.set(detail);
+    await fixture.whenStable();
+    const link = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .find((element) =>
+        element.nativeElement.textContent.includes('Delegate investigation'),
+      );
+    expect(link).toBeDefined();
+    const tree = link?.injector.get(RouterLink).urlTree;
+    if (!tree) throw new Error('Expected a delegation URL tree');
+    expect(TestBed.inject(Router).serializeUrl(tree)).toBe(
+      '/space/space/store/firestore/project/project/work/new?type=case&parent=task1',
+    );
+  });
+  it.each([409, 0])(
+    'exposes recovery after a modal failure %s and retains the exact pending operation',
+    async (status) => {
+      const { fixture, api } = setup();
+      api.list.mockResolvedValue(workPageFixture());
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const c = fixture.componentInstance;
+      c.transitionOpen.set(true);
+      c.linkOpen.set(true);
+      c.proposalReviewOpen.set(true);
+      c.summary.set('Retain this intent');
+      api.action.mockRejectedValue({ status });
+      await c.mutate({
+        spaceID: 'space',
+        projectID: 'project',
+        itemId: 'task1',
+        operationId: 'failed-modal',
+        expectedVersion: 1,
+        action: 'transition',
+        status: 'closed',
+        summary: 'Retain this intent',
+      });
+      await fixture.whenStable();
+      expect(c.transitionOpen()).toBe(false);
+      expect(c.linkOpen()).toBe(false);
+      expect(c.proposalReviewOpen()).toBe(false);
+      expect(c.pending()?.operationId).toBe('failed-modal');
+      expect(c.summary()).toBe('Retain this intent');
+      expect(c.error()).not.toBe('');
+      expect(fixture.nativeElement.textContent).toContain(
+        'Retry original change',
+      );
+    },
+  );
+  it('omits resolution outcome for an active Incident transition', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const detail = workDetailFixture();
+    detail.item = { ...detail.item, type: 'incident' };
+    const c = fixture.componentInstance;
+    c.detail.set(detail);
+    c.targetStatus.set('investigating');
+    c.summary.set('Inspect actual evidence');
+    api.action.mockResolvedValue(detail);
+    api.context.mockRejectedValue({ status: 404 });
+    await c.transition();
+    expect(api.action.mock.calls[0][0]).toMatchObject({
+      status: 'investigating',
+      outcome: undefined,
+    });
   });
   it('retries a frozen uncertain operation, not the edited draft', async () => {
     const { fixture, api } = setup();

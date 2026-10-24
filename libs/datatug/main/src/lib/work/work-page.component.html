@@ -57,7 +57,7 @@
           ><ion-item-divider color="danger"
             ><ion-label>Change needs attention</ion-label></ion-item-divider
           ><ion-card-content
-            ><p role="alert">{{ error() }}</p>
+            ><p #errorAlert role="alert" tabindex="-1">{{ error() }}</p>
             @if (pending()) {
               <p>
                 Your original change is retained in this page. Retry sends that
@@ -402,7 +402,7 @@
                       <p>
                         {{ event.at | date: 'medium' }}
                         @if (event.fields?.length) {
-                          · {{ event.fields?.join(', ') }}
+                          · {{ activityFields(event.fields) }}
                         }
                       </p>
                       @if (event.summary) {
@@ -413,7 +413,7 @@
                       }
                       @for (change of event.changes; track $index) {
                         <p>
-                          {{ change.field | titlecase }}:
+                          {{ activityField(change.field) }}:
                           {{ change.before || 'None' }} →
                           {{ change.after || 'None' }}
                         </p>
@@ -476,7 +476,16 @@
                   ></ion-item
                 ></ion-list
               >
-              @if (detail.capabilities.transitions.length) {
+              @if (
+                detail.item.type === 'incident' &&
+                detail.capabilities.transitions.includes('resolved') &&
+                specialistHref()
+              ) {
+                <ion-item [routerLink]="specialistHref()" detail
+                  ><ion-label>Review resolution evidence</ion-label></ion-item
+                >
+              }
+              @if (availableStatuses().length) {
                 <ion-item
                   ><ion-button
                     expand="block"
@@ -484,6 +493,7 @@
                       transitionOpen.set(true);
                       targetStatus.set('');
                       summary.set('');
+                      outcome.set(detail.item.closure?.outcome || 'resolved');
                       criteriaAccepted.set(false)
                     "
                     [disabled]="locked()"
@@ -502,11 +512,13 @@
                 <ion-item
                   ><ion-buttons class="wrapping-actions">
                     @if (detail.item.type === 'incident') {
-                      <ion-button [routerLink]="childHref('case')"
+                      <ion-button
+                        [routerLink]="router.parseUrl(childHref('case'))"
                         >Delegate investigation</ion-button
                       >
                     }
-                    <ion-button [routerLink]="childHref('task')"
+                    <ion-button
+                      [routerLink]="router.parseUrl(childHref('task'))"
                       >Create linked Task</ion-button
                     ></ion-buttons
                   ></ion-item
@@ -521,7 +533,7 @@
                         {{ link.target.kind | titlecase }}
                       </p>
                       @if (relatedHref(link)) {
-                        <a [routerLink]="relatedHref(link)">{{
+                        <a [routerLink]="router.parseUrl(relatedHref(link))">{{
                           link.sourceId === detail.item.id
                             ? link.target.id
                             : link.sourceId
@@ -799,7 +811,9 @@
     </ion-content></ng-template
   ></ion-modal
 >
-<ion-modal [isOpen]="transitionOpen()" (didDismiss)="transitionOpen.set(false)"
+<ion-modal
+  [isOpen]="transitionOpen()"
+  (didDismiss)="transitionOpen.set(false); focusError()"
   ><ng-template
     ><ion-header
       ><ion-toolbar color="light"
@@ -818,10 +832,7 @@
           [value]="targetStatus()"
           (ionChange)="targetStatus.set($event.detail.value)"
         >
-          @for (
-            status of detail()?.capabilities?.transitions || [];
-            track status
-          ) {
+          @for (status of availableStatuses(); track status) {
             <ion-select-option [value]="status">{{
               status | titlecase
             }}</ion-select-option>
@@ -836,7 +847,10 @@
           [autoGrow]="true"
           maxlength="4096"
       /></ion-item>
-      @if (detail()?.item?.type === 'incident') {
+      @if (
+        detail()?.item?.type === 'incident' &&
+        ['resolved', 'watching', 'closed'].includes(targetStatus())
+      ) {
         <ion-item
           ><ion-select
             label="Outcome"
@@ -868,6 +882,14 @@
       }
       @if (detail()?.item?.criteria) {
         <ion-item
+          ><ion-label class="ion-text-wrap"
+            ><h2>Closure criteria</h2>
+            <p class="preserve-lines">
+              {{ detail()?.item?.criteria }}
+            </p></ion-label
+          ></ion-item
+        >
+        <ion-item
           ><ion-checkbox
             [checked]="criteriaAccepted()"
             (ionChange)="criteriaAccepted.set($event.detail.checked)"
@@ -885,7 +907,9 @@
     ></ng-template
   ></ion-modal
 >
-<ion-modal [isOpen]="linkOpen()" (didDismiss)="linkOpen.set(false)"
+<ion-modal
+  [isOpen]="linkOpen()"
+  (didDismiss)="linkOpen.set(false); focusError()"
   ><ng-template
     ><ion-header
       ><ion-toolbar color="light"
@@ -981,7 +1005,8 @@
   (didDismiss)="
     proposalReviewOpen.set(false);
     proposalPreview.set([]);
-    reviewedProposal.set('')
+    reviewedProposal.set('');
+    focusError()
   "
   ><ng-template
     ><ion-header

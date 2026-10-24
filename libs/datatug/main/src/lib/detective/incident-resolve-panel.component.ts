@@ -71,24 +71,6 @@ type RunRef = Extract<ArtifactRef, { kind: 'check-run' }>['checkRun'];
             value.proof.evaluatedAt
           }}</time>
         </p>
-        @if (workItemId()) {
-          @if (manualError()) {
-            <p role="alert">{{ manualError() }}</p>
-          } @else if (!manualReady()) {
-            <p role="status">Loading Work closure criteria…</p>
-          } @else if (manualCriteria()) {
-            <h4>Work closure criteria</h4>
-            <p style="white-space: pre-wrap">{{ manualCriteria() }}</p>
-            <ion-checkbox
-              [checked]="manualAccepted()"
-              (ionChange)="
-                manualAccepted.set($event.detail.checked); reviewing.set(false)
-              "
-              [disabled]="busy() || disabled()"
-              >I verified these closure criteria</ion-checkbox
-            >
-          }
-        }
         <div class="resolution-actions">
           <ion-button
             fill="clear"
@@ -267,6 +249,29 @@ type RunRef = Extract<ArtifactRef, { kind: 'check-run' }>['checkRun'];
           [disabled]="busy() || disabled() || !canWrite()"
           (ionInput)="setNote($event.detail.value || '')"
         />
+        @if (workItemId()) {
+          @if (manualError()) {
+            <p role="alert">{{ manualError() }}</p>
+          } @else if (!manualReady()) {
+            <p role="status">Loading Work closure criteria…</p>
+          } @else if (!workCanResolve()) {
+            <p role="status">
+              Resolve is available to the accountable owner when this Incident
+              is recovering. Open Work to review its status and ownership.
+            </p>
+          } @else if (manualCriteria()) {
+            <h4>Work closure criteria</h4>
+            <p style="white-space: pre-wrap">{{ manualCriteria() }}</p>
+            <ion-checkbox
+              [checked]="manualAccepted()"
+              (ionChange)="
+                manualAccepted.set($event.detail.checked); reviewing.set(false)
+              "
+              [disabled]="busy() || disabled()"
+              >I verified these closure criteria</ion-checkbox
+            >
+          }
+        }
         <div class="resolution-actions">
           @if (!reviewing()) {
             <ion-button
@@ -349,6 +354,7 @@ export class IncidentResolvePanelComponent {
   readonly workItemId = input<string>();
   readonly manualCriteria = signal('');
   readonly manualReady = signal(false);
+  readonly workCanResolve = signal(false);
   readonly manualAccepted = signal(false);
   readonly manualVersion = signal(0);
   readonly manualError = signal('');
@@ -414,6 +420,7 @@ export class IncidentResolvePanelComponent {
       !this.selectionReason() &&
       (!this.workItemId() ||
         (this.manualReady() &&
+          this.workCanResolve() &&
           (!this.manualCriteria() || this.manualAccepted()))) &&
       !!this.humanNote().trim() &&
       new TextEncoder().encode(this.humanNote()).length <= 4000,
@@ -450,6 +457,7 @@ export class IncidentResolvePanelComponent {
     this.manualCriteria.set('');
     this.manualAccepted.set(false);
     this.manualReady.set(false);
+    this.workCanResolve.set(false);
     this.manualVersion.set(0);
     this.manualError.set('');
     const id = this.workItemId(),
@@ -467,6 +475,9 @@ export class IncidentResolvePanelComponent {
           if (generation !== this.generation) return;
           this.manualCriteria.set(detail.item.criteria || '');
           this.manualVersion.set(detail.item.version);
+          this.workCanResolve.set(
+            detail.capabilities.transitions.includes('resolved'),
+          );
           this.manualReady.set(true);
         })
         .catch(() => {

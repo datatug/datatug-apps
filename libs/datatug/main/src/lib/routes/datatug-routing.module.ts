@@ -10,6 +10,7 @@ import {
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
+import { projectPageHref } from '../nav/project-page-href';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { admitSessionWorkspace } from '../session-context/session-route.guard';
 import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
@@ -503,24 +504,23 @@ export const datatugRoutes: Routes = [
                   {},
                   ...route.pathFromRoot.map((r) => r.params),
                 );
-                return inject(Router).createUrlTree(
-                  [
-                    '/space',
-                    p['spaceId'],
-                    'store',
-                    p['storeId'],
-                    'project',
-                    p['projectId'],
-                    'work',
-                    'new',
-                  ],
-                  {
-                    queryParams: {
-                      type: 'incident',
-                      environment: route.queryParams['environment'],
+                const tree = inject(Router).parseUrl(
+                  projectPageHref(
+                    {
+                      spaceID: p['spaceId'],
+                      storeId: p['storeId'],
+                      projectId: p['projectId'],
                     },
-                  },
+                    ['work', 'new'],
+                  ),
                 );
+                tree.queryParams = {
+                  type: 'incident',
+                  ...(route.queryParams['environment']
+                    ? { environment: route.queryParams['environment'] }
+                    : {}),
+                };
+                return tree;
               },
             ],
             loadComponent: () =>

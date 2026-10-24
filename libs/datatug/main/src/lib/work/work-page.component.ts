@@ -2,6 +2,10 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
+  Injector,
+  afterNextRender,
+  viewChild,
   computed,
   effect,
   inject,
@@ -237,10 +241,37 @@ export class WorkPageComponent {
       ([key, value]) => key !== 'cursor' && !!value,
     ),
   );
+  readonly availableStatuses = computed(() => {
+    const detail = this.detail();
+    return (detail?.capabilities.transitions || []).filter(
+      (status) => !(detail?.item.type === 'incident' && status === 'resolved'),
+    );
+  });
   readonly typeLabel = workTypeLabel;
+  activityField(field: string): string {
+    const labels: Record<string, string> = {
+      ownerId: 'Accountable owner',
+      assigneeIds: 'Assignees',
+      primaryAssigneeId: 'Primary responsible person',
+      dueAt: 'Due date',
+      contextSessionId: 'Context Bag',
+      parentId: 'Parent work',
+      criteria: 'Closure criteria',
+    };
+    return (
+      labels[field] ||
+      field
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/^./, (letter) => letter.toUpperCase())
+    );
+  }
+  activityFields(fields?: string[]): string {
+    return (fields || []).map((field) => this.activityField(field)).join(', ');
+  }
   readonly overdue = workOverdue;
   private controller = new AbortController();
   private epoch = 0;
+  private entered = false;
   constructor() {
     let principal = this.actor();
     this.authService.authState.pipe(takeUntilDestroyed()).subscribe((state) => {
@@ -299,7 +330,36 @@ export class WorkPageComponent {
       untracked(() => void this.load());
     });
   }
+  ionViewWillEnter(): void {
+    if (this.entered && !this.pending()) void this.load();
+    this.entered = true;
+  }
+  private readonly errorAlert =
+    viewChild<ElementRef<HTMLElement>>('errorAlert');
+  private readonly injector = inject(Injector);
+  focusError(): void {
+    if (this.error()) this.errorAlert()?.nativeElement.focus();
+  }
+  private reportError(error: unknown): void {
+    this.transitionOpen.set(false);
+    this.linkOpen.set(false);
+    this.proposalReviewOpen.set(false);
+    if ([401, 403].includes((error as { status?: number })?.status ?? 0)) {
+      this.detail.set(undefined);
+      this.context.set(undefined);
+      this.rows.set([]);
+      this.members.set([]);
+      this.page.set(undefined);
+      this.parent.set(undefined);
+      this.pending.set(undefined);
+      this.resetDraftsAndOverlays();
+    }
+    this.error.set(workError(error));
+    afterNextRender(() => this.focusError(), { injector: this.injector });
+  }
   private resetDraftsAndOverlays(): void {
+    this.proposalPreview.set([]);
+    this.reviewedProposal.set('');
     this.transitionOpen.set(false);
     this.linkOpen.set(false);
     this.filterOpen.set(false);
@@ -481,7 +541,7 @@ export class WorkPageComponent {
       }
     } catch (e) {
       if (current()) {
-        this.error.set(workError(e));
+        this.reportError(e);
         this.detail.set(undefined);
         this.context.set(undefined);
         this.rows.set([]);
@@ -691,13 +751,7 @@ export class WorkPageComponent {
       }
     } catch (e) {
       if (epoch === this.epoch) {
-        this.error.set(workError(e));
-        if ([401, 403].includes((e as { status?: number })?.status ?? 0)) {
-          this.detail.set(undefined);
-          this.context.set(undefined);
-          this.rows.set([]);
-          this.pending.set(undefined);
-        }
+        this.reportError(e);
       }
     } finally {
       if (epoch === this.epoch) this.busy.set(false);
@@ -729,7 +783,10 @@ export class WorkPageComponent {
       status: this.targetStatus(),
       summary: this.summary().trim(),
       outcome:
-        this.detail()?.item.type === 'incident' ? this.outcome() : undefined,
+        this.detail()?.item.type === 'incident' &&
+        ['resolved', 'watching', 'closed'].includes(this.targetStatus())
+          ? this.outcome()
+          : undefined,
       criteriaAccepted: this.criteriaAccepted(),
     });
   }
@@ -794,7 +851,7 @@ export class WorkPageComponent {
           targetSessionVersion: context.session.version,
         });
     } catch (e) {
-      if (epoch === this.epoch) this.error.set(workError(e));
+      if (epoch === this.epoch) this.reportError(e);
     }
   }
   async reviewProposal(id: string): Promise<void> {
@@ -839,7 +896,7 @@ export class WorkPageComponent {
         this.proposalReviewOpen.set(true);
       }
     } catch (e) {
-      if (epoch === this.epoch) this.error.set(workError(e));
+      if (epoch === this.epoch) this.reportError(e);
     }
   }
 
@@ -883,7 +940,7 @@ export class WorkPageComponent {
         selection: this.selection(),
       });
     } catch (e) {
-      if (epoch === this.epoch) this.error.set(workError(e));
+      if (epoch === this.epoch) this.reportError(e);
     }
   }
 }
