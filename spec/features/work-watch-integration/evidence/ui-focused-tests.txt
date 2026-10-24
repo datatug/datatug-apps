@@ -1,0 +1,127 @@
+
+> nx run datatug-main:test-focused libs/datatug/main/src/lib/work libs/datatug/main/src/lib/watch libs/datatug/main/src/lib/routes/datatug-routing.module.spec.ts libs/datatug/main/src/lib/evidence/retained-open-contract.spec.ts libs/datatug/main/src/lib/detective/checks-retained-run.component.spec.ts
+
+> vitest run --config libs/datatug/main/vite.focused.config.mts libs/datatug/main/src/lib/work libs/datatug/main/src/lib/watch libs/datatug/main/src/lib/routes/datatug-routing.module.spec.ts libs/datatug/main/src/lib/evidence/retained-open-contract.spec.ts libs/datatug/main/src/lib/detective/checks-retained-run.component.spec.ts
+
+(node:961170) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(!) Your Vite config uses features that are unsupported by `configLoader: 'native'`, which is planned to become the default in a future major version of Vite:
+  - `__dirname` (libs/datatug/main/vite.config.mts:10:12). Use `import.meta.dirname` instead
+  - import "../../../vite.config.base" without a file extension (libs/datatug/main/vite.config.mts:3:66). Add the file extension
+  - ESM syntax in a file loaded as CommonJS (vite.config.base.ts:1:1). Use a `.mjs` extension or set `"type": "module"` in the closest package.json
+Set `VITE_CONFIG_NATIVE_IGNORE_WARNING=true` to suppress this warning.
+
+ RUN  v5.0.5 /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main
+
+(node:961577) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:961571) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:961584) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Error: write EPROTO C0BC1266897B0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C0BC1266897B0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C06C14A0687D0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C06C14A0687D0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C06C14A0687D0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C06C14A0687D0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+Error: write EPROTO C06C14A0687D0000:error:0A000438:SSL routines:ssl3_read_bytes:tlsv1 alert internal error:../deps/openssl/openssl/ssl/record/rec_layer_s3.c:918:SSL alert number 80
+
+[90m    at WriteWrap.onWriteComplete [as oncomplete] (node:internal/stream_base_commons:87:19)[39m {
+  errno: [33m-71[39m,
+  code: [32m'EPROTO'[39m,
+  syscall: [32m'write'[39m
+}
+ ✓ |datatug-main| src/lib/work/work-page.component.spec.ts (20 tests) 1402ms
+   ✓ WorkPageComponent (20)
+     ✓ renders an asynchronous list without a second change detection call 419ms
+(node:961679) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/watch/watch-page.component.spec.ts (17 tests) 1871ms
+   ✓ Project Watch flow (17)
+     ✓ cold loads the URL Watch ID, keeps unknown distinct, and locks SMS for a free account 333ms
+ ✓ |datatug-main| src/lib/detective/checks-retained-run.component.spec.ts (8 tests) 1478ms
+   ✓ Ordinary Check retained evidence before a Case (8)
+     ✓ uses compact card headers, keeps the manual Run action in its header, and omits the duplicate catalog link 733ms
+(node:961689) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:961698) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/work/work-form.component.spec.ts (6 tests) 473ms
+(node:961728) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/work/work-watch.component.spec.ts (6 tests) 202ms
+(node:961738) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/routes/datatug-routing.module.spec.ts (21 tests) 263ms
+(node:961748) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/work/work-context.component.spec.ts (4 tests) 396ms
+(node:961771) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/work/work-artifact-links.component.spec.ts (2 tests) 32ms
+ ✓ |datatug-main| src/lib/watch/watch-client.service.spec.ts (5 tests) 24ms
+(node:961783) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:961790) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-main| src/lib/work/work-api.service.spec.ts (9 tests) 28ms
+ ✓ |datatug-main| src/lib/evidence/retained-open-contract.spec.ts (17 tests) 29ms
+ ✓ |datatug-main| src/lib/work/work.models.spec.ts (5 tests) 6ms
+
+ Test Files  12 passed (12)
+      Tests  120 passed (120)
+   Start at  08:26:58
+   Duration  12.73s (setup 55%, tests 17%, transform 17%, environment 9%, import 2%)
+
+
+
+
+ NX   Successfully ran target test-focused for project datatug-main
+
+
+  Run duration:      41.2s
+  Cache:             0/1 hit (0%)
+  Critical path:     41.2s (1 task)
+  Recoverable time:  <1ms
+
+  Recommendations:
+    - Drastically reduce your run duration by sharing a cache across your team and CI → https://cloud.nx.app/connect/zXXI1jCn4x.
+    - Speed up or split the longest tasks on the critical path:
+        datatug-main:test-focused    41.2s

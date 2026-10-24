@@ -1,0 +1,165 @@
+
+> nx run datatug-app:build:sso-e2e
+
+(node:1002745) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[33m❯[39m Building...
+(node:1002745) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[32m✔[39m Building...
+[1mInitial chunk files[22m                  [2m | [22m[1mNames[22m                     [2m | [22m [1mRaw size[22m
+[32mchunk-DR7LY2OA.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.04 MB[39m[2m | [22m
+[32mchunk-C5OQI3KQ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m965.10 kB[39m[2m | [22m
+[32mchunk-AFL5XLN5.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m712.75 kB[39m[2m | [22m
+[32mmain.js[39m                              [2m | [22m[2mmain[22m                      [2m | [22m[36m525.58 kB[39m[2m | [22m
+[32mchunk-PBZ7L2SQ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m462.06 kB[39m[2m | [22m
+[32mchunk-TJ62R234.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m427.31 kB[39m[2m | [22m
+[32mchunk-Z6746B6T.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m411.70 kB[39m[2m | [22m
+[32mchunk-6C7NOXMA.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m321.64 kB[39m[2m | [22m
+[32mchunk-2PHN5BK2.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m171.60 kB[39m[2m | [22m
+[32mstyles.css[39m                           [2m | [22m[2mstyles[22m                    [2m | [22m[36m112.97 kB[39m[2m | [22m
+[32mchunk-3H2FOOCA.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m108.02 kB[39m[2m | [22m
+[32mchunk-5VVQUJQK.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m95.26 kB[39m[2m | [22m
+[32mchunk-SCKJETO4.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m90.85 kB[39m[2m | [22m
+[32mchunk-LYXZEKHW.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m87.14 kB[39m[2m | [22m
+[32mchunk-L3U7IAPF.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m57.79 kB[39m[2m | [22m
+[32mchunk-2KDGPLFQ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m51.56 kB[39m[2m | [22m
+[32mchunk-K6B6XGWG.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m42.10 kB[39m[2m | [22m
+[32mchunk-OOFPJ44I.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m26.33 kB[39m[2m | [22m
+[32mchunk-NPGWS4Q2.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m18.53 kB[39m[2m | [22m
+[32mchunk-M2SW2AQ2.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m15.92 kB[39m[2m | [22m
+[32mchunk-LAS3WHIQ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m14.83 kB[39m[2m | [22m
+[32mchunk-GFNLJXEF.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m14.27 kB[39m[2m | [22m
+[32mchunk-TDT36AHR.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m13.54 kB[39m[2m | [22m
+[32mchunk-ISZEEAK2.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m13.04 kB[39m[2m | [22m
+[32mchunk-ZWNMGAUT.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m12.45 kB[39m[2m | [22m
+[32mchunk-VBPSRNIX.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m8.64 kB[39m[2m | [22m
+[32mchunk-EM2JOE4J.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m8.57 kB[39m[2m | [22m
+[32mchunk-XVEZ4BFT.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m7.43 kB[39m[2m | [22m
+[32mchunk-YZNZR5ZP.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m6.93 kB[39m[2m | [22m
+[32mchunk-6ABEJVOG.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m6.24 kB[39m[2m | [22m
+[32mchunk-HE3TEIYR.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m5.29 kB[39m[2m | [22m
+[32mchunk-DQ2R7B7P.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m5.21 kB[39m[2m | [22m
+[32mchunk-ANTCIXQP.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m4.27 kB[39m[2m | [22m
+[32mchunk-VRTY3BSQ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m3.10 kB[39m[2m | [22m
+[32mchunk-DZ2CWDBF.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m2.50 kB[39m[2m | [22m
+[32mchunk-QIATGURX.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m2.29 kB[39m[2m | [22m
+[32mchunk-GC3BSZ47.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m2.06 kB[39m[2m | [22m
+[32mchunk-UN5ANLD5.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m2.00 kB[39m[2m | [22m
+[32mchunk-N7RZE6I3.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.93 kB[39m[2m | [22m
+[32mchunk-G2OKTCVP.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.72 kB[39m[2m | [22m
+[32mchunk-VHUMW7JP.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.55 kB[39m[2m | [22m
+[32mchunk-DLZKY4SK.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.54 kB[39m[2m | [22m
+[32mchunk-S6EJIY3B.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.29 kB[39m[2m | [22m
+[32mchunk-BLBRMC43.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.28 kB[39m[2m | [22m
+[32mchunk-WVWUP6XA.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.23 kB[39m[2m | [22m
+[32mchunk-X3H7L3KM.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.21 kB[39m[2m | [22m
+[32mchunk-QOKNBMW4.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.13 kB[39m[2m | [22m
+[32mchunk-BI2DHPK2.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.05 kB[39m[2m | [22m
+[32mchunk-5SMEBCAN.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.00 kB[39m[2m | [22m
+[32mchunk-PTJCZ3U5.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m755 bytes[39m[2m | [22m
+[32mchunk-7Y7MMDZN.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m716 bytes[39m[2m | [22m
+[32mchunk-2JSIEU6K.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m535 bytes[39m[2m | [22m
+[32mchunk-MKK4QHSH.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m468 bytes[39m[2m | [22m
+[32mchunk-E3X35RUM.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m417 bytes[39m[2m | [22m
+[32mchunk-E3X35RUM.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m417 bytes[39m[2m | [22m
+[32mchunk-QX76VYFS.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m387 bytes[39m[2m | [22m
+[32mchunk-5LGVE54V.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m [36m92 bytes[39m[2m | [22m
+
+[1m [22m                                    [2m | [22m[1mInitial total[22m             [2m | [22m  [1m5.89 MB[22m
+
+[1mLazy chunk files[22m                     [2m | [22m[1mNames[22m                     [2m | [22m [1mRaw size[22m
+[32mag-grid-enterprise-loader-5RBHJJXD.js[39m[2m | [22m[2mag-grid-enterprise-loader[22m [2m | [22m  [36m8.03 MB[39m[2m | [22m
+[32mchunk-6S7BHAEB.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m2.26 MB[39m[2m | [22m
+[32mworker-NDT6ERL5.js[39m                   [2m | [22m[2mfederated-query-worker[22m    [2m | [22m  [36m1.91 MB[39m[2m | [22m
+[32mchunk-HX3LCYFP.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m  [36m1.86 MB[39m[2m | [22m
+[32mquery-page.component-ZPVP5XS2.js[39m     [2m | [22m[2mquery-page-component[22m      [2m | [22m  [36m1.37 MB[39m[2m | [22m
+[32mchunk-5C6Y54YI.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m653.52 kB[39m[2m | [22m
+[32mworker-XGU7TMVK.js[39m                   [2m | [22m[2mpublic-sqlite-query-worker[22m[2m | [22m[36m528.29 kB[39m[2m | [22m
+[32mdist-I2SJAB7I.js[39m                     [2m | [22m[2mindex[22m                     [2m | [22m[36m520.65 kB[39m[2m | [22m
+[32mchunk-5QRAINMK.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m483.87 kB[39m[2m | [22m
+[32mchecks-page.component-PPKRKKBS.js[39m    [2m | [22m[2mchecks-page-component[22m     [2m | [22m[36m402.05 kB[39m[2m | [22m
+[32mchunk-XVUYXFZZ.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m389.86 kB[39m[2m | [22m
+[32mpublic_api-L42QAJRP.js[39m               [2m | [22m[2mpublic_api[22m                [2m | [22m[36m330.23 kB[39m[2m | [22m
+[32mchunk-KUFKXEVU.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m299.07 kB[39m[2m | [22m
+[32mchunk-ZXAIBYUW.js[39m                    [2m | [22m[2m-[22m                         [2m | [22m[36m290.86 kB[39m[2m | [22m
+[32mcases-page.component-IDGQW2JI.js[39m     [2m | [22m[2mcases-page-component[22m      [2m | [22m[36m279.88 kB[39m[2m | [22m
+[2m...and 380 more lazy chunks files. Use "--verbose" to show all the files.[22m
+
+Application bundle generation complete. [29.884 seconds] - 2026-10-24T09:20:38.918Z
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mNG8113: IonIcon is not used within the template of BoardPageComponent[0m [1m[35m[plugin angular-compiler][0m
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/board/ui/pages/board/board-page.component.ts:157:4:
+[37m      157 │     [32mIonIcon[37m,
+          ╵     [32m~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mNG8113: IonButton is not used within the template of BoardsPageComponent[0m [1m[35m[plugin angular-compiler][0m
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/board/ui/pages/boards/boards-page.component.ts:84:4:
+[37m      84 │     [32mIonButton[37m,
+         ╵     [32m~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mNG8107: NG8107: The left side of this optional chain operation does not include 'null' or 'undefined' in its type, therefore the '?.' operator can be replaced with the '.' operator. Find more at https://v22.angular.dev/extended-diagnostics/NG8107[0m [1m[35m[plugin angular-compiler][0m
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/work/work-context.component.html:6:20:
+[37m      6 │     [value]="bag()?.[32mid[37m"
+        ╵                     [32m~~[0m
+
+  Warning occurs in the template of component WorkContextComponent.
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/work/work-context.component.ts:59:15:
+[37m      59 │   templateUrl: [32m'./work-context.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mNG8107: NG8107: The left side of this optional chain operation does not include 'null' or 'undefined' in its type, therefore the '?.' operator can be replaced with the '.' operator. Find more at https://v22.angular.dev/extended-diagnostics/NG8107[0m [1m[35m[plugin angular-compiler][0m
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/work/work-context.component.html:21:60:
+[37m      21 │ ... (click)="bagMode.set('rename'); bagTitle.set(bag()?.[32mtitle[37m || '')"
+         ╵                                                         [32m~~~~~[0m
+
+  Warning occurs in the template of component WorkContextComponent.
+
+    /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/main/src/lib/work/work-context.component.ts:59:15:
+[37m      59 │   templateUrl: [32m'./work-context.component.html'[37m,
+         ╵                [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+[33m▲ [43;33m[[43;30mWARNING[43;33m][0m [1mDeprecation[0m [1m[35m[plugin angular-sass][0m
+
+    apps/datatug-app/src/styles.scss:166:8:
+[37m      166 │ @import [32m[37m'@sneat/components/src/sneat-grid-layout';
+          ╵         [32m^[0m
+
+
+  Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+  More info and automated migrator: [4mhttps://sass-lang.com/d/import[0m
+
+  The plugin "angular-sass" was triggered by this import
+
+    angular:styles/global:styles:1:8:
+[37m      1 │ @import [32m'apps/datatug-app/src/styles.scss'[37m;
+        ╵         [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+
+Output location: /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/dist/apps/datatug-app
+
+
+
+
+ NX   Successfully ran target build for project datatug-app
+
+
+  Run duration:      31.7s
+  Cache:             0/1 hit (0%)
+  Critical path:     31.6s (1 task)
+  Recoverable time:  <1ms
+
+  Recommendations:
+    - Drastically reduce your run duration by sharing a cache across your team and CI → https://cloud.nx.app/connect/rzstK7R8s7.
+    - Speed up or split the longest tasks on the critical path:
+        datatug-app:build:sso-e2e    31.6s
