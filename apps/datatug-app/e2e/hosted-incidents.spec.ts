@@ -497,7 +497,7 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
   await workPage()
     .getByText('Open Incident evidence and resolution', { exact: true })
     .click();
-  const detail = `${list}/${incidentRef.storeId}/${incidentRef.incidentId}`;
+  const detail = `${list}/${incidentRef.storeId}/${incidentRef.incidentId}?environment=demo`;
   await expect(page).toHaveURL(detail);
   await page.reload();
   await expect(
