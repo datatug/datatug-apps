@@ -392,6 +392,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       'ion-select[label="Evidence Incident"]',
       /Delayed shipment · order 11045/,
     );
+    await bob.getByRole('button', { name: 'OK', exact: true }).click();
     await bob
       .getByRole('button', { name: 'Choose applied context', exact: true })
       .click();
@@ -406,11 +407,13 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       'ion-select[aria-label="Existing native Session"]',
       title || '',
     );
+    await bob.getByRole('button', { name: 'OK', exact: true }).click();
     await choose(
       bob,
       'ion-select[aria-label="Applied scalar revision"]',
       /order_id.*11045/,
     );
+    await bob.getByRole('button', { name: 'OK', exact: true }).click();
     await expect(bob.getByTestId('run-check-action')).toHaveAttribute(
       'aria-label',
       'Run Check and attach to Incident',
