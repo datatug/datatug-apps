@@ -265,7 +265,10 @@ const candidate = spawnSync('git', ['rev-parse', 'HEAD'], {
       ),
     );
   async function top() {
-    await watchPage.locator('ion-content').evaluate((e) => e.scrollToTop());
+    await expect(watchPage).toHaveCount(1);
+    await watchPage
+      .locator(':scope > ion-content')
+      .evaluate((e) => e.scrollToTop());
     await settle();
   }
   async function shot(name) {
