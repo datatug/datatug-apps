@@ -63,8 +63,29 @@ export class DatatugStoreFirestoreService implements IDatatugStoreService {
         if (!project) return undefined;
         if (typeof project.title !== 'string' || project.access !== 'protected')
           throw new Error('Invalid shared project metadata');
-        // No private ownership list or fabricated item summaries: creation writes title/access/created only.
-        return { id: projectId, title: project.title, access: project.access };
+        // Preserve the manifest descriptor, never operational credentials or
+        // private ownership lists. Watch validates the endpoint before use.
+        const coordination = project.coordination;
+        if (
+          coordination &&
+          (typeof coordination.endpoint !== 'string' ||
+            typeof coordination.namespace !== 'string' ||
+            !coordination.namespace.trim())
+        )
+          throw new Error('Invalid project coordinator metadata');
+        return {
+          id: projectId,
+          title: project.title,
+          access: project.access,
+          ...(coordination
+            ? {
+                coordination: {
+                  endpoint: coordination.endpoint,
+                  namespace: coordination.namespace,
+                },
+              }
+            : {}),
+        };
       }),
     );
   }

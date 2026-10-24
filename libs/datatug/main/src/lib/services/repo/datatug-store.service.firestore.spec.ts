@@ -8,7 +8,9 @@ import {
 } from './datatug-store.service.firestore';
 
 const { docMock, docDataMock } = vi.hoisted(() => ({
-  docMock: vi.fn<(...args: unknown[]) => { path: string }>(() => ({ path: 'stub' })),
+  docMock: vi.fn<(...args: unknown[]) => { path: string }>(() => ({
+    path: 'stub',
+  })),
   docDataMock: vi.fn(),
 }));
 
@@ -134,6 +136,57 @@ describe('Space-owned project metadata path', () => {
       .subscribe((v) => values.push(v));
     expect(values).toEqual([undefined]);
     expect(docMock).toHaveBeenCalledTimes(1);
+  });
+  it('preserves only the public coordinator descriptor from shared metadata', () => {
+    docDataMock.mockReturnValue(
+      of({
+        title: 'Shared',
+        access: 'protected',
+        userIDs: ['private-owner'],
+        coordination: {
+          endpoint: 'https://coordinator.example.test',
+          namespace: 'team',
+          token: 'must-not-propagate',
+        },
+      }),
+    );
+    const values: unknown[] = [];
+    service
+      .getSharedProjectSummary({
+        storeId: 'firestore',
+        spaceID: 'S1',
+        projectId: 'P1',
+      })
+      .subscribe((value) => values.push(value));
+    expect(values).toEqual([
+      {
+        id: 'P1',
+        title: 'Shared',
+        access: 'protected',
+        coordination: {
+          endpoint: 'https://coordinator.example.test',
+          namespace: 'team',
+        },
+      },
+    ]);
+  });
+  it('rejects malformed coordinator metadata instead of guessing a namespace', () => {
+    docDataMock.mockReturnValue(
+      of({
+        title: 'Shared',
+        access: 'protected',
+        coordination: { endpoint: 'https://coordinator.example.test' },
+      }),
+    );
+    let error: unknown;
+    service
+      .getSharedProjectSummary({
+        storeId: 'firestore',
+        spaceID: 'S1',
+        projectId: 'P1',
+      })
+      .subscribe({ error: (value) => (error = value) });
+    expect(error).toEqual(new Error('Invalid project coordinator metadata'));
   });
   it.each(['', '../S1', 'x/y'])(
     'invalid Space %s cannot touch storage',
