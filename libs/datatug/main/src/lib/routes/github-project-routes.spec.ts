@@ -186,12 +186,15 @@ describe('the routes as registered', () => {
     expect(old?.redirectTo).toBeUndefined();
   });
 
-  it('guards the shared project route and exposes Meanings, Shipping, Boards, Incident, query, Check, Detective and session children', () => {
+  it('guards the shared project route and exposes Meanings, Shipping, Boards, Incident, query, Check, Watch, Detective and session children', () => {
     const shared = datatugRoutes.find(
       (r) => r.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
     expect(shared?.canMatch).toHaveLength(1);
     expect(shared?.children?.map((r) => r.path)).toEqual([
+      'watch/new',
+      'watch/:watchId',
+      'watch',
       'quick-search',
       'tags',
       'search-schema/:dbModelId',
