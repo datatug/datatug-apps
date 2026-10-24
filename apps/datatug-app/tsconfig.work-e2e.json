@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "types": ["node", "@playwright/test"]
+  },
+  "files": [],
+  "include": [
+    "e2e/work.spec.ts",
+    "e2e/hosted-incidents.spec.ts",
+    "playwright.work.config.ts"
+  ]
+}

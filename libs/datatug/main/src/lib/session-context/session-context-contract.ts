@@ -34,6 +34,7 @@ export interface ContextEntry {
   readonly currentRevisionId: string; readonly version: number;
 }
 export interface ContextEntryRevision {
+  readonly source?: { readonly sessionId: string; readonly bagId: string; readonly entryId: string; readonly revisionId: string };
   readonly id: string; readonly entryId: string; readonly bagId: string;
   readonly parentRevisionId?: string; readonly subject: ContextSubject; readonly value: ContextValue; readonly createdAt: string;
 }

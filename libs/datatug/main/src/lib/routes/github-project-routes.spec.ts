@@ -214,6 +214,9 @@ describe('the routes as registered', () => {
       'cards',
       'boards',
       'sessions',
+      'work/new',
+      'work/:workItemId',
+      'work',
       'incidents',
       'queries',
       'checks',
@@ -250,6 +253,7 @@ describe('the routes as registered', () => {
     ).toEqual([
       'native-check-status/:recoveryId',
       'store/:storeId/native-check-status/:recoveryId',
+      'my/work',
       'new-project',
       'github/callback',
       '',

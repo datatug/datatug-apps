@@ -10,6 +10,9 @@ import type { DetectiveCase } from './models';
 import type { DetectiveInputValue } from './models';
 
 export interface HostedIncidentView {
+  workItemId?: string;
+  resolutionEpoch?: number;
+  reopenedAt?: string;
   resolutionCriterion?: IncidentResolutionCriterion;
   resolution?: import('../incidents/models').IncidentResolution;
   ref: { storeId: string; incidentId: string };
@@ -74,12 +77,17 @@ export type HostedCriterionAction =
     };
 
 export interface HostedResolveAction {
+  readonly criteriaAccepted?: boolean;
+  readonly expectedWorkVersion?: number;
   readonly type: 'resolve';
   readonly incidentRef: string;
   readonly environment: string;
   readonly expectedSeq: number;
   readonly criterionVersion: number;
-  readonly run: Extract<import('@sneat/datatug-semantic').ArtifactRef, { kind: 'check-run' }>['checkRun'];
+  readonly run: Extract<
+    import('@sneat/datatug-semantic').ArtifactRef,
+    { kind: 'check-run' }
+  >['checkRun'];
   readonly recovery: import('@sneat/datatug-semantic').SourceOperationRef;
   readonly humanNote: string;
 }
@@ -129,11 +137,7 @@ export interface HostedIncidentResponse {
 }
 
 export type HostedKnowledgeKind =
-  | 'field-meaning'
-  | 'relationship'
-  | 'invariant'
-  | 'query'
-  | 'scenario';
+  'field-meaning' | 'relationship' | 'invariant' | 'query' | 'scenario';
 
 export interface HostedKnowledgeTarget {
   system: 'meaninggraph' | 'modelspec';

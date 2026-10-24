@@ -110,6 +110,30 @@ describe('CasesPageComponent knowledge draft retry', () => {
       .compileComponents();
   });
 
+  it('routes canonical metadata editing to Work and rejects duplicate lifecycle mutations', async () => {
+    const fixture = TestBed.createComponent(CasesPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const page = fixture.componentInstance as unknown as {
+      state: { set(value: DetectiveState): void };
+      startEdit(): void;
+      closeCase(): Promise<boolean>;
+      reopenCase(): Promise<boolean>;
+      archiveCase(): Promise<boolean>;
+    };
+    page.state.set({
+      ...state,
+      cases: [{ ...savedCase, workItemId: 'canonical' }],
+    });
+    page.startEdit();
+    expect(TestBed.inject(Router).navigateByUrl).toHaveBeenCalledWith(
+      '/space/space-1/store/firestore/project/project-1/work/canonical',
+    );
+    expect(await page.closeCase()).toBe(false);
+    expect(await page.reopenCase()).toBe(false);
+    expect(await page.archiveCase()).toBe(false);
+  });
+
   it('reuses the real proposal identity when Case version advances after a lost acknowledgment', async () => {
     const fixture = TestBed.createComponent(CasesPageComponent);
     fixture.detectChanges();
@@ -322,7 +346,10 @@ describe('CasesPageComponent Case creation HTTP payload', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: DatatugApiService, useValue: { get: vi.fn(), post: vi.fn() } },
+        {
+          provide: DatatugApiService,
+          useValue: { get: vi.fn(), post: vi.fn() },
+        },
         {
           provide: DatatugNavContextService,
           useValue: {

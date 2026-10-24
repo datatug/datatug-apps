@@ -388,6 +388,14 @@
         "config": "apps/datatug-app/vite.config.mts"
       }
     },
+    "e2e-work": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-work"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.work.config.ts --forbid-only"
+      }
+    },
     "e2e-watch": {
       "executor": "nx:run-commands",
       "cache": false,

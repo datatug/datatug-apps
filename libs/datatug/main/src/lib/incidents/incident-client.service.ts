@@ -1,4 +1,13 @@
-import { isIncidentResolution, resolutionInstant, resolutionMatchesCriterion, resolutionRefs, sameResolutionValue } from './resolution-proof';
+import {
+  isIncidentResolution,
+  isIncidentLifecycleProjection,
+  isResolutionEpoch,
+  isResolutionLifecycleVersion,
+  resolutionInstant,
+  resolutionMatchesCriterion,
+  resolutionRefs,
+  sameResolutionValue,
+} from './resolution-proof';
 import { isIncidentResolutionCriterion } from './resolution-criterion';
 import {
   HttpClient,
@@ -100,12 +109,10 @@ export class IncidentClientService {
         { params },
       )
       .pipe(
-        map(
-          (response): IncidentApiResult<IncidentDetail> => ({
-            kind: 'ok',
-            data: requireIncident(response),
-          }),
-        ),
+        map((response): IncidentApiResult<IncidentDetail> => ({
+          kind: 'ok',
+          data: requireIncident(response),
+        })),
         catchError((err: unknown) =>
           of(toIncidentApiResult<IncidentDetail>(err)),
         ),
@@ -122,12 +129,10 @@ export class IncidentClientService {
         request,
       )
       .pipe(
-        map(
-          (response): IncidentApiResult<IncidentDetail> => ({
-            kind: 'ok',
-            data: requireIncident(response),
-          }),
-        ),
+        map((response): IncidentApiResult<IncidentDetail> => ({
+          kind: 'ok',
+          data: requireIncident(response),
+        })),
         catchError((err: unknown) =>
           of(toIncidentApiResult<IncidentDetail>(err)),
         ),
@@ -148,12 +153,10 @@ export class IncidentClientService {
         { params, responseType: 'text' },
       )
       .pipe(
-        map(
-          (response): IncidentApiResult<IncidentStreamItem[]> => ({
-            kind: 'ok',
-            data: decodeIncidentStream(response),
-          }),
-        ),
+        map((response): IncidentApiResult<IncidentStreamItem[]> => ({
+          kind: 'ok',
+          data: decodeIncidentStream(response),
+        })),
         catchError((err: unknown) =>
           of(toIncidentApiResult<IncidentStreamItem[]>(err)),
         ),
@@ -174,12 +177,10 @@ export class IncidentClientService {
         request,
       )
       .pipe(
-        map(
-          (response): IncidentApiResult<AppendIncidentEventResponse> => ({
-            kind: 'ok',
-            data: decodeAppendIncidentEventResponse(response),
-          }),
-        ),
+        map((response): IncidentApiResult<AppendIncidentEventResponse> => ({
+          kind: 'ok',
+          data: decodeAppendIncidentEventResponse(response),
+        })),
         catchError((err: unknown) =>
           of(toIncidentApiResult<AppendIncidentEventResponse>(err)),
         ),
@@ -268,10 +269,29 @@ export function decodeIncidentEvent(
 
 function isResolvedEventShape(event: Record<string, unknown>): boolean {
   if (event['type'] !== 'incident.resolved') return true;
-  const payload = event['payload'], actor = event['actor'], assertion = event['assertion'], refs = event['refs'];
-  if (!isIncidentResolution(payload) || !isRecord(actor) || actor['kind'] !== 'human' || !isRecord(assertion) || assertion['kind'] !== 'claim' || !Array.isArray(refs)) return false;
-  const at = resolutionInstant(event['at']), evaluated = resolutionInstant(payload.proof.evaluatedAt);
-  return at !== undefined && evaluated !== undefined && evaluated <= at && resolutionRefs(payload).every((expected) => refs.some((actual) => sameResolutionValue(actual, expected)));
+  const payload = event['payload'],
+    actor = event['actor'],
+    assertion = event['assertion'],
+    refs = event['refs'];
+  if (
+    !isIncidentResolution(payload) ||
+    !isRecord(actor) ||
+    actor['kind'] !== 'human' ||
+    !isRecord(assertion) ||
+    assertion['kind'] !== 'claim' ||
+    !Array.isArray(refs)
+  )
+    return false;
+  const at = resolutionInstant(event['at']),
+    evaluated = resolutionInstant(payload.proof.evaluatedAt);
+  return (
+    at !== undefined &&
+    evaluated !== undefined &&
+    evaluated <= at &&
+    resolutionRefs(payload).every((expected) =>
+      refs.some((actual) => sameResolutionValue(actual, expected)),
+    )
+  );
 }
 
 function decodeAppendIncidentEventResponse(
@@ -363,6 +383,15 @@ function isIncidentEventPayload(
     return false;
   }
   switch (type) {
+    case 'incident.reopened':
+      return (
+        hasOnlyKeys(payload, ['reason', 'expectedResolutionEpoch']) &&
+        typeof payload['reason'] === 'string' &&
+        !!payload['reason'].trim() &&
+        new TextEncoder().encode(payload['reason']).length <= 4096 &&
+        isResolutionEpoch(payload['expectedResolutionEpoch']) &&
+        payload['expectedResolutionEpoch'] < Number.MAX_SAFE_INTEGER
+      );
     case 'incident.resolved':
       return isIncidentResolution(payload);
     case 'incident.criterion-set':
@@ -386,7 +415,8 @@ function isIncidentEventPayload(
       );
     case 'incident.status':
       return (
-        hasOnlyKeys(payload, ['status']) &&
+        hasOnlyKeys(payload, ['status', 'lifecycleVersion']) &&
+        isResolutionLifecycleVersion(payload['lifecycleVersion']) &&
         typeof payload['status'] === 'string' &&
         INCIDENT_STATUSES.includes(
           payload['status'] as (typeof INCIDENT_STATUSES)[number],
@@ -484,9 +514,13 @@ function decodeIncident(value: unknown): IncidentDetail {
       'assetRefs',
       'notes',
       'lastSeq',
+      'workItemId',
+      'resolutionEpoch',
+      'reopenedAt',
       'resolutionCriterion',
       'resolution',
     ]) ||
+    !isIncidentLifecycleProjection(incident) ||
     !isIncidentRef(ref) ||
     typeof incident['uid'] !== 'string' ||
     !incident['uid'].trim() ||
@@ -508,7 +542,16 @@ function decodeIncident(value: unknown): IncidentDetail {
     !optionalParticipants(incident['participants']) ||
     ('resolutionCriterion' in incident &&
       !isIncidentResolutionCriterion(incident['resolutionCriterion'])) ||
-    ('resolution' in incident && (!isIncidentResolution(incident['resolution']) || !isIncidentResolutionCriterion(incident['resolutionCriterion']) || !resolutionMatchesCriterion(incident['resolution'], incident['resolutionCriterion']) || incident['status'] !== 'resolved')) ||
+    ('resolution' in incident &&
+      (!isIncidentResolution(incident['resolution']) ||
+        !isIncidentResolutionCriterion(incident['resolutionCriterion']) ||
+        !resolutionMatchesCriterion(
+          incident['resolution'],
+          incident['resolutionCriterion'],
+        ) ||
+        !['resolved', 'watching', 'closed'].includes(
+          String(incident['status']),
+        ))) ||
     !isContextView(incident['canonicalContext']) ||
     !optionalContextPromotions(incident['contextPromotions']) ||
     !optionalContextRejections(incident['contextRejections']) ||
@@ -923,6 +966,7 @@ function isEventCursor(value: unknown): value is string {
 function isIncidentEventType(value: unknown): boolean {
   return (
     value === 'incident.resolved' ||
+    value === 'incident.reopened' ||
     value === 'incident.criterion-set' ||
     value === 'incident.created' ||
     value === 'incident.status' ||
@@ -983,7 +1027,10 @@ function optionalArtifactRefs(value: unknown): boolean {
 }
 
 function isArtifactRef(value: unknown): boolean {
-  if (isRecord(value) && (value['kind'] === 'source-operation' || value['kind'] === 'check-run')) {
+  if (
+    isRecord(value) &&
+    (value['kind'] === 'source-operation' || value['kind'] === 'check-run')
+  ) {
     try {
       return decodeEvidenceArtifactRef(value).kind === value['kind'];
     } catch {

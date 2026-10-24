@@ -1,3 +1,4 @@
+import { WorkApiService } from '../work/work-api.service';
 import { inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { BehaviorSubject, of } from 'rxjs';
@@ -212,6 +213,44 @@ describe('generic human Resolve selection using actual same-chain source fragmen
     expect(
       api.read.mock.calls.filter((call) => call[1].kind === 'source-operation'),
     ).toHaveLength(1);
+  });
+  it('requires explicit approval of current Work criteria and emits their version fence', async () => {
+    TestBed.overrideProvider(WorkApiService, {
+      useValue: {
+        read: vi.fn().mockResolvedValue({
+          item: { criteria: 'Confirm customer receipt', version: 14 },
+          capabilities: { transitions: ['resolved'] },
+        }),
+      },
+    });
+    const f = await mount(),
+      prepared = vi.fn();
+    f.componentRef.setInput('workItemId', 'canonical-incident');
+    await f.whenStable();
+    await select(f);
+    f.componentInstance.prepared.subscribe(prepared);
+    f.componentInstance.setNote(request.humanNote);
+    expect(f.componentInstance.manualCriteria()).toBe(
+      'Confirm customer receipt',
+    );
+    expect(f.componentInstance.manualAccepted()).toBe(false);
+    expect(f.nativeElement.textContent).toContain(
+      'I verified these closure criteria',
+    );
+    expect(f.nativeElement.querySelector('ion-checkbox')).not.toBeNull();
+    expect(f.componentInstance.canReview()).toBe(false);
+    f.componentInstance.confirm();
+    expect(prepared).not.toHaveBeenCalled();
+    f.componentInstance.manualAccepted.set(true);
+    f.componentInstance.review();
+    f.componentInstance.confirm();
+    expect(prepared).toHaveBeenCalledWith(
+      expect.objectContaining({
+        criteriaAccepted: true,
+        expectedWorkVersion: 14,
+      }),
+    );
+    expect(isHostedResolveAction(prepared.mock.calls[0][0])).toBe(true);
   });
   it('keeps non-recovery activity visible as noneligible and requires an actual reopened reference', async () => {
     const f = await mount();

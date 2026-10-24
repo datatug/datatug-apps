@@ -166,8 +166,8 @@ describe('shared project menu refuses active-query tab', () => {
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
-    // Metadata destinations include Watch, Quick Search, hosted Boards and Incidents.
-    expect(items).toHaveLength(10);
+    // Metadata destinations include Work, Watch, Quick Search, hosted Boards and Incidents.
+    expect(items).toHaveLength(11);
     const menu = fixture.debugElement.query(
       By.directive(ProjectMenuTopComponent),
     ).componentInstance as ProjectMenuTopComponent;
@@ -194,6 +194,7 @@ describe('shared project menu refuses active-query tab', () => {
     expect(destinations).toContain(
       '/space/S1/store/firestore/project/same/watch',
     );
+    expect(destinations).toContain('/space/S1/store/firestore/project/same/work');
     expect(
       host.querySelector('[data-testid="incidents-project-menu-item"]'),
     ).toBeTruthy();

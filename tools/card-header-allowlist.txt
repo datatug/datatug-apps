@@ -15,7 +15,7 @@ libs/datatug/main/src/lib/agent-links/table-records/table-records.page.html: 2
 libs/datatug/main/src/lib/board/ui/components/board-card/board-card.component.html: 1
 libs/datatug/main/src/lib/board/ui/modals/new-card-dialog/new-card-dialog.component.html: 1
 libs/datatug/main/src/lib/components/project/project-menu/project-menu.component.html: 1
-libs/datatug/main/src/lib/detective/cases-page.component.html: 14
+libs/datatug/main/src/lib/detective/cases-page.component.html: 13
 libs/datatug/main/src/lib/detective/checks-page.component.html: 11
 libs/datatug/main/src/lib/detective/detective-ai-panel.component.html: 2
 libs/datatug/main/src/lib/detective/public-demo-checks.component.html: 7

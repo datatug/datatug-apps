@@ -31,10 +31,13 @@ export const sameResolutionValue = (a: unknown, b: unknown): boolean => {
 function exact(
   value: unknown,
   keys: readonly string[],
+  optional: readonly string[] = [],
 ): value is Record<string, unknown> {
   return (
     criterionObject(value) &&
-    Object.keys(value).length === keys.length &&
+    Object.keys(value).every(
+      (key) => keys.includes(key) || optional.includes(key),
+    ) &&
     keys.every((key) => Object.hasOwn(value, key))
   );
 }
@@ -61,7 +64,8 @@ export function isIncidentResolution(
 ): value is IncidentResolution {
   try {
     if (
-      !exact(value, ['humanNote', 'proof']) ||
+      !exact(value, ['humanNote', 'proof'], ['lifecycleVersion']) ||
+      !isResolutionLifecycleVersion(value['lifecycleVersion']) ||
       typeof value['humanNote'] !== 'string' ||
       !value['humanNote'].trim() ||
       new TextEncoder().encode(value['humanNote']).length > 4000 ||
@@ -70,16 +74,22 @@ export function isIncidentResolution(
       return false;
     const proof = value['proof'];
     if (
-      !exact(proof, [
-        'definitionDigest',
-        'criterionVersion',
-        'scope',
-        'run',
-        'evaluatedAt',
-        'outcome',
-        'observationRefs',
-        'recoveryRefs',
-      ]) ||
+      !exact(
+        proof,
+        [
+          'definitionDigest',
+          'criterionVersion',
+          'scope',
+          'run',
+          'evaluatedAt',
+          'outcome',
+          'observationRefs',
+          'recoveryRefs',
+        ],
+        ['resolutionEpoch'],
+      ) ||
+      (Object.hasOwn(proof, 'resolutionEpoch') &&
+        !isResolutionEpoch(proof['resolutionEpoch'])) ||
       typeof proof['definitionDigest'] !== 'string' ||
       !/^[a-f0-9]{64}$/.test(proof['definitionDigest']) ||
       !criterionVersion(proof['criterionVersion']) ||
@@ -99,6 +109,50 @@ export function isIncidentResolution(
   } catch {
     return false;
   }
+}
+export const isResolutionEpoch = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+export const isResolutionLifecycleVersion = (value: unknown): boolean =>
+  value === undefined || value === 0 || value === 1;
+/** Public Core lifecycle fields are optional for legacy projections and stay strictly bound to current proof. */
+export function isIncidentLifecycleProjection(value: unknown): boolean {
+  if (!criterionObject(value)) return false;
+  if (
+    Object.hasOwn(value, 'workItemId') &&
+    (typeof value['workItemId'] !== 'string' ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(value['workItemId']))
+  )
+    return false;
+  if (
+    Object.hasOwn(value, 'resolutionEpoch') &&
+    !isResolutionEpoch(value['resolutionEpoch'])
+  )
+    return false;
+  const epoch = value['resolutionEpoch'] ?? 0;
+  if (!isResolutionEpoch(epoch)) return false;
+  const reopened = value['reopenedAt'];
+  if (
+    epoch === 0
+      ? Object.hasOwn(value, 'reopenedAt')
+      : resolutionInstant(reopened) === undefined
+  )
+    return false;
+  if (Object.hasOwn(value, 'resolution')) {
+    const resolution = value['resolution'];
+    if (
+      !isIncidentResolution(resolution) ||
+      !['resolved', 'watching', 'closed'].includes(String(value['status'])) ||
+      (resolution.proof.resolutionEpoch ?? 0) !== epoch
+    )
+      return false;
+    if (
+      epoch > 0 &&
+      (resolutionInstant(resolution.proof.evaluatedAt) ?? -1n) <=
+        (resolutionInstant(reopened) ?? 0n)
+    )
+      return false;
+  }
+  return true;
 }
 /** Checks a server-admitted historical proof against its immutable criterion, never against today's clock. */
 export function resolutionMatchesCriterion(

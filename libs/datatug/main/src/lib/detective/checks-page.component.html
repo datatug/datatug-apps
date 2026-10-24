@@ -1151,6 +1151,11 @@
         </ion-card>
       } @else if (checkId()) {
         @if (current(); as check) {
+          <sneat-work-artifact-links
+            [project]="scope.ref()"
+            kind="check"
+            [identifier]="check.id"
+          />
           <ion-card class="check-detail-card check-detail-overview">
             <ion-item
               color="light"

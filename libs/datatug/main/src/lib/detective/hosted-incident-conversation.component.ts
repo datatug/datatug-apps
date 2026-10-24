@@ -382,7 +382,7 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
           <sneat-incident-resolve-panel
             [context]="context()" [projectRef]="projectRef()" [environment]="environment()"
             [incidentRef]="incidentRef().storeId + '/' + incidentRef().incidentId" [expectedSeq]="lastSeq()"
-            [criterion]="criterion()" [resolved]="resolution()" [incidentStatus]="incidentStatus()"
+            [criterion]="criterion()" [resolved]="resolution()" [incidentStatus]="incidentStatus()" [workItemId]="workItemId()"
             [canWrite]="canWrite()" [disabled]="mutationBlocked()" (prepared)="prepareResolve($event)"
             (openEvidence)="retainedTarget.set($event)" />
           }
@@ -659,6 +659,7 @@ export class HostedIncidentConversationComponent {
     IncidentResolutionCriterion | undefined
   >(undefined);
   protected readonly resolveOpen = signal(false);
+  protected readonly workItemId = signal<string | undefined>(undefined);
   protected readonly resolution = signal<IncidentResolution | undefined>(undefined);
   protected readonly incidentStatus = signal('');
   protected readonly criterionOpen = signal(false);
@@ -732,6 +733,7 @@ export class HostedIncidentConversationComponent {
       ++this.requestGeneration;
       this.criterion.set(undefined);
       this.resolution.set(undefined);
+      this.workItemId.set(undefined);
       this.resolveOpen.set(false);
       this.incidentStatus.set('');
       this.criterionOpen.set(false);
@@ -812,6 +814,7 @@ export class HostedIncidentConversationComponent {
     const identity = this.identity();
     this.criterion.set(undefined);
       this.resolution.set(undefined);
+      this.workItemId.set(undefined);
       this.resolveOpen.set(false);
       this.incidentStatus.set('');
     this.criterionOpen.set(false);
@@ -991,6 +994,7 @@ export class HostedIncidentConversationComponent {
       if (detail.incident.lastSeq >= this.lastSeq()) {
         this.criterion.set(detail.incident.resolutionCriterion);
         this.resolution.set(detail.incident.resolution);
+        this.workItemId.set(detail.incident.workItemId);
         this.incidentStatus.set(detail.incident.status);
         this.incidentUpdated.emit(detail.incident);
       }
@@ -1007,6 +1011,7 @@ export class HostedIncidentConversationComponent {
       if (this.current(identity, generation)) {
         this.criterion.set(undefined);
       this.resolution.set(undefined);
+      this.workItemId.set(undefined);
       this.resolveOpen.set(false);
       this.incidentStatus.set('');
         this.events.set([]);
@@ -1327,6 +1332,7 @@ export class HostedIncidentConversationComponent {
         if (result.incident.lastSeq >= this.lastSeq()) {
           this.criterion.set(result.incident.resolutionCriterion);
           this.resolution.set(result.incident.resolution);
+          this.workItemId.set(result.incident.workItemId);
           this.incidentStatus.set(result.incident.status);
         }
         this.finalizeReview.set(false);
@@ -1378,6 +1384,7 @@ export class HostedIncidentConversationComponent {
           this.events.set([]);
           this.criterion.set(undefined);
           this.resolution.set(undefined);
+      this.workItemId.set(undefined);
           this.incidentStatus.set('');
           this.resolveOpen.set(false);
           this.ready.set(false);

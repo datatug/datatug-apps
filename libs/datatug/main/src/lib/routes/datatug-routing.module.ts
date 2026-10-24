@@ -1,7 +1,7 @@
 import { SOURCE_ADAPTER_PROVIDERS } from './source-adapter-providers';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
-import { NgModule } from '@angular/core';
-import { RouterModule, Routes } from '@angular/router';
+import { inject, NgModule } from '@angular/core';
+import { Router, RouterModule, Routes } from '@angular/router';
 import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
 import {
   routingParamIncidentId,
@@ -10,6 +10,7 @@ import {
 } from '../core/datatug-routing-params';
 import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
+import { projectPageHref } from '../nav/project-page-href';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { admitSessionWorkspace } from '../session-context/session-route.guard';
 import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
@@ -40,6 +41,13 @@ export const datatugRoutes: Routes = [
       ),
   },
 
+  {
+    path: 'my/work',
+    data: { myWork: true },
+    ...SNEAT_AUTH_GUARDS,
+    loadComponent: () =>
+      import('../work/work-page.component').then((m) => m.WorkPageComponent),
+  },
   {
     path: 'new-project',
     loadComponent: () =>
@@ -191,6 +199,7 @@ export const datatugRoutes: Routes = [
               'checks',
               'detective',
               'incidents',
+              'work',
               'shipping',
               'boards',
               'board',
@@ -198,6 +207,9 @@ export const datatugRoutes: Routes = [
               'card',
               'meanings',
             ].includes(segments[6].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'work' &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             segments[6].path === 'cards' &&
             segments[7].path === 'new') ||
@@ -446,6 +458,31 @@ export const datatugRoutes: Routes = [
         ],
       },
       {
+        path: 'work/new',
+        data: { newWork: true },
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../work/work-page.component').then(
+            (m) => m.WorkPageComponent,
+          ),
+      },
+      {
+        path: 'work/:workItemId',
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../work/work-page.component').then(
+            (m) => m.WorkPageComponent,
+          ),
+      },
+      {
+        path: 'work',
+        ...SNEAT_AUTH_GUARDS,
+        loadComponent: () =>
+          import('../work/work-page.component').then(
+            (m) => m.WorkPageComponent,
+          ),
+      },
+      {
         path: 'incidents',
         ...SNEAT_AUTH_GUARDS,
         children: [
@@ -461,6 +498,31 @@ export const datatugRoutes: Routes = [
           {
             path: 'new',
             data: { incidentMode: 'new' },
+            canActivate: [
+              (route) => {
+                const p = Object.assign(
+                  {},
+                  ...route.pathFromRoot.map((r) => r.params),
+                );
+                const tree = inject(Router).parseUrl(
+                  projectPageHref(
+                    {
+                      spaceID: p['spaceId'],
+                      storeId: p['storeId'],
+                      projectId: p['projectId'],
+                    },
+                    ['work', 'new'],
+                  ),
+                );
+                tree.queryParams = {
+                  type: 'incident',
+                  ...(route.queryParams['environment']
+                    ? { environment: route.queryParams['environment'] }
+                    : {}),
+                };
+                return tree;
+              },
+            ],
             loadComponent: () =>
               import('../detective/hosted-incidents-page.component').then(
                 (m) => m.HostedIncidentsPageComponent,

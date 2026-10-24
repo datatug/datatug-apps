@@ -80,6 +80,7 @@ function sharedQueryPage(rest: string): boolean {
     rest === '/watch' ||
     /^\/watch\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     rest === '/detective' ||
+    /^\/work(?:\/[A-Za-z0-9_-]{1,128})?$/.test(rest) ||
     rest === '/incidents' ||
     rest === '/incidents/new' ||
     /^\/incidents\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(rest) ||
@@ -276,6 +277,7 @@ export const GITHUB_PROJECT_PAGE_NAMES: ReadonlySet<string> = new Set([
   'variables',
   'watch',
   'widgets',
+  'work',
 ]);
 
 /** Whether a (raw or decoded, ASCII) segment names a project page. */
