@@ -129,10 +129,17 @@ export default defineConfig({
       // `datatug serve` agent, no route interception. See e2e/README.md.
       name: 'journey',
       testDir: './e2e/journey',
-      // Session context was added after the pinned v0.78.0 CLI used by J1-J4.
-      // It has a separate config and runs against the modern CLI in the same CI job.
+      // The session-continuity journey has its own agent fixture (and CLI pin, DATATUG_SESSION_CLI_REF).
       testIgnore: ['session-continuity.spec.ts'],
-      use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch },
+      use: {
+        ...devices['Desktop Chrome'],
+        launchOptions: demodbChromiumLaunch,
+        // datatug-cli v0.110.0 answers only pages whose Origin is https://datatug.app or the host
+        // `datatug.localhost` (any port): `localhost` is refused with 403, and no flag adds an origin
+        // (pkg/server/endpoints/validators.go IsSupportedOrigin). Chromium resolves `*.localhost` to the
+        // loopback, and the dev server allows this host (`allowedHosts` in project.json).
+        baseURL: `http://datatug.localhost:${e2ePort}`,
+      },
     },
   ],
 });

@@ -8,7 +8,10 @@ if (process.env['GITHUB_E2E_MODE'] === 'live')
   throw new Error(
     'The showcase exploration lane reads the pinned Demo checkout only; unset GITHUB_E2E_MODE.',
   );
-const port = process.env['DATATUG_E2E_PORT'] || '44376';
+// Keep the default below Linux's ephemeral range (32768-60999): a port inside it can be held as the source port of an
+// outgoing connection left by the preceding e2e step, which fails the dev server's bind (run 40025975683: "Port 44376 is
+// already in use"). 4376 is claimed by no other config.
+const port = process.env['DATATUG_E2E_PORT'] || '4376';
 
 export default defineConfig({
   testDir: './e2e',

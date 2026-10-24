@@ -5,7 +5,6 @@ import { map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import type { IQueryDef } from '../../../models/definition/query-def';
 import { IRecordsetDef } from '../../../models/definition/recordset';
-import { LEGACY_DTQL_QUERY_TYPE } from './legacy-dtql-query';
 import {
   IQueryBodyFile,
   selectTugqlBodyFile,
@@ -183,8 +182,6 @@ export interface IGithubWireQueryItem {
   text?: string;
   /** Set by the GitHub reader from the body file name; see ./query-body-files.ts. */
   representation?: 'text' | 'yaml';
-  /** See `IQueryDef.savedQueryType`. */
-  savedQueryType?: string;
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
@@ -1255,7 +1252,7 @@ export class GithubProjectReaderService {
     }
   }
 
-  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.dtql`/`.http` sidecar). */
+  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
@@ -1535,7 +1532,7 @@ export class GithubProjectReaderService {
 
   /** The sidecar BODY file for one definition file — `<id>.sql.json` ->
    * `<id>.sql` (the legacy convention spells the body's own extension into
-   * its "sql" segment); a TugQL (or legacy DTQL) `<id>.query.json` -> the one
+   * its "sql" segment); a TugQL `<id>.query.json` -> the one
    * body file {@link selectTugqlBodyFile} picks from the sibling file names;
    * otherwise `<id>.query.http` for HTTP and `<id>.query.sql` for the rest.
    */
@@ -1548,8 +1545,8 @@ export class GithubProjectReaderService {
       return { fileName: defFileName.slice(0, -'.json'.length) };
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    if (type === 'TugQL' || type === LEGACY_DTQL_QUERY_TYPE) {
-      return selectTugqlBodyFile(stem, type, siblingFileNames);
+    if (type === 'TugQL') {
+      return selectTugqlBodyFile(stem, siblingFileNames);
     }
     return { fileName: `${stem}.${type === 'HTTP' ? 'http' : 'sql'}` };
   }
@@ -1651,11 +1648,7 @@ export class GithubProjectReaderService {
               title: def?.title,
               createdAt: def?.createdAt,
               tags: def?.tags,
-              // The legacy DTQL type is TugQL (./legacy-dtql-query.ts).
-              type:
-                def?.type === LEGACY_DTQL_QUERY_TYPE
-                  ? 'TugQL'
-                  : def?.type || 'SQL',
+              type: def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
@@ -1800,12 +1793,7 @@ export class GithubProjectReaderService {
                   id: def?.id || bareId,
                   title: def?.title,
                   createdAt: def?.createdAt,
-                  // The legacy DTQL type is TugQL (its body, either form, is sniffed). Hashes of saved
-                  // meaning uses keep the declared type (`savedQueryType`) until the demo project migrates.
-                  type: type === LEGACY_DTQL_QUERY_TYPE ? 'TugQL' : type,
-                  ...(type === LEGACY_DTQL_QUERY_TYPE
-                    ? { savedQueryType: type }
-                    : {}),
+                  type,
                   text: body.text,
                   ...(body.representation
                     ? { representation: body.representation }

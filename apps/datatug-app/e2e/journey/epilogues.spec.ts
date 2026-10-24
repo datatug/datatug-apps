@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from './fixtures/agent-server';
+import { expect, newAgentContext, test } from './fixtures/agent-server';
 import { activePage } from './helpers/active-page';
 
 /**
@@ -201,7 +201,7 @@ test.describe('Epilogue A — close/reopen', () => {
 
     // --- Open a NEW browser context (a genuinely separate browser session,
     // not just a new tab) at the same project URL ---
-    const freshContext = await browser.newContext();
+    const freshContext = await newAgentContext(browser);
     const freshPage = await freshContext.newPage();
     await freshPage.goto(projectUrl);
     await expect(
@@ -316,7 +316,7 @@ test.describe('Epilogue B — share/replay', () => {
 
     // --- A colleague opens that URL under a FRESH browser context pointed at
     // the SAME agent (their own session, same agent as the sharer) ---
-    const colleagueContext = await browser.newContext();
+    const colleagueContext = await newAgentContext(browser);
     const colleaguePage = await colleagueContext.newPage();
     await colleaguePage.goto(sharedUrl);
     // "renders with the parameter unbound/needs-input" — a fresh tab has fresh
@@ -374,7 +374,7 @@ test.describe('Epilogue B — share/replay', () => {
     );
     expect(rewrittenUrl).not.toBe(sharedUrl);
 
-    const supportColleagueContext = await browser.newContext();
+    const supportColleagueContext = await newAgentContext(browser);
     const supportColleaguePage = await supportColleagueContext.newPage();
     // "renders under the support principal" — mechanism: the page's own first
     // request actually reaches the REWRITTEN origin (store-id-scheme.spec.ts's

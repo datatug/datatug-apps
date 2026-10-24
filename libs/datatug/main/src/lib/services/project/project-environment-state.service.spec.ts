@@ -136,9 +136,9 @@ describe('ProjectEnvironmentStateService scope', () => {
   it.each([
     ['status 0', { status: 0, message: 'Unknown Error' }],
     ['a plain-text 404', { status: 404, error: '404 page not found\n' }],
-  ])('surfaces %s from a current agent (newer than 0.107.0) instead of calling it old', async (_name, failure) => {
+  ])('surfaces %s from a current agent (newer than 0.110.1) instead of calling it old', async (_name, failure) => {
     api.environmentState.mockReturnValue(throwError(() => failure));
-    api.agentInfo.mockReturnValue(of({ version: '0.108.0' }));
+    api.agentInfo.mockReturnValue(of({ version: '0.111.0' }));
     const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
     await expect(
       firstValueFrom(
@@ -147,11 +147,11 @@ describe('ProjectEnvironmentStateService scope', () => {
     ).rejects.toBe(failure);
     expect(legacy).not.toHaveBeenCalled();
   });
-  it('treats a plain-text 404 as pre-contract only up to 0.107.0', async () => {
+  it('treats a plain-text 404 as pre-contract only up to 0.110.1', async () => {
     api.environmentState.mockReturnValue(
       throwError(() => ({ status: 404, error: '404 page not found\n' })),
     );
-    api.agentInfo.mockReturnValue(of({ version: '0.107.0' }));
+    api.agentInfo.mockReturnValue(of({ version: '0.110.1' }));
     const result = await firstValueFrom(
       TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
         of([{ id: 'local', title: 'local' }]),
@@ -159,7 +159,7 @@ describe('ProjectEnvironmentStateService scope', () => {
     );
     expect(result.reason).toContain('Update');
   });
-  it.each([['0.78.0', true], ['v0.107.0', true], ['0.107.1', false], ['0.108.0', false], ['1.0.0', false], [undefined, false], ['dev', false]])(
+  it.each([['0.78.0', true], ['0.110.0', true], ['v0.110.1', true], ['0.110.2', false], ['0.111.0', false], ['1.0.0', false], [undefined, false], ['dev', false]])(
     'isPreContractVersion(%s) is %s',
     (version, expected) => {
       expect(isPreContractVersion({ version })).toBe(expected);

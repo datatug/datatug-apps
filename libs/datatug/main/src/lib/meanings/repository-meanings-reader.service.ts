@@ -388,7 +388,7 @@ export class RepositoryMeaningsReaderService {
         if (!query || typeof query.text !== 'string')
           throw new Error('The saved query body is unavailable.');
         return {
-          type: query.savedQueryType ?? query.type,
+          type: query.type,
           text: query.text,
           connectionId: query.connectionId,
           federation: query.federation,

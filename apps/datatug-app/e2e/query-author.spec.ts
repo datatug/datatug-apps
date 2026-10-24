@@ -1,6 +1,6 @@
 import { type Locator, type Page } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
@@ -247,18 +247,12 @@ const codeMirrorMod = async (page: Page): Promise<'Meta' | 'ControlOrMeta'> =>
     ? 'Meta'
     : 'ControlOrMeta';
 
-const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
-  readFileSync(
-    join(
-      repository ?? '',
-      'demo-project-1',
-      'queries',
-      'demodb',
-      // The pinned demo project (pin demo-browser) still names TugQL bodies with the legacy extension.
-      `${queryId}.query.dtql`,
-    ),
-    'utf8',
-  );
+const savedQuerySource = (queryId: string, repository = DEMO_REPO): string => {
+  const dir = join(repository ?? '', 'demo-project-1', 'queries', 'demodb');
+  // A TugQL body is either `<id>.query.tugql` (text) or `<id>.query.tugql.yaml` (structured YAML).
+  const file = [`${queryId}.query.tugql`, `${queryId}.query.tugql.yaml`].find((name) => existsSync(join(dir, name)));
+  return readFileSync(join(dir, file ?? `${queryId}.query.tugql`), 'utf8');
+};
 
 const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
   readFileSync(
@@ -272,9 +266,8 @@ const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
     'utf8',
   );
 
-// Reads the pinned demo project, which predates the TugQL cutover (`.query.dtql`); switch with the pin bump (step 9).
 const savedLegacyTugqlSource = (repository = DEMO_REPO): string =>
-  readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.dtql'), 'utf8');
+  readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.tugql.yaml'), 'utf8');
 
 const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
   if (!DEMO_REPO) throw new Error('The canonical DemoDB fixture is required');
