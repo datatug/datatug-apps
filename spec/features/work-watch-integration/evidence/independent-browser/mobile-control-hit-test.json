@@ -1,0 +1,20 @@
+{
+  "bounds": {
+    "x": 10,
+    "y": 788.484375,
+    "width": 370,
+    "height": 44
+  },
+  "hit": [
+    {
+      "tag": "ION-BUTTON",
+      "classes": "coordinator-controls-toggle md button button-clear ion-activatable ion-focusable hydrated",
+      "text": "Coordinator monitoring and notification controls"
+    }
+  ],
+  "tapSucceeded": true,
+  "viewport": {
+    "width": 390,
+    "height": 844
+  }
+}

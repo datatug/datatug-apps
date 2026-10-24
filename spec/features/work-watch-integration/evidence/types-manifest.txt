@@ -1,0 +1,15 @@
+
+> nx run datatug-main:typecheck-spec
+
+> tsc --noEmit --project libs/datatug/main/tsconfig.spec.json
+
+
+
+
+ NX   Successfully ran target typecheck-spec for project datatug-main
+
+
+  Run duration:      13.5s
+  Cache:             0/1 hit (0%)
+  Critical path:     13.5s (1 task)
+  Recoverable time:  <1ms

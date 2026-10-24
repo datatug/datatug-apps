@@ -1,0 +1,250 @@
+@if (scope() && actor()) {
+  <ion-card>
+    <ion-item-divider color="light">
+      <ion-label>Watch evidence and linked work</ion-label>
+      <ion-buttons slot="end"
+        ><ion-button (click)="refresh()" [disabled]="loading() || busy()"
+          >Refresh evidence</ion-button
+        ></ion-buttons
+      >
+    </ion-item-divider>
+    <ion-card-content>
+      @if (loading()) {
+        <p role="status">Loading authorised Watch evidence…</p>
+      }
+      @if (error()) {
+        <p role="alert">{{ error() }}</p>
+        @if (pending(); as action) {
+          <p>The original change is retained for retry.</p>
+          <ion-button (click)="send(action)" [disabled]="busy()"
+            >Retry Watch change</ion-button
+          >
+        }
+      }
+      @if (notice()) {
+        <p role="status">{{ notice() }}</p>
+      }
+      @if (stale() && data()) {
+        <p role="status">
+          Showing previously loaded evidence. The coordinator could not be
+          refreshed; retry to confirm current monitoring state.
+        </p>
+      }
+      @if (data(); as data) {
+        @for (watch of data.watches; track watch.id) {
+          <p>
+            <a [routerLink]="href(['watch', watch.id])">{{ watch.title }}</a> ·
+            {{ watch.environment }} · {{ watch.lifecycle }} ·
+            <a
+              [routerLink]="
+                href(['checks', watch.workCheckId || watch.checkId])
+              "
+              >{{
+                watch.workCheckId && watch.workCheckId !== watch.checkId
+                  ? 'Investigation Check'
+                  : 'Source Check'
+              }}</a
+            >
+          </p>
+          @if (watch.observation; as observation) {
+            <p>
+              Last observation: {{ observation.value }} ·
+              {{ observation.lastObservedAt | date: 'medium' }} ·
+              {{ observation.availability }}
+            </p>
+          }
+        }
+        @for (
+          observation of data.observations || [];
+          track observation.watchId
+        ) {
+          <p>
+            Last observation: {{ observation.value }} ·
+            {{ observation.lastObservedAt | date: 'medium' }} ·
+            {{ observation.availability }}
+          </p>
+        }
+        <p>
+          Recovery provides evidence for human resolution. Monitoring and work
+          keep separate lifecycles.
+        </p>
+        @if (item() && data.capabilities.canCreate) {
+          <ion-button
+            (click)="sync()"
+            [disabled]="busy() || !data.events.length"
+            >Record latest Watch evidence</ion-button
+          >
+        }
+      }
+    </ion-card-content>
+    @if (data(); as data) {
+      <ion-list aria-label="Watch events">
+        @for (event of data.events; track event.id) {
+          <ion-item
+            ><ion-label class="ion-text-wrap evidence">
+              <h3>
+                {{
+                  event.kind === 'recovery' ? 'Recovered' : 'Watch triggered'
+                }}
+                · {{ event.outcome }} · {{ event.environment }}
+              </h3>
+              <p>{{ event.occurredAt | date: 'medium' }} · {{ event.title }}</p>
+              <p>Check run: {{ event.checkRunRef || event.runId }}</p>
+              @if (data.capabilities.canCreate) {
+                @if (event.kind === 'trigger') {
+                  <ion-button
+                    (click)="choose(event, 'incident')"
+                    [disabled]="busy() || !!pending()"
+                    >Create Incident</ion-button
+                  >
+                }
+                <ion-button
+                  (click)="choose(event, 'case')"
+                  [disabled]="busy() || !!pending()"
+                  >Create Detective Case</ion-button
+                >
+                <ion-button
+                  (click)="choose(event, 'task')"
+                  [disabled]="busy() || !!pending()"
+                  >Create Task</ion-button
+                >
+                <ion-button
+                  fill="outline"
+                  (click)="choose(event)"
+                  [disabled]="busy() || !!pending()"
+                  >Link existing work</ion-button
+                >
+              }
+            </ion-label></ion-item
+          >
+        } @empty {
+          <ion-item
+            ><ion-label>No trigger or recovery events yet.</ion-label></ion-item
+          >
+        }
+      </ion-list>
+      @if (data.notifications?.length) {
+        <ion-list aria-label="Watch notifications">
+          @for (notification of data.notifications; track notification.id) {
+            <ion-item
+              ><ion-label
+                ><h3>In-app notification: {{ notification.title }}</h3>
+                <p>
+                  {{ notification.event }} ·
+                  {{ notification.createdAt | date: 'medium' }}
+                </p></ion-label
+              ></ion-item
+            >
+          }
+        </ion-list>
+      }
+      @if (data.deliveries?.length) {
+        <ion-list aria-label="Watch notification delivery">
+          @for (delivery of data.deliveries; track delivery.id) {
+            <ion-item
+              ><ion-label
+                >{{ delivery.channel }} · {{ delivery.state }} · Attempts
+                {{ delivery.attempts }}</ion-label
+              ></ion-item
+            >
+          }
+        </ion-list>
+      }
+      <ion-list aria-label="Watch linked work">
+        @for (work of data.linkedItems; track work.id) {
+          <ion-item [routerLink]="href(['work', work.id])" [button]="true"
+            ><ion-label class="ion-text-wrap"
+              ><h3>{{ work.title }}</h3>
+              <p>
+                {{ work.type }} · {{ work.status }} · Owner {{ work.ownerId }} ·
+                Assignees {{ work.assigneeIds.join(', ') }}
+              </p></ion-label
+            ></ion-item
+          >
+        } @empty {
+          <ion-item><ion-label>No linked work yet.</ion-label></ion-item>
+        }
+      </ion-list>
+    }
+  </ion-card>
+  @if (selected(); as event) {
+    <ion-card>
+      <ion-item-divider color="light"
+        ><ion-label
+          ><h2 #handoffHeading tabindex="-1">
+            Review Watch handoff
+          </h2></ion-label
+        ><ion-buttons slot="end"
+          ><ion-button (click)="cancel()" [disabled]="busy()"
+            >Cancel</ion-button
+          ></ion-buttons
+        ></ion-item-divider
+      >
+      <ion-card-content>
+        <p>
+          Event {{ event.id }} · {{ event.environment }} ·
+          {{ event.occurredAt | date: 'medium' }}
+        </p>
+        <p>
+          Selected context will be shared with project members. Source access is
+          still checked for every investigation.
+        </p>
+        @if (preview(); as preview) {
+          <p>
+            Context scope: {{ preview.scope.environmentId }} ·
+            {{ preview.scope.identityDomain }}
+          </p>
+          @for (entry of preview.entries; track $index) {
+            <p>{{ entry.label }}: {{ entry.value | json }}</p>
+          }
+          @for (reason of preview.omitted; track $index) {
+            <p>Omitted: {{ reason }}</p>
+          }
+        }
+        @if (personal()) {
+          <ion-checkbox
+            [checked]="sharePersonal()"
+            (ionChange)="sharePersonal.set($event.detail.checked)"
+            >I agree to share this personal Watch event and selected context
+            with the project.</ion-checkbox
+          >
+        }
+      </ion-card-content>
+      @if (draft(); as draft) {
+        <sneat-work-form
+          [initial]="draft"
+          [initialScope]="preview()?.scope"
+          [members]="data()?.members || []"
+          [environments]="handoffEnvironments()"
+          [actor]="actor()"
+          [canAssign]="data()?.capabilities?.canAssign || false"
+          [busy]="busy() || !!pending() || (personal() && !sharePersonal())"
+          (submitted)="create($event)"
+          (cancelled)="cancel()"
+        />
+      } @else {
+        <ion-item
+          ><ion-select
+            label="Existing work item"
+            interface="popover"
+            [value]="target()"
+            (ionChange)="target.set($event.detail.value)"
+          >
+            @for (work of candidates(); track work.id) {
+              <ion-select-option [value]="work.id"
+                >{{ work.title }} · {{ work.status }}</ion-select-option
+              >
+            }
+          </ion-select></ion-item
+        >
+        <ion-button
+          (click)="link()"
+          [disabled]="busy() || !target() || (personal() && !sharePersonal())"
+          >{{
+            reviewMode() === 'sync' ? 'Confirm evidence import' : 'Confirm link'
+          }}</ion-button
+        >
+      }
+    </ion-card>
+  }
+}

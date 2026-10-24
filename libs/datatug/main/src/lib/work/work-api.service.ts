@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { HttpParams } from '@angular/common/http';
 import { defer, firstValueFrom, fromEvent, takeUntil } from 'rxjs';
 import { DatatugApiService } from '../services/base/datatug-api.service';
+import type { WorkWatchAction, WorkWatchPage } from './work-watch.models';
 import {
   ContextSnapshot,
   readContextSnapshot,
@@ -21,6 +22,58 @@ import {
 @Injectable({ providedIn: 'root' })
 export class WorkApiService {
   private readonly api = inject(DatatugApiService);
+  async watchEvents(
+    scope: WorkScope,
+    watchId: string,
+    signal: AbortSignal,
+  ): Promise<WorkWatchPage> {
+    const page = await this.get<WorkWatchPage>(
+      'watch-events',
+      scope,
+      watchId ? { watchId } : {},
+      signal,
+    );
+    if (
+      !page ||
+      !Array.isArray(page.watches) ||
+      !Array.isArray(page.events) ||
+      !Array.isArray(page.linkedItems) ||
+      !page.capabilities
+    )
+      throw new Error('Invalid Watch evidence response.');
+    page.linkedItems.forEach((item) => this.validate(item, scope));
+    if (
+      page.events.some(
+        (event) =>
+          !event.id ||
+          !page.watches.some(
+            (watch) =>
+              watch.id === event.watchId &&
+              watch.project === event.project &&
+              watch.namespace === event.namespace &&
+              watch.environment === event.environment,
+          ),
+      )
+    )
+      throw new Error('The Watch evidence belongs to another scope.');
+    return page;
+  }
+  async watchAction(
+    action: WorkWatchAction,
+    signal: AbortSignal,
+  ): Promise<WorkDetail> {
+    this.params(action);
+    const body = structuredClone(action);
+    const result = await firstValueFrom(
+      defer(() => {
+        signal.throwIfAborted();
+        return this.api.post<WorkDetail>('datatug/work/watch-actions', body, {
+          retryUnauthorizedOnce: false,
+        });
+      }).pipe(takeUntil(fromEvent(signal, 'abort'))),
+    );
+    return this.detail(result, action, action.itemId);
+  }
   private params(
     scope: WorkScope,
     extra: Record<string, string> = {},

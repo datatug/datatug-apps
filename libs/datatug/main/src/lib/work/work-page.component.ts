@@ -63,6 +63,7 @@ import {
   SessionScope,
 } from '../session-context/session-context-contract';
 import { WorkApiService } from './work-api.service';
+import { WorkWatchComponent } from './work-watch.component';
 import { WorkContextComponent } from './work-context.component';
 import { WorkFormComponent } from './work-form.component';
 import {
@@ -91,6 +92,7 @@ import {
   templateUrl: './work-page.component.html',
   styleUrl: './work-page.component.scss',
   imports: [
+    WorkWatchComponent,
     FormsModule,
     RouterLink,
     DatePipe,
@@ -477,10 +479,12 @@ export class WorkPageComponent {
       );
     }
     const route = (
-      { check: 'checks', query: 'query', dashboard: 'board' } as Record<
-        string,
-        string
-      >
+      {
+        check: 'checks',
+        query: 'query',
+        watch: 'watch',
+        dashboard: 'board',
+      } as Record<string, string>
     )[link.target.kind];
     return route
       ? withQuery(

@@ -2,6 +2,26 @@ import { TestBed } from '@angular/core/testing';
 import { WorkFormComponent } from './work-form.component';
 import { workDetailFixture } from './work.spec-helper';
 describe('WorkFormComponent', () => {
+  it('does not substitute another environment for an unavailable inherited scope', async () => {
+    const fixture = TestBed.createComponent(WorkFormComponent);
+    fixture.componentRef.setInput(
+      'environments',
+      workDetailFixture().environments,
+    );
+    fixture.componentRef.setInput('initialScope', {
+      environmentId: 'restricted',
+      identityDomain: 'private',
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const component = fixture.componentInstance,
+      received = vi.fn();
+    component.submitted.subscribe(received);
+    component.form.controls.title.setValue('Retain exact environment');
+    expect(component.form.controls.environment.value).toBe('');
+    component.submit();
+    expect(received).not.toHaveBeenCalled();
+  });
   it('does not show an empty-title error for a populated locked form', async () => {
     const fixture = TestBed.createComponent(WorkFormComponent);
     fixture.detectChanges();

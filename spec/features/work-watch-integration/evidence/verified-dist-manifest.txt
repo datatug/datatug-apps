@@ -1,0 +1,1 @@
+Emitted browser RecordsetCompare assets match the verified 11-file lock.

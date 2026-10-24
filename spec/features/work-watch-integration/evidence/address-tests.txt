@@ -1,0 +1,60 @@
+
+> nx run datatug-project-address:test --run
+
+> vitest --config=libs/datatug/project-address/vite.config.mts --run
+
+(node:934125) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ RUN  v5.0.5 /home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/libs/datatug/project-address
+      Coverage enabled with v8
+
+(node:934160) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:934159) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:934158) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-project-address| src/lib/github-project-address.spec.ts (197 tests) 40ms
+(node:934188) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-project-address| src/lib/shared-project-url.spec.ts (69 tests) 20ms
+(node:934201) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ |datatug-project-address| src/lib/project-address-guard.spec.ts (30 tests) 27ms
+ ✓ |datatug-project-address| src/lib/outlet-group.spec.ts (20 tests) 6ms
+ ✓ |datatug-project-address| src/lib/project-url.spec.ts (279 tests) 1643ms
+   ✓ projectUrl refuses what it cannot write exactly (design review S2) (33)
+     ✓ is the inverse of parseProjectUrl for every GitHub combination, or refuses 1551ms
+
+ Test Files  5 passed (5)
+      Tests  595 passed (595)
+   Start at  07:57:08
+   Duration  2.24s (tests 59%, import 20%, transform 16%, worker 4%)
+
+ % Coverage report from v8
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s
+-------------------|---------|----------|---------|---------|-------------------
+[32;1mAll files         [0m | [32;1m  98.73[0m | [32;1m   98.92[0m | [32;1m    100[0m | [32;1m   98.7[0m | [31;1m                 [0m
+[32;1m src/lib          [0m | [32;1m  98.73[0m | [32;1m   98.92[0m | [32;1m    100[0m | [32;1m   98.7[0m | [31;1m                 [0m
+[32;1m  ...ct-address.ts[0m | [32;1m  98.83[0m | [32;1m   99.09[0m | [32;1m    100[0m | [32;1m  98.82[0m | [31;1m297              [0m
+[32;1m  project-url.ts  [0m | [32;1m  98.62[0m | [32;1m    98.8[0m | [32;1m    100[0m | [32;1m  98.59[0m | [31;1m577,710,720      [0m
+-------------------|---------|----------|---------|---------|-------------------
+
+=============================== Coverage summary ===============================
+[32;1mStatements   : 98.73% ( 311/315 )[0m
+[32;1mBranches     : 98.92% ( 367/371 )[0m
+[32;1mFunctions    : 100% ( 52/52 )[0m
+[32;1mLines        : 98.7% ( 305/309 )[0m
+================================================================================
+
+
+
+ NX   Successfully ran target test for project datatug-project-address
+
+
+  Run duration:      3.1s
+  Cache:             0/1 hit (0%)
+  Critical path:     3.0s (1 task)
+  Recoverable time:  <1ms

@@ -1,0 +1,39 @@
+
+> nx run datatug-app:e2e-work
+
+> playwright test -c apps/datatug-app/playwright.work.config.ts --forbid-only
+
+(node:995823) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:995846) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:995859) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › apps/datatug-app/e2e/work.spec.ts:109:5 › real Work HTTP: Incident, delegated Case, context isolation and remediation Task (51.4s)
+  ✓  2 [chromium] › apps/datatug-app/e2e/work.spec.ts:830:5 › independent Context Bags, accountability edits, stale writes and viewer denial (11.4s)
+  ✓  3 [chromium] › apps/datatug-app/e2e/work.spec.ts:1045:5 › Watch events create each canonical type, link existing work and correlate another actor (9.4s)
+
+  3 passed (1.2m)
+
+DemoDB / GitHub request report (lane local, DemoDB mode fixture, GitHub mode checkout, 3 guarded test attempts; LIVE = sent to the real host, fixture = answered locally, for GitHub from the pinned checkouts)
+  host                                  asked  fixture  memory  LIVE  refused  ESCAPED
+  live requests to *.demodb.dev: 0 (run budget 0); live api.github.com requests: 0 (run budget 0); requests that escaped the guard: 0
+
+
+
+
+ NX   Successfully ran target e2e-work for project datatug-app
+
+
+  Run duration:      1m 13s
+  Cache:             0/1 hit (0%)
+  Critical path:     1m 13s (1 task)
+  Recoverable time:  <1ms
+
+  Recommendations:
+    - Drastically reduce your run duration by sharing a cache across your team and CI → https://cloud.nx.app/connect/PiSmDEb98O.
+    - Speed up or split the longest tasks on the critical path:
+        datatug-app:e2e-work    1m 13s

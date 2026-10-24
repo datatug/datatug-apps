@@ -1,0 +1,34 @@
+
+> nx run datatug-app:lint
+
+> eslint .
+
+(node:1005910) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[0m
+[4m/home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/apps/datatug-app/e2e/hosted-incidents.spec.ts[24m
+  [2m216:26[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m217:26[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m231:21[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m244:18[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m258:27[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m315:24[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m315:38[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m318:7[22m   [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+
+[4m/home/ai/projects/.worktrees/datatug-work-watch/github.com/datatug/datatug-apps/apps/datatug-app/e2e/work.spec.ts[24m
+  [2m223:25[22m  [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+  [2m883:7[22m   [33mwarning[39m  Forbidden non-null assertion  [2m@typescript-eslint/no-non-null-assertion[22m
+
+[33m[1m✖ 10 problems (0 errors, 10 warnings)[22m[39m
+[0m
+
+
+
+ NX   Successfully ran target lint for project datatug-app
+
+
+  Run duration:      4.7s
+  Cache:             0/1 hit (0%)
+  Critical path:     4.7s (1 task)
+  Recoverable time:  <1ms

@@ -1,0 +1,17 @@
+
+> nx run datatug-main:lint
+
+> eslint .
+
+(node:1005227) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+
+ NX   Successfully ran target lint for project datatug-main
+
+
+  Run duration:      23.3s
+  Cache:             0/1 hit (0%)
+  Critical path:     23.2s (1 task)
+  Recoverable time:  <1ms

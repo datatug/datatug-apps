@@ -25,6 +25,9 @@ describe('Space-qualified metadata addresses', () => {
     'checks',
     'checks/invoice-check',
     'work',
+    'watch',
+    'watch/new',
+    'watch/order-11045-shared',
     'work/new',
     'work/shipment-case',
     'detective',
@@ -45,6 +48,8 @@ describe('Space-qualified metadata addresses', () => {
   });
   it.each([
     'work/a/b',
+    'watch/a/b',
+    'watch/' + 'x'.repeat(129),
     'work/' + 'x'.repeat(129),
     'query',
     'chat',

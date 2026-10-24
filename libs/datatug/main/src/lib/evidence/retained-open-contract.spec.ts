@@ -2,6 +2,7 @@ import fixture from './testdata/backend-v044-retained.json';
 import {
   readRetainedCheck,
   readRetainedExecution,
+  readSelectedManifest,
 } from './retained-open-contract';
 import { readRetainedQueryResponse } from './retained-evidence-contract';
 const scope = {
@@ -24,6 +25,15 @@ const ref = {
   runId: 'fixture-run',
 };
 describe('Actual published Go retained response codecs', () => {
+  it('preserves bounded canonical Work source references without weakening private-session validation', () => {
+    const reference = { workItemId: 'work1', workVersion: 2, sessionId: 'shared1', sessionVersion: 3, bagId: 'bag1', bagVersion: 2, entryId: 'entry1', revisionId: 'revision1' };
+    const manifest = { ...fixture.execution.manifest, workContext: [reference] };
+    expect(readSelectedManifest(manifest, scope).workContext).toEqual([reference]);
+    for (const workContext of [[], [reference, reference], [{ ...reference, workVersion: 0 }], [{ ...reference, value: 'must-not-be-published' }], [reference, { ...reference, workItemId: 'work2' }, { ...reference, workItemId: 'work3' }]]) {
+      expect(() => readSelectedManifest({ ...manifest, workContext }, scope)).toThrow();
+    }
+    expect(() => readSelectedManifest({ ...manifest, session: { ...manifest.session, owner: 'another-actor' } }, scope)).toThrow();
+  });
   it('admits the original execution for an independently authorized current reader without relabeling its actor', async () => {
     const view = await readRetainedExecution(
       fixture.execution,

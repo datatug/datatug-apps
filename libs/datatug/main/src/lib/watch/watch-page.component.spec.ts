@@ -12,6 +12,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
 import { WatchPageComponent } from './watch-page.component';
 import { WatchClientService } from './watch-client.service';
+import { WorkApiService } from '../work/work-api.service';
 import { ProjectService } from '../services/project/project.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -66,6 +67,7 @@ const check = {
 
 describe('Project Watch flow', () => {
   const client = {
+    bindPrincipal: vi.fn(),
     identity: signal<WatchIdentity | undefined>(user),
     matches: vi.fn(() => true),
     disconnect: vi.fn(),
@@ -139,6 +141,20 @@ describe('Project Watch flow', () => {
         },
         { provide: WatchClientService, useValue: client },
         {
+          provide: WorkApiService,
+          useValue: {
+            watchEvents: vi.fn().mockResolvedValue({
+              watches: [],
+              events: [],
+              linkedItems: [],
+              contexts: [],
+              environments: [],
+              members: [],
+              capabilities: {},
+            }),
+          },
+        },
+        {
           provide: ProjectService,
           useValue: {
             watchProjectSummary: () =>
@@ -199,6 +215,31 @@ describe('Project Watch flow', () => {
       f.nativeElement.querySelector('a[href*="/checks/"]').getAttribute('href'),
     ).toBe(
       '/space/s/store/firestore/project/p/checks/shipping-carrier-assignment',
+    );
+  });
+  it('offers deliberate monitoring after one-shot completion without resetting its baseline', async () => {
+    client.definition.mockResolvedValue({
+      definition: { ...watch, lifecycle: 'completed', enabled: false },
+    });
+    const fixture = await mount();
+    const button = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'ion-button',
+      ) as NodeListOf<HTMLElement>,
+    ).find(
+      (element) => element.textContent?.trim() === 'Monitor next occurrence',
+    );
+    expect(button).toBeDefined();
+    button?.click();
+    await vi.waitFor(() =>
+      expect(client.lifecycle).toHaveBeenCalledWith(
+        expect.objectContaining({ lifecycle: 'completed' }),
+        'enabled',
+      ),
+    );
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Monitoring restarted for the next occurrence.',
     );
   });
   it('uses the configured bot username and rejects a foreign or credential-bearing connection link', async () => {

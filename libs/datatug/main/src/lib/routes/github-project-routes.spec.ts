@@ -186,7 +186,7 @@ describe('the routes as registered', () => {
     expect(old?.redirectTo).toBeUndefined();
   });
 
-  it('guards the shared project route and exposes Meanings, Shipping, Boards, Incident, query, Check, Detective and session children', () => {
+  it('guards the shared project route and exposes Meanings, Shipping, Boards, Watch, Incident, query, Check, Detective and session children', () => {
     const shared = datatugRoutes.find(
       (r) => r.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
@@ -214,6 +214,9 @@ describe('the routes as registered', () => {
       'cards',
       'boards',
       'sessions',
+      'watch/new',
+      'watch/:watchId',
+      'watch',
       'work/new',
       'work/:workItemId',
       'work',
