@@ -243,9 +243,7 @@ export class WorkPageComponent {
   );
   readonly availableStatuses = computed(() => {
     const detail = this.detail();
-    return (detail?.capabilities.transitions || []).filter(
-      (status) => !(detail?.item.type === 'incident' && status === 'resolved'),
-    );
+    return detail?.capabilities.transitions || [];
   });
   readonly typeLabel = workTypeLabel;
   activityField(field: string): string {
@@ -341,6 +339,7 @@ export class WorkPageComponent {
     if (this.error()) this.errorAlert()?.nativeElement.focus();
   }
   private reportError(error: unknown): void {
+    this.notice.set('');
     this.transitionOpen.set(false);
     this.linkOpen.set(false);
     this.proposalReviewOpen.set(false);

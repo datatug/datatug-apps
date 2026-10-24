@@ -2,6 +2,20 @@ import { TestBed } from '@angular/core/testing';
 import { WorkFormComponent } from './work-form.component';
 import { workDetailFixture } from './work.spec-helper';
 describe('WorkFormComponent', () => {
+  it('does not show an empty-title error for a populated locked form', async () => {
+    const fixture = TestBed.createComponent(WorkFormComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const title = fixture.componentInstance.form.controls.title;
+    title.setValue('Existing work');
+    title.markAsTouched();
+    fixture.componentRef.setInput('busy', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Give this work a title.',
+    );
+  });
   it('creates a typed draft with owner separate from primary assignee', async () => {
     const fixture = TestBed.createComponent(WorkFormComponent);
     fixture.componentRef.setInput('actor', 'lead');

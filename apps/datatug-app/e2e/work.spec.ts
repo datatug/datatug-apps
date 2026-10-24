@@ -330,7 +330,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .getByRole('checkbox');
   for (const checkbox of await selectedEntries.all())
     if (await checkbox.isChecked()) await checkbox.click();
-  await selectedEntries.last().click();
+  await bob.getByRole('list', {name:'Context Bag entries'}).getByRole('listitem').filter({hasText: extraSubject === orderSubject ? '11046' : '7201'}).getByRole('checkbox').click();
   await bob
     .getByRole('button', { name: 'Propose to parent', exact: true })
     .click();
@@ -469,6 +469,27 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       name: 'Repair shipment allocation for order 11045',
     }),
   ).toBeVisible();
+  await page.goto(incidentPath);
+  for (const status of ['Investigating', 'Recovering', 'Resolved', 'Closed']) {
+    await page
+      .getByRole('button', { name: 'Change status', exact: true })
+      .click();
+    await choose(page, 'ion-select[label="Next status"]', status);
+    await page
+      .getByRole('textbox', {
+        name: 'Reason or resolution summary',
+        exact: true,
+      })
+      .fill(
+        `Shipment evidence reviewed; incident ${status.toLowerCase()} with linked investigation and remediation retained.`,
+      );
+    await page
+      .getByRole('button', { name: 'Save status', exact: true })
+      .click();
+    await expect(page.locator('.badges')).toContainText(status);
+  }
+  await expect(page.locator(`ion-item[href="${casePath}"]`)).toBeVisible();
+  await stableScreenshot(page, 'incident-closed-desktop');
   await page.goto(base);
   for (const path of [incidentPath, casePath, taskPath])
     await expect(page.locator(`ion-item[href="${path}"]`)).toBeVisible();

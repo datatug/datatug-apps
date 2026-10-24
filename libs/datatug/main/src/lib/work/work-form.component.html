@@ -16,7 +16,7 @@
   /></ion-item>
   @if (
     form.controls.title.touched &&
-    (!form.controls.title.valid || !form.controls.title.value.trim())
+    (form.controls.title.invalid || !form.controls.title.value.trim())
   ) {
     <ion-item
       ><ion-label color="danger">Give this work a title.</ion-label></ion-item

@@ -263,6 +263,7 @@ describe('WorkPageComponent', () => {
       c.linkOpen.set(true);
       c.proposalReviewOpen.set(true);
       c.summary.set('Retain this intent');
+      c.notice.set('Saved.');
       api.action.mockRejectedValue({ status });
       await c.mutate({
         spaceID: 'space',
@@ -286,6 +287,17 @@ describe('WorkPageComponent', () => {
       );
     },
   );
+  it('offers server-admitted Incident resolution without bypassing native proof checks', async () => {
+    const { fixture, api } = setup();
+    api.list.mockResolvedValue(workPageFixture());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const detail = workDetailFixture();
+    detail.item = { ...detail.item, type: 'incident' };
+    detail.capabilities.transitions = ['resolved'];
+    fixture.componentInstance.detail.set(detail);
+    expect(fixture.componentInstance.availableStatuses()).toEqual(['resolved']);
+  });
   it('omits resolution outcome for an active Incident transition', async () => {
     const { fixture, api } = setup();
     api.list.mockResolvedValue(workPageFixture());

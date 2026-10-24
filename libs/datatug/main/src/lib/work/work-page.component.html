@@ -54,7 +54,7 @@
     } @else {
       @if (error()) {
         <ion-card
-          ><ion-item-divider color="danger"
+          ><ion-item-divider color="light"
             ><ion-label>Change needs attention</ion-label></ion-item-divider
           ><ion-card-content
             ><p #errorAlert role="alert" tabindex="-1">{{ error() }}</p>
@@ -875,8 +875,8 @@
           </ion-select></ion-item
         ><ion-item
           ><ion-label color="medium"
-            >Resolving an Incident also requires its current evidence and
-            resolution criterion.</ion-label
+            >Incidents with a machine criterion must be resolved from their
+            evidence tools.</ion-label
           ></ion-item
         >
       }
