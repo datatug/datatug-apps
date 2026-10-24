@@ -101,4 +101,14 @@ describe('explicitAgentOriginOfPath', () => {
   ])('%s resolves only an explicitly named loopback agent', (path, origin) => {
     expect(explicitAgentOriginOfPath(path)).toBe(origin);
   });
+  it.each([
+    ['/incidents', '?agent=http-127.0.0.1:9000&project=p1', 'http://127.0.0.1:9000'],
+    ['/incidents/abc', '?agent=http-localhost:8989', 'http://localhost:8989'],
+    ['/incidents', '?agent=https-agent.example.com', undefined],
+    ['/incidents', '?agent=github.com', undefined],
+    ['/incidents', '', undefined],
+    ['/boards', '?agent=http-127.0.0.1:9000', undefined],
+  ])('%s%s resolves the agent an incident address names, and only there', (path, search, origin) => {
+    expect(explicitAgentOriginOfPath(path, search)).toBe(origin);
+  });
 });

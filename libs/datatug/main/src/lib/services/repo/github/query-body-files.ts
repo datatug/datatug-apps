@@ -1,8 +1,3 @@
-import {
-  LEGACY_DTQL_BODY_EXTENSION,
-  LEGACY_DTQL_QUERY_TYPE,
-} from './legacy-dtql-query';
-
 /** How a saved TugQL query body is written, decided by which body file exists. */
 export type TugqlBodyRepresentation = 'text' | 'yaml';
 
@@ -18,39 +13,22 @@ export interface IQueryBodyFile {
  *
  * `<id>.query.tugql` is the TugQL text form and `<id>.query.tugql.yaml` the
  * structured YAML form; the file name alone decides, and having both is an
- * error. A definition of the legacy `DTQL` type reads `<id>.query.dtql`, which
- * holds either form, so its representation is left unset and sniffed from the
- * body (see ./legacy-dtql-query.ts).
+ * error.
  */
 export function selectTugqlBodyFile(
   stem: string,
-  type: string,
   siblingFileNames: ReadonlySet<string>,
 ): IQueryBodyFile {
   const textName = `${stem}.tugql`;
   const yamlName = `${stem}.tugql.yaml`;
-  const legacyName = `${stem}.${LEGACY_DTQL_BODY_EXTENSION}`;
-  const present = [
-    siblingFileNames.has(textName) && textName,
-    siblingFileNames.has(yamlName) && yamlName,
-    type === LEGACY_DTQL_QUERY_TYPE &&
-      siblingFileNames.has(legacyName) &&
-      legacyName,
-  ].filter((name): name is string => !!name);
-  if (present.length > 1) {
+  const hasText = siblingFileNames.has(textName);
+  const hasYaml = siblingFileNames.has(yamlName);
+  if (hasText && hasYaml) {
     throw new Error(
-      `A saved TugQL query has more than one body file (${present.join(', ')}); keep exactly one.`,
+      `A saved TugQL query has more than one body file (${textName}, ${yamlName}); keep exactly one.`,
     );
   }
-  if (present[0] === yamlName) {
-    return { fileName: yamlName, representation: 'yaml' };
-  }
-  if (present[0] === legacyName) {
-    // Either form: the reader sniffs it (isTugqlYamlRequest).
-    return { fileName: legacyName };
-  }
+  if (hasYaml) return { fileName: yamlName, representation: 'yaml' };
   // Neither exists: name the text form so the missing-file path reports it.
-  return type === LEGACY_DTQL_QUERY_TYPE
-    ? { fileName: textName }
-    : { fileName: textName, representation: 'text' };
+  return { fileName: textName, representation: 'text' };
 }

@@ -33,9 +33,6 @@ export interface IQueryDef extends IQueryItem {
   readonly purpose?: string;
   semanticModel?: import('../../queries/semantic-mapping').SemanticModel;
   request: IQueryRequest;
-  /** The type the saved definition file declares, set only when the app opens it as another type (a legacy `DTQL`
-   * definition opens as `TugQL`; removed in TugQL cutover step 9). Saved query hashes use this one. */
-  readonly savedQueryType?: string;
   /** Reviewed schema relationship pins retained by Git-backed query files. */
   relationshipBindings?: readonly IQueryRelationshipBinding[];
   /** Project connection declaration ID; never a URL or credential. */

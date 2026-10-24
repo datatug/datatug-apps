@@ -13,7 +13,8 @@ function loopbackOrigin(raw: string): string {
   const url = new URL(raw);
   if (
     !['http:', 'https:'].includes(url.protocol) ||
-    !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname) ||
+    // `datatug.localhost` is the dev host a datatug agent answers (browsers resolve `*.localhost` to the loopback).
+    !['127.0.0.1', 'localhost', 'datatug.localhost', '[::1]'].includes(url.hostname) ||
     url.username ||
     url.password ||
     url.pathname !== '/' ||

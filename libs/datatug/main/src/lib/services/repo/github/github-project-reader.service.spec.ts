@@ -655,50 +655,21 @@ describe('GithubProjectReaderService', () => {
         );
       });
 
-      it('reads the legacy DTQL type with its <id>.query.dtql body as TugQL, form left to sniffing (removed in TugQL cutover step 9)', async () => {
-        const { service } = setup({
+      it('no longer loads a legacy DTQL definition as TugQL', async () => {
+        const { service, gh } = setup({
           [DEF]: '{"id":"fresh-query","type":"DTQL"}',
           [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
         });
         const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
-        expect(result).toMatchObject({ type: 'TugQL', text: 'from:\n  name: Invoice\n' });
+        expect(result.type).toBe('DTQL');
         expect(result).not.toHaveProperty('representation');
-        expect(
-          isTugqlYamlRequest({ queryType: QueryType.TugQL, text: result?.text ?? '' } as ITextQueryRequest),
-        ).toBe(true);
+        expect(gh.urls().some((u) => u.endsWith('.dtql'))).toBe(false);
       });
 
-      // The pinned demo project's <id>.query.dtql files hold BOTH forms (e.g. chinook-invoice-author is TugQL text);
-      // forcing YAML hid the TugQL author for every text one (PR #536 CI).
-      it('reads a legacy <id>.query.dtql body in the TugQL text form as text, not YAML', async () => {
-        const source = 'parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nselect i.InvoiceId\n';
-        const { service } = setup({
-          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
-          [`${BODY}.dtql`]: source,
-        });
-        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
-        expect(result).toMatchObject({ type: 'TugQL', savedQueryType: 'DTQL', text: source });
-        expect(result).not.toHaveProperty('representation');
-        expect(
-          isTugqlYamlRequest({ queryType: QueryType.TugQL, text: result?.text ?? '' } as ITextQueryRequest),
-        ).toBe(false);
-      });
-
-      it('rejects a legacy DTQL query that also has a new body file', async () => {
-        const { service } = setup({
-          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
-          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
-          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
-        });
-        await expect(first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'))).rejects.toThrow(
-          /more than one body file/,
-        );
-      });
-
-      it('lists a legacy DTQL definition as TugQL', async () => {
+      it('lists a legacy DTQL definition under its own type, not TugQL', async () => {
         const { service } = setup({ [DEF]: '{"id":"fresh-query","type":"DTQL"}' });
         const folder = await first(service.getQueriesFolder(PROJECT_ID));
-        expect(folder.folders?.find((f) => f.id === 'fresh')?.items?.[0].type).toBe('TugQL');
+        expect(folder.folders?.find((f) => f.id === 'fresh')?.items?.[0].type).toBe('DTQL');
       });
     });
 
@@ -761,7 +732,6 @@ describe('GithubProjectReaderService', () => {
           representation: 'text',
           text: 'from Invoice as i\n',
         });
-        expect(result.savedQueryType).toBeUndefined();
         expect(
           gh
             .urls()
@@ -785,7 +755,6 @@ describe('GithubProjectReaderService', () => {
           representation: 'yaml',
           text: 'from:\n  name: Invoice\n',
         });
-        expect(result.savedQueryType).toBeUndefined();
         expect(
           gh
             .urls()
@@ -857,20 +826,6 @@ describe('GithubProjectReaderService', () => {
           first(service.getQuery(PROJECT_ID, 'fresh/fresh-query')),
         ).rejects.toThrow(/more than one body file/u);
         expect(gh.urls().some((u) => /\.query\.tugql(\.yaml)?$/u.test(u))).toBe(false);
-      });
-
-      it('still reads a legacy DTQL definition from "<id>.query.dtql"', async () => {
-        const { service } = setup({
-          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
-          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
-        });
-        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
-        expect(result).toMatchObject({
-          type: 'TugQL',
-          savedQueryType: 'DTQL',
-          text: 'from:\n  name: Invoice\n',
-        });
-        expect(result).not.toHaveProperty('representation');
       });
 
       it('does not fall back past a failure that is not a 404', async () => {

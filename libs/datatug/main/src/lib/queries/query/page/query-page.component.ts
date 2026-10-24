@@ -6835,7 +6835,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           })
           .catch(() => undefined);
       void semanticQueryHash(
-        definition.savedQueryType ?? definition.request.queryType,
+        definition.request.queryType,
         (definition.request as ISqlQueryRequest).text ?? '',
         definition.connectionId ?? '',
         definition.federation ?? null,
@@ -6845,7 +6845,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       });
       if (!recordset || !executed) return;
       void semanticQueryHash(
-        executed.savedQueryType ?? executed.request.queryType,
+        executed.request.queryType,
         (executed.request as ISqlQueryRequest).text ?? '',
         executed.connectionId ?? '',
         executed.federation ?? null,

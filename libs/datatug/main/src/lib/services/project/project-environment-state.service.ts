@@ -226,7 +226,7 @@ const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
   isHostedReadRefused(error);
 
 /** The last agent release that predates the `environment-state/1` contract. */
-const LAST_PRE_CONTRACT_VERSION = [0, 107, 0] as const;
+const LAST_PRE_CONTRACT_VERSION = [0, 110, 1] as const;
 
 /**
  * The signals of a local agent that may predate the contract: its router answers the unmounted route with Go's plain
@@ -241,7 +241,7 @@ const isPreContractSignal = (error: unknown): boolean => {
   );
 };
 
-/** True when `/agent-info` reports a version of 0.107.0 or earlier; false for a newer or an unreadable version. */
+/** True when `/agent-info` reports a version of 0.110.1 or earlier; false for a newer or an unreadable version. */
 export const isPreContractVersion = (info: unknown): boolean => {
   const version = (info as { version?: unknown } | null)?.version;
   const match =

@@ -11,8 +11,6 @@ export const countryBoardURL =
 export const countryOrders = JSON.parse(
   countryFixture('northwind-orders-records.json'),
 ) as Record<string, unknown>[];
-// Reads of `demo-project-1/queries/**/*.query.dtql` below follow the pinned demo-project checkout,
-// which predates the TugQL cutover; switch them to `.query.tugql.yaml` with the demo pin bump (step 9).
 const customerCounts = JSON.parse(countryFixture('customer-country-source-counts.json')) as Record<string, { rows: { country: string; customers: number }[] }>;
 const snapshot = JSON.parse(countryFixture('ovdb-inspector-snapshot.json'));
 const publication = countryFixture('northwind-orders-rights.json');
@@ -121,7 +119,7 @@ export async function installCountryComparisonFixture(
   const rootText = readFileSync(
     join(
       source,
-      'demo-project-1/queries/demodb/customer-country-comparison-server.query.dtql',
+      'demo-project-1/queries/demodb/customer-country-comparison-server.query.tugql.yaml',
     ),
     'utf8',
   );
@@ -138,7 +136,7 @@ export async function installCountryComparisonFixture(
       const customerDatabase = path === '/v1/databases/northwind/tugql' ? 'northwind' : path === '/v1/databases/chinook/tugql' ? 'chinook' : undefined;
       if (customerDatabase && route.request().method() === 'POST') {
         const body = route.request().postData() ?? '';
-        const query = readFileSync(join(source, `demo-project-1/queries/demodb/${customerDatabase}-customer-country-counts-server.query.dtql`), 'utf8');
+        const query = readFileSync(join(source, `demo-project-1/queries/demodb/${customerDatabase}-customer-country-counts-server.query.tugql.yaml`), 'utf8');
         expect(body).toBe(query);
         posts.push('customer-' + customerDatabase);
         const attempt = posts.filter((value) => value === 'customer-' + customerDatabase).length;
@@ -219,7 +217,7 @@ export async function installCountryComparisonFixture(
       const distinctQuery = readFileSync(
         join(
           source,
-          'demo-project-1/queries/demodb/northwind-country-counts-server.query.dtql',
+          'demo-project-1/queries/demodb/northwind-country-counts-server.query.tugql.yaml',
         ),
         'utf8',
       );
