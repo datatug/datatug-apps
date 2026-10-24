@@ -308,7 +308,7 @@ test('project Watch menu, paused creation consent, cold details and narrow inbox
   await page.setViewportSize({ width: 1440, height: 900 });
   await page
     .locator('sneat-datatug-project-menu-top ion-item')
-    .filter({ hasText: /^Watch$/ })
+    .filter({ hasText: /^Watch\s*Beta$/ })
     .click();
   await expect(page).toHaveURL(projectPath + '/watch');
   await expect(

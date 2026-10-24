@@ -63,6 +63,9 @@
             ? 'Context Bag'
             : page.title
         }}</ion-label>
+        @if (page.path === 'watch') {
+          <ion-badge slot="end" color="medium">Beta</ion-badge>
+        }
         @if (!page.path && !project?.brief) {
           <ion-spinner name="lines-small" />
         }
