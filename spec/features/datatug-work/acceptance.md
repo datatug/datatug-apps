@@ -2,11 +2,11 @@
 
 The browser uses Chromium against the built Angular/Ionic application, real Firebase Auth and Firestore emulators, the production HTTP handlers in the Backend integration host, and the actual Shipping SQLite source. No Work, session, Check, Query or Incident request is intercepted. Test-only emulator credentials are defined in the fixture and test; no credential/token or Playwright trace is included in this evidence.
 
-> Final real profile: **2/2 passed in 54.7 seconds** on runtime `4e468225` (primary 40.2s; isolation 13.9s). After a complete Auth/Firestore export, stop and import plus Backend restart, an independent read-only Chromium pass verified the same five Work records, native Check evidence, relationships and native Incident state.
+> Final real profile: **2/2 passed in 54.7 seconds** on runtime `4e468225` (primary 40.2s; isolation 13.9s). After a complete Auth/Firestore export, stop and import plus Backend restart, an independent read-only Chromium pass verified the same five Work records, native Check evidence, relationships and native Incident state. That read-only browser check passed again after the final reviewed-main integration `cde138d9`, together with 206 combined tests and a 32.3-second app build.
 
 ## Reviewed revisions
 
-- Apps runtime: `4e468225`; checkout compatibility fixture: `8b27a414`, verified against the same runtime. Reviewed main integration: `0500101a`, preserving Watch navigation, tests and runtime files.
+- Apps Work implementation runtime: `4e468225`; latest reviewed-main integration: `cde138d9` (main `b900fbfa`); checkout compatibility fixture: `8b27a414`, verified against the same runtime. Both reviewed main integrations preserve Watch navigation, tests and runtime files. The final conflict resolution retained the new native journey origin and the dedicated Work profile boundaries.
 - Backend production: `a53149534bb6775e0952fc4d2fa7d335a87bced0`; final browser route composition: `39b7dc5` (real optional business-activity handler).
 - Published Core: `v0.79.1-0.20261024001142-c14594e4f0b4`.
 - Draft changes: [Apps PR 540](https://github.com/datatug/datatug-apps/pull/540), [Backend PR 105](https://github.com/datatug/backend/pull/105), [Core PR 410](https://github.com/datatug/datatug-core/pull/410).
@@ -19,7 +19,8 @@ Install the frozen repository dependencies. Start Auth and Firestore with the re
 
 ```sh
 # Apps worktree, separate long-lived terminal
-node_modules/.bin/firebase emulators:start --only auth,firestore --project demo-local-sneat-app
+JAVA_TOOL_OPTIONS="-Xms64m -Xmx512m" node_modules/.bin/firebase emulators:start --only auth,firestore --project demo-local-sneat-app --export-on-exit /tmp/datatug-work-emulator-state
+# On subsequent starts, also add: --import /tmp/datatug-work-emulator-state
 
 # Paired Backend worktree
 GOWORK=off GOPRIVATE=github.com/datatug/datatug-core wb run -- go test -c -tags=integration ./api4datatug -o /tmp/datatug-work-browser.test
@@ -46,14 +47,14 @@ Desktop and 390×844 captures verify compact accountability/delegation placement
 
 | Command/profile | Result |
 |---|---|
-| `pnpm nx run datatug-main:test-focused` with combined Work/Watch/native/navigation suite | 14 suites, 156 tests passed after reviewed main integration |
+| `pnpm nx run datatug-main:test-focused` with combined Work/Watch/native/navigation/Query/environment suite | 16 suites, 206 tests passed after final reviewed main integration `cde138d9` |
 | Focused native Incident contract, existing Incident client, hosted resolve, Work API/page | 5 suites, 128 tests passed; includes legacy/current proof and null/fractional/unsafe epoch rejection |
 | Final Work page/form direction and controls | 2 suites, 22 tests passed (`--maxWorkers=1`); subsequent explicit Incident-environment route suite 18/18 passed |
 | Native `session-workspace` copied-set regression | 40 tests passed; copied values remain unapplied and explicit named-set choice persists |
 | Project-address suite | 580 tests passed |
 | `pnpm exec tsc --noEmit -p libs/datatug/main/tsconfig.spec.json` | Passed |
 | `pnpm nx run datatug-main:lint` | Passed, no findings in final run |
-| Final `datatug-app:build:sso-e2e` | Passed, 30.7 seconds |
+| Final `datatug-app:build:sso-e2e` | Passed, 32.3 seconds on final combined revision |
 | `node tools/check-card-headers.mjs` | Passed; 963 files, no additions to 211 pre-existing allowed violations |
 | `node tools/check-zoneless-fields.mjs` | Passed; 198 components, no additions to 8 pre-existing allowed files |
 | `python3 tools/recordsetcompare/consume.py verify-dist` | Passed, 11 pinned emitted files |

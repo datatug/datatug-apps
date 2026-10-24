@@ -39,5 +39,12 @@
     "retainedWorkItems": 5,
     "retainedCheckRuns": 1,
     "browserReload": "restart-browser-observation.json"
+  },
+  "finalCombinedAppsCommit": "cde138d9",
+  "finalCombinedValidation": {
+    "tests": 206,
+    "suites": 16,
+    "buildSeconds": 32.3,
+    "readOnlyBrowserReload": "PASS; same5 persisted records/native evidence/Incident and Query after reviewed main integration"
   }
 }

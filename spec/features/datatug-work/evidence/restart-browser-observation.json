@@ -46,5 +46,6 @@
       "status": 503,
       "url": "http://127.0.0.1:8090/v0/datatug/projects/query_activity_context"
     }
-  ]
+  ],
+  "appsRuntimeCommit": "cde138d9"
 }

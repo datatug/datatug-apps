@@ -49,9 +49,9 @@
   },
   {
     "label": "app build",
-    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-app:build:sso-e2e",
+    "command": "NG_BUILD_MAX_WORKERS=2 NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-app:build:sso-e2e --excludeTaskDependencies --output-style=static",
     "results": [
-      "Exit0; Nx target succeeded"
+      "Exit0; final combined revision cde138d9 build32.3s; pinned assets prepared separately and verify-dist passed"
     ]
   },
   {
@@ -101,6 +101,13 @@
     "command": "wb run -- node spec/features/datatug-work/reload-persisted.mjs",
     "results": [
       "PASS5 retained Work items, native Check evidence, native Incident cold-read, Query backlink; optional activity503 only Backend error"
+    ]
+  },
+  {
+    "label": "latest main integration cde138d9",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/work libs/datatug/main/src/lib/watch libs/datatug/main/src/lib/session-context/session-workspace.service.spec.ts libs/datatug/main/src/lib/components/project/project-menu-top/project-menu-top.component.spec.ts libs/datatug/main/src/lib/routes/datatug-routing.module.spec.ts libs/datatug/main/src/lib/detective/cases-page.component.spec.ts libs/datatug/main/src/lib/detective/checks-retained-run.component.spec.ts libs/datatug/main/src/lib/detective/incident-resolve-panel.component.spec.ts libs/datatug/main/src/lib/queries/queries.service.spec.ts libs/datatug/main/src/lib/services/project/project-environment-state.service.spec.ts --maxWorkers=1 --output-style=static",
+    "results": [
+      "16 suites206 tests passed; Work/Watch/native/navigation plus current Query and environment contracts"
     ]
   }
 ]
