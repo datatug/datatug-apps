@@ -18,6 +18,10 @@ const projectId = 'fixture_project';
 test('signed-in Incident first: canonical Work create/comment/delegate with retained native evidence cold reads', async ({
   page,
 }) => {
+  // This journey includes sign-in and six cold navigations. CI's first-page
+  // initialization and repeated loading must not consume the final assertion's
+  // normal five-second wait (the mobile checkout journey uses the same budget).
+  test.setTimeout(60_000);
   const email = `incident-${crypto.randomUUID()}@example.test`;
   const seeded = await page.request.post(
     'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=e2e',
