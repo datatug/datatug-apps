@@ -396,11 +396,31 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     await bob
       .getByRole('button', { name: 'Choose applied context', exact: true })
       .click();
-    const option = bob.locator(
-      `ion-select[aria-label="Existing native Session"] ion-select-option[value="${executionSessionId}"]`,
+    const options = bob.locator(
+      'ion-select[aria-label="Existing native Session"] ion-select-option',
     );
-    await expect(option).toHaveCount(1);
-    const title = (await option.textContent())?.trim();
+    await expect
+      .poll(() =>
+        options.evaluateAll(
+          (elements, id) =>
+            elements.some(
+              (element) =>
+                (element as HTMLElement & { value?: string }).value === id,
+            ),
+          executionSessionId,
+        ),
+      )
+      .toBe(true);
+    const title = await options.evaluateAll(
+      (elements, id) =>
+        elements
+          .find(
+            (element) =>
+              (element as HTMLElement & { value?: string }).value === id,
+          )
+          ?.textContent?.trim(),
+      executionSessionId,
+    );
     expect(title).toBeTruthy();
     await choose(
       bob,
