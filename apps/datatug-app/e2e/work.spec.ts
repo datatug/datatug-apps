@@ -44,6 +44,10 @@ async function stableScreenshot(page: Page, name: string, scrollTop = true) {
     await Promise.all(
       document
         .getAnimations()
+        .filter(
+          (animation) =>
+            animation.effect?.getComputedTiming().iterations !== Infinity,
+        )
         .map((animation) => animation.finished.catch(() => undefined)),
     );
   });
@@ -254,10 +258,14 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .getByRole('button', { name: 'Investigate selected context', exact: true })
     .click();
   await expect(bob).toHaveURL(/\/sessions\/[^/]+\/overview/);
-  await bob.getByRole('button', { name: /Context · 1 applied/ }).click();
+  await bob.getByRole('button', { name: /Context · 0 applied/ }).click();
   await expect(
     bob.getByText('Context Bag', { exact: true }).first(),
   ).toBeVisible();
+  await expect(bob.locator('ion-modal:visible')).toContainText('11045');
+  await expect(bob.locator('ion-modal:visible')).toContainText(
+    'Copied values are not applied automatically.',
+  );
   await stableScreenshot(bob, 'private-execution-context-desktop');
   await bob.goto(casePath);
   await bob
@@ -296,7 +304,10 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       exact: true,
     }),
   ).toBeVisible();
-  await stableScreenshot(bob, 'case-evidence-desktop');
+  await bob
+    .getByRole('heading', { name: 'Evidence & Check runs', exact: true })
+    .scrollIntoViewIfNeeded();
+  await stableScreenshot(bob, 'case-evidence-desktop', false);
   await bob.goto(casePath);
   const extraSubject =
     environment.subjects.find((s: { label: string }) =>
@@ -414,7 +425,10 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await expect(
     bob.getByRole('list', { name: 'Work referencing this artefact' }),
   ).toContainText('Repair shipment allocation for order 11045');
-  await stableScreenshot(bob, 'query-work-backlinks-desktop');
+  await bob
+    .getByRole('list', { name: 'Work referencing this artefact' })
+    .scrollIntoViewIfNeeded();
+  await stableScreenshot(bob, 'query-work-backlinks-desktop', false);
   await bob.goto(casePath);
   await bob.getByRole('button', { name: 'Change status', exact: true }).click();
   await choose(bob, 'ion-select[label="Next status"]', 'Closed');
@@ -570,8 +584,8 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
     .getByRole('button', { name: 'Reload latest', exact: true })
     .click();
   await expect(
-    page.getByText('Concurrent verified update.', { exact: true }),
-  ).toBeVisible();
+    page.getByRole('textbox', { name: 'Description', exact: true }),
+  ).toHaveValue('Concurrent verified update.');
   await other.close();
   const viewerAuth = await page.request.post(
     'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=e2e',

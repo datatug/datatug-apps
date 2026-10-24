@@ -62,6 +62,21 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     await service.openProject(project); await service.focus('s1');
   });
 
+  it('opens a populated copied set without applying it and preserves an explicit local-set choice', async () => {
+    current = { ...current, session: {...current.session, defaultBagId: 'local', bagIds: ['local', ...current.session.bagIds]},
+      bags: [{...current.bags[0], id:'local', entryIds:[]}, ...current.bags],
+      contextSet: {...current.contextSet, slots:[]},
+      revisions: current.revisions.map(revision => ({...revision, source:{sessionId:'work-source',bagId:'work-bag',entryId:'source-entry',revisionId:'source-revision'}})),
+    };
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+    await reopened.openProject(project); await reopened.focus('s1');
+    expect(reopened.selectedBag()?.id).toBe('b1'); expect(reopened.appliedCount()).toBe(0); expect(reopened.draft().selections.b1).toEqual([]);
+    reopened.chooseBag('local'); await reopened.flushDraft();
+    const again = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+    await again.openProject(project); await again.focus('s1');
+    expect(again.selectedBag()?.id).toBe('local'); expect(again.appliedCount()).toBe(0);
+  });
+
   it('restores saved tabs beyond page one only from fresh reads, with bounded concurrency', async () => {
     const saved = ['s1', 's2', 'bad-id', 's4', 's5', 's6', 's7', 'invalid/id'];
     const key = JSON.stringify(['datatug-session-tabs/1', capabilities.actorId, projectRefToString(project)]);
