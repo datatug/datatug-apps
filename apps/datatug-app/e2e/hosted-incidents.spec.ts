@@ -140,6 +140,16 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
     links: workLinks.filter(
       (link) => link.sourceId === item.id || link.target.id === item.id,
     ),
+    relatedItems: workLinks
+      .filter((link) => link.sourceId === item.id || link.target.id === item.id)
+      .map((link) =>
+        workItems.get(
+          link.sourceId === item.id ? link.target.id : link.sourceId,
+        ),
+      )
+      .flatMap((peer) =>
+        peer ? [{ id: peer.id, type: peer.type, title: peer.title }] : [],
+      ),
     context: {
       session: {
         schemaVersion: 1,
@@ -283,9 +293,9 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
         };
         workLinks.push({
           id: 'case_parent',
-          sourceId: id,
+          sourceId: 'work_incident',
           relation: 'parent',
-          target: { kind: 'work', id: 'work_incident' },
+          target: { kind: 'work', id },
           createdBy: localId,
           createdAt: at,
         });
@@ -305,17 +315,15 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
       const previous = workItems.get(body.itemId!)!;
       expect(body.expectedVersion).toBe(previous.version);
       item = { ...previous, version: previous.version + 1 };
-      workActivity
-        .get(item.id)!
-        .push({
-          id: 'comment_1',
-          itemId: item.id,
-          version: item.version,
-          actorId: localId,
-          action: 'comment',
-          comment: body.comment,
-          at,
-        });
+      workActivity.get(item.id)!.push({
+        id: 'comment_1',
+        itemId: item.id,
+        version: item.version,
+        actorId: localId,
+        action: 'comment',
+        comment: body.comment,
+        at,
+      });
     }
     workItems.set(item.id, item);
     await route.fulfill({ json: workDetail(item) });
@@ -539,6 +547,13 @@ test('signed-in Incident first: canonical Work create/comment/delegate with reta
     ),
   ).toBe(false);
   expect(linkedCase?.['id']).not.toBe(incidentRef.incidentId);
+  await expect(
+    workPage().getByText('Parent · Incident', { exact: true }),
+  ).toBeVisible();
+  await page.goto(`${workBase}/work_incident`);
+  await expect(
+    workPage().getByText('Child · Detective Case', { exact: true }),
+  ).toBeVisible();
   await page.goto(detail);
   await expect(
     page.getByText(`Detective Case ${linkedCase?.['id']}`),
