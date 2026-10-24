@@ -65,6 +65,7 @@ const check = {
 };
 
 describe('Self-hosted project Watch flow', () => {
+  let auth: BehaviorSubject<{ user: { uid: string } }>;
   const client = {
     identity: signal<WatchIdentity | undefined>(user),
     matches: vi.fn(() => true),
@@ -93,6 +94,7 @@ describe('Self-hosted project Watch flow', () => {
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    auth = new BehaviorSubject({ user: { uid: 'firebase-user' } });
     client.identity.set(user);
     client.definitions.mockResolvedValue({ definitions: [watch] });
     client.definition.mockResolvedValue({ definition: watch });
@@ -173,7 +175,7 @@ describe('Self-hosted project Watch flow', () => {
         {
           provide: SneatAuthStateService,
           useValue: {
-            authState: new BehaviorSubject({ user: { uid: 'firebase-user' } }),
+            authState: auth,
           },
         },
         {
@@ -438,11 +440,7 @@ describe('Self-hosted project Watch flow', () => {
       client.identity.set(undefined),
     );
     fixture.changeDetectorRef.detach();
-    (
-      TestBed.inject(SneatAuthStateService).authState as BehaviorSubject<{
-        user: { uid: string };
-      }>
-    ).next({ user: { uid: 'replacement-account' } });
+    auth.next({ user: { uid: 'replacement-account' } });
     expect(client.disconnectOwned).toHaveBeenCalled();
     expect(client.identity()).toBeUndefined();
     expect(

@@ -44,9 +44,11 @@ describe('Watch coordinator user transport', () => {
       spaceID: 'space-one',
       projectId: 'same-id',
     };
+    const projectRef = projectRefToString(ref);
+    if (!projectRef) throw new Error('Fixture project reference is required');
     client.seed = {
       project: 'same-id',
-      projectRef: projectRefToString(ref),
+      projectRef,
       principal: 'alice',
       environment: 'dev',
       check: {

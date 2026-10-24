@@ -122,7 +122,7 @@ describe('Hosted Watch account and environment lifecycle', () => {
     };
   }
   beforeEach(() => {
-    auth = new BehaviorSubject({
+    auth = new BehaviorSubject<{ status: string; user?: { uid: string } }>({
       status: 'authenticated',
       user: { uid: 'alice' },
     });
