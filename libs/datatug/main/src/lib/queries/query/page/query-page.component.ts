@@ -1,3 +1,4 @@
+import {WorkArtifactLinksComponent} from '../../../work/work-artifact-links.component';
 import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { friendlyError, redactErrorText } from '@datatug/friendly-error';
@@ -856,6 +857,7 @@ function declaredParameterDefault(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    WorkArtifactLinksComponent,
     ErrorStateComponent,
     EvidenceCopyLinkComponent,
     ResultCellCardsComponent,

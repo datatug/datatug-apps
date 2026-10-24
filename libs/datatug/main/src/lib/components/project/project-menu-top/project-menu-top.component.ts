@@ -43,12 +43,18 @@ import {
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
 import { addIcons } from 'ionicons';
 import {
+  briefcaseOutline,
   chatbubblesOutline,
   idCardOutline,
   warningOutline,
 } from 'ionicons/icons';
 
-addIcons({ chatbubblesOutline, idCardOutline, warningOutline });
+addIcons({
+  briefcaseOutline,
+  chatbubblesOutline,
+  idCardOutline,
+  warningOutline,
+});
 
 interface IProjectTopLevelPage {
   path: ProjectTopLevelPage;
@@ -182,6 +188,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       { path: 'data-models', title: 'Data models', icon: 'layers-outline' },
       { path: 'watch', title: 'Watch', icon: 'eye-outline' },
       { path: 'incidents', title: 'Incidents', icon: 'warning-outline' },
+      { path: 'work', title: 'Work', icon: 'briefcase-outline' },
       {
         path: 'sessions',
         title: 'Sessions',
@@ -359,6 +366,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'checks',
           'watch',
           'detective',
+          'work',
           'sessions',
           'boards',
           'cards',

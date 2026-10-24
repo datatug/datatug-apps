@@ -1,0 +1,142 @@
+[
+  {
+    "label": "combined Work/Watch/native/navigation",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/work libs/datatug/main/src/lib/watch libs/datatug/main/src/lib/session-context/session-workspace.service.spec.ts libs/datatug/main/src/lib/components/project/project-menu-top/project-menu-top.component.spec.ts libs/datatug/main/src/lib/routes/datatug-routing.module.spec.ts libs/datatug/main/src/lib/detective/cases-page.component.spec.ts libs/datatug/main/src/lib/detective/checks-retained-run.component.spec.ts libs/datatug/main/src/lib/detective/incident-resolve-panel.component.spec.ts",
+    "results": [
+      "Test Files  14 passed (14)",
+      "Tests  156 passed (156)"
+    ]
+  },
+  {
+    "label": "native lifecycle and Work contracts",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/detective/work-incident-contract.spec.ts libs/datatug/main/src/lib/detective/hosted-resolve-contract.spec.ts libs/datatug/main/src/lib/incidents/incident-client.service.spec.ts libs/datatug/main/src/lib/work/work-api.service.spec.ts libs/datatug/main/src/lib/work/work-page.component.spec.ts",
+    "results": [
+      "Test Files  5 passed (5)",
+      "Tests  128 passed (128)"
+    ]
+  },
+  {
+    "label": "final direction/form",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/work/work-page.component.spec.ts libs/datatug/main/src/lib/work/work-form.component.spec.ts --maxWorkers=1",
+    "results": [
+      "Test Files  2 passed (2)",
+      "Tests  22 passed (22)"
+    ]
+  },
+  {
+    "label": "explicit Incident environment",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/work/work-page.component.spec.ts --maxWorkers=1",
+    "results": [
+      "Test Files  1 passed (1)",
+      "Tests  18 passed (18)"
+    ]
+  },
+  {
+    "label": "private context selection",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/session-context/session-workspace.service.spec.ts",
+    "results": [
+      "Test Files  1 passed (1)",
+      "Tests  40 passed (40)"
+    ]
+  },
+  {
+    "label": "project addressing",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-project-address:test",
+    "results": [
+      "Test Files  5 passed (5)",
+      "Tests  580 passed (580)"
+    ]
+  },
+  {
+    "label": "app build",
+    "command": "NG_BUILD_MAX_WORKERS=2 NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-app:build:sso-e2e --excludeTaskDependencies --output-style=static",
+    "results": [
+      "Exit0; final combined revision cde138d9 build32.3s; pinned assets prepared separately and verify-dist passed"
+    ]
+  },
+  {
+    "label": "lint",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-main:lint",
+    "results": [
+      "Exit0; Nx target succeeded"
+    ]
+  },
+  {
+    "label": "spec typecheck",
+    "command": "NX_DAEMON=false wb run -- pnpm exec tsc --noEmit -p libs/datatug/main/tsconfig.spec.json",
+    "results": [
+      "Exit0"
+    ]
+  },
+  {
+    "label": "card headers",
+    "command": "wb run -- node tools/check-card-headers.mjs",
+    "results": [
+      "963 files; no new violations beyond existing211 allowlisted cards"
+    ]
+  },
+  {
+    "label": "zoneless",
+    "command": "wb run -- node tools/check-zoneless-fields.mjs",
+    "results": [
+      "198 components; no new violations beyond existing8 allowed files"
+    ]
+  },
+  {
+    "label": "locked emitted assets",
+    "command": "wb run -- python3 tools/recordsetcompare/consume.py verify-dist",
+    "results": [
+      "11 files match verified lock"
+    ]
+  },
+  {
+    "label": "real browser",
+    "command": "NX_DAEMON=false wb run -- pnpm nx run datatug-app:e2e-work --output-style=static",
+    "results": [
+      "2 passed54.7s; actual Auth/Firestore/Shipping SQLite"
+    ]
+  },
+  {
+    "label": "real browser after export/restart/import",
+    "command": "wb run -- node spec/features/datatug-work/reload-persisted.mjs",
+    "results": [
+      "PASS5 retained Work items, native Check evidence, native Incident cold-read, Query backlink; optional activity503 only Backend error"
+    ]
+  },
+  {
+    "label": "latest main integration cde138d9",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/work libs/datatug/main/src/lib/watch libs/datatug/main/src/lib/session-context/session-workspace.service.spec.ts libs/datatug/main/src/lib/components/project/project-menu-top/project-menu-top.component.spec.ts libs/datatug/main/src/lib/routes/datatug-routing.module.spec.ts libs/datatug/main/src/lib/detective/cases-page.component.spec.ts libs/datatug/main/src/lib/detective/checks-retained-run.component.spec.ts libs/datatug/main/src/lib/detective/incident-resolve-panel.component.spec.ts libs/datatug/main/src/lib/queries/queries.service.spec.ts libs/datatug/main/src/lib/services/project/project-environment-state.service.spec.ts --maxWorkers=1 --output-style=static",
+    "results": [
+      "16 suites206 tests passed; Work/Watch/native/navigation plus current Query and environment contracts"
+    ]
+  },
+  {
+    "label": "CI correction: scoped app lint",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-app:lint --output-style=static",
+    "results": [
+      "PASS:0 errors;10 existing warning findings"
+    ]
+  },
+  {
+    "label": "CI correction: portable Work E2E typecheck",
+    "command": "wb run -- pnpm exec tsc --project apps/datatug-app/tsconfig.work-e2e.json --noEmit",
+    "results": [
+      "Exit0; Work and hosted Incident E2E plus dedicated configuration checked",
+      "TypeScript ESNext transpilation independently confirms public type export/import erase from emitted JavaScript"
+    ]
+  },
+  {
+    "label": "CI correction: route registry, guarded Work and shared menus",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-main:test-focused libs/datatug/main/src/lib/routes/datatug-routing-proj.spec.ts libs/datatug/main/src/lib/routes/github-project-routes.spec.ts libs/datatug/main/src/lib/components/project/project-menu/project-menu.component.spec.ts libs/datatug/main/src/lib/work/work-page.component.spec.ts --maxWorkers=1 --output-style=static",
+    "results": [
+      "4 suites170 tests PASS; Git/local with stale Space params remain hosted-only and invoke no Work API"
+    ]
+  },
+  {
+    "label": "CI correction: short project addresses",
+    "command": "NX_DAEMON=false wb run --allow-saturated-host -- pnpm nx run datatug-project-address:test --output-style=static",
+    "results": [
+      "5 suites590 tests PASS; root/new/detail/nested/pinned Work addresses and literal work folder remain distinct"
+    ]
+  }
+]

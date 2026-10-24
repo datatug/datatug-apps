@@ -1,3 +1,4 @@
+import { WorkApiService } from '../work/work-api.service';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -14,6 +15,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   IonButton,
+  IonCheckbox,
   IonSelect,
   IonSelectOption,
   IonTextarea,
@@ -51,7 +53,14 @@ type RunRef = Extract<ArtifactRef, { kind: 'check-run' }>['checkRun'];
 @Component({
   selector: 'sneat-incident-resolve-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonButton, IonSelect, IonSelectOption, IonTextarea, IonIcon],
+  imports: [
+    IonCheckbox,
+    IonButton,
+    IonSelect,
+    IonSelectOption,
+    IonTextarea,
+    IonIcon,
+  ],
   template: `@if (resolved(); as value) {
       <section aria-label="Confirmed Incident resolution">
         <h4>Resolved by human review</h4>
@@ -240,6 +249,29 @@ type RunRef = Extract<ArtifactRef, { kind: 'check-run' }>['checkRun'];
           [disabled]="busy() || disabled() || !canWrite()"
           (ionInput)="setNote($event.detail.value || '')"
         />
+        @if (workItemId()) {
+          @if (manualError()) {
+            <p role="alert">{{ manualError() }}</p>
+          } @else if (!manualReady()) {
+            <p role="status">Loading Work closure criteria…</p>
+          } @else if (!workCanResolve()) {
+            <p role="status">
+              Resolve is available to the accountable owner when this Incident
+              is recovering. Open Work to review its status and ownership.
+            </p>
+          } @else if (manualCriteria()) {
+            <h4>Work closure criteria</h4>
+            <p style="white-space: pre-wrap">{{ manualCriteria() }}</p>
+            <ion-checkbox
+              [checked]="manualAccepted()"
+              (ionChange)="
+                manualAccepted.set($event.detail.checked); reviewing.set(false)
+              "
+              [disabled]="busy() || disabled()"
+              >I verified these closure criteria</ion-checkbox
+            >
+          }
+        }
         <div class="resolution-actions">
           @if (!reviewing()) {
             <ion-button
@@ -319,6 +351,13 @@ export class IncidentResolvePanelComponent {
   readonly expectedSeq = input.required<number>();
   readonly criterion = input<IncidentResolutionCriterion>();
   readonly resolved = input<IncidentResolution>();
+  readonly workItemId = input<string>();
+  readonly manualCriteria = signal('');
+  readonly manualReady = signal(false);
+  readonly workCanResolve = signal(false);
+  readonly manualAccepted = signal(false);
+  readonly manualVersion = signal(0);
+  readonly manualError = signal('');
   readonly incidentStatus = input('');
   readonly canWrite = input(false);
   readonly disabled = input(false);
@@ -341,6 +380,7 @@ export class IncidentResolvePanelComponent {
       this.environment(),
       this.incidentRef(),
       this.expectedSeq(),
+      this.workItemId(),
       this.criterion(),
       this.canWrite(),
       this.disabled(),
@@ -378,6 +418,10 @@ export class IncidentResolvePanelComponent {
       !this.disabled() &&
       this.canWrite() &&
       !this.selectionReason() &&
+      (!this.workItemId() ||
+        (this.manualReady() &&
+          this.workCanResolve() &&
+          (!this.manualCriteria() || this.manualAccepted()))) &&
       !!this.humanNote().trim() &&
       new TextEncoder().encode(this.humanNote()).length <= 4000,
   );
@@ -410,6 +454,38 @@ export class IncidentResolvePanelComponent {
     this.selectedRecovery.set(undefined);
     this.humanNote.set('');
     this.reviewing.set(false);
+    this.manualCriteria.set('');
+    this.manualAccepted.set(false);
+    this.manualReady.set(false);
+    this.workCanResolve.set(false);
+    this.manualVersion.set(0);
+    this.manualError.set('');
+    const id = this.workItemId(),
+      context = this.context(),
+      generation = this.generation;
+    if (id)
+      void this.injector
+        .get(WorkApiService)
+        .read(
+          { spaceID: context.spaceID, projectID: context.project },
+          id,
+          this.lifetime.signal,
+        )
+        .then((detail) => {
+          if (generation !== this.generation) return;
+          this.manualCriteria.set(detail.item.criteria || '');
+          this.manualVersion.set(detail.item.version);
+          this.workCanResolve.set(
+            detail.capabilities.transitions.includes('resolved'),
+          );
+          this.manualReady.set(true);
+        })
+        .catch(() => {
+          if (generation === this.generation)
+            this.manualError.set(
+              'Work closure criteria are unavailable. Reload the Incident before resolving.',
+            );
+        });
   }
   private scope() {
     const actor = this.context().principal;
@@ -656,6 +732,12 @@ export class IncidentResolvePanelComponent {
       run: this.runRef(run.run),
       recovery: structuredClone(recovery.reference),
       humanNote: this.humanNote(),
+      ...(this.workItemId()
+        ? {
+            criteriaAccepted: this.manualAccepted(),
+            expectedWorkVersion: this.manualVersion(),
+          }
+        : {}),
     });
   }
   openRun() {

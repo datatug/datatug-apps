@@ -38,7 +38,14 @@ export function isHostedResolveAction(
     ];
     if (
       !criterionObject(value) ||
-      Object.keys(value).length !== keys.length ||
+      Object.keys(value).some(
+        (key) =>
+          ![...keys, 'criteriaAccepted', 'expectedWorkVersion'].includes(key),
+      ) ||
+      (value['criteriaAccepted'] !== undefined &&
+        typeof value['criteriaAccepted'] !== 'boolean') ||
+      (value['expectedWorkVersion'] !== undefined &&
+        !criterionVersion(value['expectedWorkVersion'])) ||
       !keys.every((key) => Object.hasOwn(value, key)) ||
       value['type'] !== 'resolve' ||
       typeof value['incidentRef'] !== 'string' ||

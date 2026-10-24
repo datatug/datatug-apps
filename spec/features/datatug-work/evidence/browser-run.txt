@@ -1,0 +1,40 @@
+wb run: admitted (queue empty)
+
+> nx run datatug-app:e2e-work
+
+> playwright test -c apps/datatug-app/playwright.work.config.ts --forbid-only
+
+(node:824291) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:824309) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 2 tests using 1 worker
+
+(node:824321) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓  1 [chromium] › apps/datatug-app/e2e/work.spec.ts:109:5 › real Work HTTP: Incident, delegated Case, context isolation and remediation Task (40.2s)
+  ✓  2 [chromium] › apps/datatug-app/e2e/work.spec.ts:650:5 › independent Context Bags, accountability edits, stale writes and viewer denial (13.9s)
+
+  2 passed (54.7s)
+
+DemoDB / GitHub request report (lane local, DemoDB mode fixture, GitHub mode checkout, 2 guarded test attempts; LIVE = sent to the real host, fixture = answered locally, for GitHub from the pinned checkouts)
+  host                                  asked  fixture  memory  LIVE  refused  ESCAPED
+  live requests to *.demodb.dev: 0 (run budget 0); live api.github.com requests: 0 (run budget 0); requests that escaped the guard: 0
+
+
+
+
+ NX   Successfully ran target e2e-work for project datatug-app
+
+
+  Run duration:      55.2s
+  Cache:             0/1 hit (0%)
+  Critical path:     55.2s (1 task)
+  Recoverable time:  <1ms
+
+  Recommendations:
+    - Drastically reduce your run duration by sharing a cache across your team and CI → https://cloud.nx.app/connect/UmEyx9sEuS.
+    - Speed up or split the longest tasks on the critical path:
+        datatug-app:e2e-work    55.2s
+wb run: done in 57s (exit 0)

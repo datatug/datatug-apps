@@ -95,6 +95,10 @@ describe('ProjectContextMenuComponent', () => {
       );
       expect(component.projectPageUrl('checks')).toBe(`${base}/checks`);
       expect(component.projectPageUrl('watch')).toBe(`${base}/watch`);
+      expect(component.projectPageUrl('work')).toBe(`${base}/work`);
+      expect(
+        component.projTopLevelPages.find((page) => page.path === 'work')?.title,
+      ).toBe('Work');
       expect(
         component.projTopLevelPages.find((page) => page.path === 'watch')
           ?.title,

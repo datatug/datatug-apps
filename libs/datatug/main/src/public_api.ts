@@ -89,3 +89,10 @@ export {
   formatQueryTimestamp,
   type QueryTimestamp,
 } from './lib/components/query-list-item/query-item-heading';
+
+export type {
+  WorkAction,
+  WorkDetail,
+  WorkItem,
+  WorkLink,
+} from './lib/work/work.models';

@@ -221,12 +221,17 @@ export interface IncidentResolutionCriterion {
 
 /** Actual Core public resolution projection; no private resolution event identity is exposed. */
 export interface IncidentResolution {
+  readonly lifecycleVersion?: 0 | 1;
   readonly humanNote: string;
   readonly proof: {
+    readonly resolutionEpoch?: number;
     readonly definitionDigest: string;
     readonly criterionVersion: number;
     readonly scope: IncidentResolutionCriterion['scope'];
-    readonly run: Extract<import('@sneat/datatug-semantic').ArtifactRef, { kind: 'check-run' }>['checkRun'];
+    readonly run: Extract<
+      import('@sneat/datatug-semantic').ArtifactRef,
+      { kind: 'check-run' }
+    >['checkRun'];
     readonly evaluatedAt: string;
     readonly outcome: 'pass';
     readonly observationRefs: readonly import('@sneat/datatug-semantic').ArtifactRef[];
@@ -235,6 +240,9 @@ export interface IncidentResolution {
 }
 
 export interface IncidentSummary {
+  readonly workItemId?: string;
+  readonly resolutionEpoch?: number;
+  readonly reopenedAt?: string;
   readonly resolutionCriterion?: IncidentResolutionCriterion;
   readonly resolution?: IncidentResolution;
   readonly ref: IncidentRef;
@@ -328,6 +336,7 @@ export interface IncidentEvent {
   readonly actor: IncidentActor;
   readonly type:
     | 'incident.resolved'
+    | 'incident.reopened'
     | 'incident.criterion-set'
     | 'incident.created'
     | 'incident.status'
@@ -349,11 +358,11 @@ export interface IncidentEvent {
         readonly description: string;
         readonly projects?: readonly IncidentProjectRef[];
         readonly reporter:
-          | IncidentActor
-          | { readonly kind: ''; readonly id: '' };
+          IncidentActor | { readonly kind: ''; readonly id: '' };
         readonly canonicalContext: IncidentContextView;
       }
-    | { readonly status: IncidentStatus }
+    | { readonly reason: string; readonly expectedResolutionEpoch: number }
+    | { readonly status: IncidentStatus; readonly lifecycleVersion?: 0 | 1 }
     | { readonly outcome: IncidentOutcome }
     | { readonly into: IncidentRef; readonly mergeId: string }
     | {

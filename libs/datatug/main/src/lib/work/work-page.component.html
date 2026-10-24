@@ -1,0 +1,1054 @@
+<ion-header
+  ><ion-toolbar color="light" class="with-back-button with-end-buttons"
+    ><ion-buttons slot="start"
+      ><ion-back-button [defaultHref]="backHref()"
+    /></ion-buttons>
+    @if (mine) {
+      <ion-title>My Work</ion-title>
+    } @else {
+      <sneat-datatug-page-title
+        [pageTitle]="
+          creating
+            ? 'New work'
+            : detail()
+              ? typeLabel(detail()!.item.type)
+              : 'Work'
+        "
+      />
+    }
+    <ion-buttons slot="end">
+      @if (!mine && !creating && !itemId() && page()?.capabilities?.canCreate) {
+        <ion-button [routerLink]="createHref()" color="primary"
+          >Create work</ion-button
+        >
+      }
+      <ion-menu-button /></ion-buttons></ion-toolbar
+></ion-header>
+<ion-content class="cardy">
+  <div class="work-layout">
+    @if (!actor()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label>Sign in to Work</ion-label></ion-item-divider
+        ><ion-card-content
+          >Keep operational work, investigations and accountability
+          together.<ion-button routerLink="/login"
+            >Sign in</ion-button
+          ></ion-card-content
+        ></ion-card
+      >
+    } @else if (!mine && !scope()) {
+      <ion-card
+        ><ion-item-divider color="light"
+          ><ion-label>Collaborative Work</ion-label></ion-item-divider
+        ><ion-card-content
+          >Work is available in Space-owned cloud projects. Open a shared
+          project to create and assign work. Local and Git project workspaces
+          remain available through their existing tools.<ion-button
+            routerLink="/home"
+            fill="clear"
+            >Open projects</ion-button
+          ></ion-card-content
+        ></ion-card
+      >
+    } @else {
+      @if (error()) {
+        <ion-card
+          ><ion-item-divider color="light"
+            ><ion-label>Change needs attention</ion-label></ion-item-divider
+          ><ion-card-content
+            ><p #errorAlert role="alert" tabindex="-1">{{ error() }}</p>
+            @if (pending()) {
+              <p>
+                Your original change is retained in this page. Retry sends that
+                exact operation. Reload only after reviewing an uncertain
+                result; it may already have been saved.
+              </p>
+              <ion-button (click)="retry()" [disabled]="busy()"
+                >Retry original change</ion-button
+              >
+            }
+            <ion-button fill="outline" (click)="load()" [disabled]="busy()"
+              >Reload latest</ion-button
+            ></ion-card-content
+          ></ion-card
+        >
+      }
+      @if (notice()) {
+        <p class="notice" role="status">{{ notice() }}</p>
+      }
+      @if (loading()) {
+        <ion-card
+          ><ion-item-divider color="light"
+            ><ion-label>Loading work…</ion-label></ion-item-divider
+          ><ion-list aria-label="Loading work">
+            @for (row of [1, 2, 3]; track row) {
+              <ion-item
+                ><ion-label
+                  ><ion-skeleton-text
+                    [animated]="true"
+                    style="width: 65%" /><ion-skeleton-text
+                    [animated]="true"
+                    style="width: 40%" /></ion-label
+              ></ion-item>
+            }</ion-list
+        ></ion-card>
+      }
+      @if (creating && page() && !loading()) {
+        <ion-card
+          ><ion-item-divider color="light"
+            ><ion-label>{{
+              parent() ? 'Delegate linked work' : 'Create work'
+            }}</ion-label></ion-item-divider
+          >
+          @if (parent(); as parent) {
+            <ion-item
+              ><ion-label class="ion-text-wrap"
+                ><h2>From {{ parent.item.title }}</h2>
+                <p>
+                  New work keeps its own context. Updates to this child never
+                  change its parent automatically.
+                </p></ion-label
+              ></ion-item
+            ><ion-item
+              ><ion-select
+                label="Context inheritance"
+                interface="popover"
+                [value]="inheritance()"
+                (ionChange)="inheritance.set($event.detail.value)"
+                ><ion-select-option value="snapshot"
+                  >Snapshot · independent copy</ion-select-option
+                ><ion-select-option value="follow-parent"
+                  >Follow parent · refresh explicitly</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+          }
+          @if (page()!.capabilities.canCreate) {
+            <sneat-work-form
+              [initial]="formDraft()"
+              [initialScope]="
+                context()?.bags?.[0]?.scope ||
+                parent()?.context?.bags?.[0]?.scope
+              "
+              [members]="members()"
+              [environments]="environments()"
+              [actor]="actor()"
+              [canAssign]="page()!.capabilities.canAssign"
+              [busy]="locked()"
+              (submitted)="save($event)"
+              (cancelled)="router.navigateByUrl(backHref())"
+            />
+          } @else {
+            <ion-card-content
+              >You can read work in this project. Ask a project owner for
+              permission to create work.</ion-card-content
+            >
+          }
+        </ion-card>
+      } @else if (detail(); as detail) {
+        <div class="detail-heading">
+          <div>
+            <div class="eyebrow">
+              {{ typeLabel(detail.item.type) }}
+            </div>
+            <h1>{{ detail.item.title }}</h1>
+            <div class="badges">
+              <ion-badge
+                [color]="
+                  detail.item.lifecycle === 'done' ? 'success' : 'medium'
+                "
+                >{{ detail.item.status | titlecase }}</ion-badge
+              ><ion-badge
+                [color]="
+                  detail.item.priority === 'urgent' ? 'danger' : 'medium'
+                "
+                >{{ detail.item.priority | titlecase }}</ion-badge
+              >
+              @if (overdue(detail.item)) {
+                <ion-badge color="danger">Overdue</ion-badge>
+              }
+            </div>
+          </div>
+          <ion-buttons>
+            @if (detail.capabilities.canEdit) {
+              <ion-button
+                fill="outline"
+                (click)="editing.set(!editing())"
+                [disabled]="locked()"
+                >{{ editing() ? 'View details' : 'Edit work' }}</ion-button
+              >
+            }
+          </ion-buttons>
+        </div>
+        @if (editing()) {
+          <ion-card
+            ><ion-item-divider color="light"
+              ><ion-label>Edit work</ion-label></ion-item-divider
+            ><sneat-work-form
+              [initial]="formDraft()"
+              [initialScope]="
+                context()?.bags?.[0]?.scope ||
+                parent()?.context?.bags?.[0]?.scope
+              "
+              [members]="members()"
+              [environments]="environments()"
+              [actor]="actor()"
+              [editing]="true"
+              [canAssign]="detail.capabilities.canAssign"
+              [busy]="locked()"
+              (submitted)="save($event)"
+              (cancelled)="editing.set(false)"
+          /></ion-card>
+        }
+        <div class="detail-columns">
+          <main>
+            <ion-card
+              ><ion-item-divider color="light"
+                ><ion-label>Overview</ion-label></ion-item-divider
+              ><ion-card-content
+                ><p class="preserve-lines">
+                  {{ detail.item.description || 'No description added.' }}
+                </p>
+                @if (detail.item.incident; as incident) {
+                  <p>
+                    <strong>Severity:</strong>
+                    {{ incident.severity | titlecase }} ·
+                    {{ incident.environment }}
+                  </p>
+                  @if (incident.impact) {
+                    <p class="preserve-lines">{{ incident.impact }}</p>
+                  }
+                }
+                @if (detail.item.criteria) {
+                  <h2>Closure criteria</h2>
+                  <p class="preserve-lines">{{ detail.item.criteria }}</p>
+                }
+                @if (detail.item.closure; as closure) {
+                  <h2>Closure</h2>
+                  <p class="preserve-lines">{{ closure.summary }}</p>
+                  <p>
+                    {{ name(closure.actorId) }} ·
+                    {{ closure.at | date: 'medium' }}
+                  </p>
+                }
+              </ion-card-content>
+              @if (specialistHref()) {
+                <ion-item
+                  [routerLink]="router.parseUrl(specialistHref())"
+                  detail
+                  ><ion-label>{{
+                    detail.item.type === 'case'
+                      ? 'Open Detective tools and evidence'
+                      : 'Open Incident evidence and resolution'
+                  }}</ion-label></ion-item
+                >
+              }
+            </ion-card>
+            <ion-card
+              ><ion-item-divider color="light"
+                ><ion-label>Context Bag</ion-label></ion-item-divider
+              >
+              @if (detail.item.parentId) {
+                <ion-item
+                  ><ion-label class="ion-text-wrap"
+                    ><p>
+                      {{
+                        detail.item.inheritance === 'follow-parent'
+                          ? 'Following parent with explicit refresh; local changes are retained.'
+                          : 'Independent snapshot copied from parent.'
+                      }}
+                    </p>
+                    <p>
+                      Share selected findings only through an explicit proposal.
+                    </p></ion-label
+                  ></ion-item
+                >
+              }
+              @if (context(); as context) {
+                <sneat-work-context
+                  [snapshot]="context"
+                  [environments]="environments()"
+                  [editable]="detail.capabilities.canContext"
+                  [busy]="locked()"
+                  (contextCommand)="contextCommand($event)"
+                  (selectionChange)="selection.set($event)"
+                />
+                <ion-item lines="none"
+                  ><ion-buttons class="wrapping-actions"
+                    ><ion-button
+                      (click)="executeSnapshot()"
+                      [disabled]="locked() || !selection().length"
+                      >Investigate selected context</ion-button
+                    >
+                    @if (
+                      detail.item.parentId && detail.capabilities.canContext
+                    ) {
+                      <ion-button
+                        (click)="propose()"
+                        [disabled]="locked() || !selection().length"
+                        >Propose to parent</ion-button
+                      >
+                      @if (detail.item.inheritance === 'follow-parent') {
+                        <ion-button
+                          (click)="refreshContext()"
+                          [disabled]="locked()"
+                          >Refresh from parent</ion-button
+                        >
+                      }
+                    }
+                  </ion-buttons></ion-item
+                >
+              } @else {
+                <ion-item
+                  ><ion-label color="medium"
+                    >Context is unavailable under your current
+                    access.</ion-label
+                  ></ion-item
+                >
+              }
+              @for (proposal of detail.proposals; track proposal.id) {
+                @if (
+                  proposal.state === 'proposed' &&
+                  proposal.sourceId === detail.item.id &&
+                  proposal.actorId === actor()
+                ) {
+                  <ion-item
+                    ><ion-label>Awaiting parent review</ion-label
+                    ><ion-button
+                      slot="end"
+                      fill="clear"
+                      (click)="dismissProposal(proposal.id, true)"
+                      [disabled]="locked()"
+                      >Cancel proposal</ion-button
+                    ></ion-item
+                  >
+                }
+                @if (
+                  proposal.state === 'proposed' &&
+                  proposal.targetId === detail.item.id
+                ) {
+                  <ion-item
+                    ><ion-label class="ion-text-wrap"
+                      ><h3>Context proposal from {{ proposal.sourceId }}</h3>
+                      <p>
+                        {{ name(proposal.actorId) }} ·
+                        {{ proposal.selection.length }} selected values
+                      </p></ion-label
+                    >
+                    @if (
+                      detail.capabilities.canAssign ||
+                      detail.item.ownerId === actor()
+                    ) {
+                      <ion-button
+                        slot="end"
+                        fill="clear"
+                        (click)="dismissProposal(proposal.id)"
+                        [disabled]="locked()"
+                        >Dismiss</ion-button
+                      >
+                      <ion-button
+                        slot="end"
+                        (click)="reviewProposal(proposal.id)"
+                        [disabled]="locked()"
+                        >Review proposal</ion-button
+                      >
+                    }
+                  </ion-item>
+                }
+              }
+            </ion-card>
+            <ion-card
+              ><ion-item-divider color="light"
+                ><ion-label>Activity</ion-label></ion-item-divider
+              >
+              @if (detail.capabilities.canEdit) {
+                <ion-item
+                  ><ion-textarea
+                    label="Comment"
+                    labelPlacement="stacked"
+                    [autoGrow]="true"
+                    maxlength="4096"
+                    [ngModel]="comment()"
+                    (ngModelChange)="comment.set($event)"
+                    [disabled]="locked()" /></ion-item
+                ><ion-item lines="none"
+                  ><ion-button
+                    slot="end"
+                    (click)="postComment()"
+                    [disabled]="locked() || !comment().trim()"
+                    >Add comment</ion-button
+                  ></ion-item
+                >
+              }
+              @if (detail.hasEarlierActivity) {
+                <ion-button
+                  fill="clear"
+                  (click)="earlierActivity()"
+                  [disabled]="historyLoading()"
+                  >{{
+                    historyLoading()
+                      ? 'Loading history…'
+                      : 'Load earlier activity'
+                  }}</ion-button
+                >
+              }
+              <ion-list>
+                @for (event of detail.activity; track event.id) {
+                  <ion-item
+                    ><ion-label class="ion-text-wrap"
+                      ><h3>
+                        {{ name(event.actorId) }} ·
+                        {{ event.action | titlecase }}
+                      </h3>
+                      <p>
+                        {{ event.at | date: 'medium' }}
+                        @if (event.fields?.length) {
+                          · {{ activityFields(event.fields) }}
+                        }
+                      </p>
+                      @if (event.summary) {
+                        <p class="preserve-lines">{{ event.summary }}</p>
+                      }
+                      @if (event.outcome) {
+                        <p>Outcome: {{ event.outcome | titlecase }}</p>
+                      }
+                      @for (change of event.changes; track $index) {
+                        <p>
+                          {{ activityField(change.field) }}:
+                          {{ change.before || 'None' }} →
+                          {{ change.after || 'None' }}
+                        </p>
+                      }
+                      @if (event.comment) {
+                        <p class="preserve-lines comment">
+                          {{ event.comment }}
+                        </p>
+                      }
+                    </ion-label></ion-item
+                  >
+                } @empty {
+                  <ion-item
+                    ><ion-label color="medium"
+                      >No activity yet.</ion-label
+                    ></ion-item
+                  >
+                }
+              </ion-list>
+            </ion-card>
+          </main>
+          <aside>
+            <ion-card
+              ><ion-item-divider color="light"
+                ><ion-label>Accountability</ion-label></ion-item-divider
+              ><ion-list
+                ><ion-item
+                  ><ion-label
+                    ><p>Accountable owner</p>
+                    <h3>{{ name(detail.item.ownerId) }}</h3></ion-label
+                  ></ion-item
+                ><ion-item
+                  ><ion-label
+                    ><p>Primary responsible person</p>
+                    <h3>
+                      {{ name(detail.item.primaryAssigneeId) }}
+                    </h3></ion-label
+                  ></ion-item
+                >
+                @for (id of detail.item.assigneeIds; track id) {
+                  @if (id !== detail.item.primaryAssigneeId) {
+                    <ion-item
+                      ><ion-label
+                        ><p>Assignee</p>
+                        {{ name(id) }}</ion-label
+                      ></ion-item
+                    >
+                  }
+                }
+                <ion-item
+                  ><ion-label
+                    ><p>Deadline</p>
+                    <h3 [class.overdue]="overdue(detail.item)">
+                      {{
+                        detail.item.dueAt
+                          ? (detail.item.dueAt | date: 'medium')
+                          : 'No deadline'
+                      }}
+                    </h3></ion-label
+                  ></ion-item
+                ></ion-list
+              >
+              @if (
+                detail.item.type === 'incident' &&
+                detail.capabilities.transitions.includes('resolved') &&
+                specialistHref()
+              ) {
+                <ion-item
+                  [routerLink]="router.parseUrl(specialistHref())"
+                  detail
+                  ><ion-label>Review resolution evidence</ion-label></ion-item
+                >
+              }
+              @if (availableStatuses().length) {
+                <ion-item
+                  ><ion-button
+                    expand="block"
+                    (click)="
+                      transitionOpen.set(true);
+                      targetStatus.set('');
+                      summary.set('');
+                      outcome.set(detail.item.closure?.outcome || 'resolved');
+                      criteriaAccepted.set(false)
+                    "
+                    [disabled]="locked()"
+                    >Change status</ion-button
+                  ></ion-item
+                >
+              }
+            </ion-card>
+            <ion-card
+              ><ion-item-divider color="light"
+                ><ion-label
+                  >Related work &amp; references</ion-label
+                ></ion-item-divider
+              >
+              @if (detail.capabilities.canCreate) {
+                <ion-item
+                  ><ion-buttons class="wrapping-actions">
+                    @if (detail.item.type === 'incident') {
+                      <ion-button
+                        [routerLink]="router.parseUrl(childHref('case'))"
+                        >Delegate investigation</ion-button
+                      >
+                    }
+                    <ion-button
+                      [routerLink]="router.parseUrl(childHref('task'))"
+                      >Create linked Task</ion-button
+                    ></ion-buttons
+                  ></ion-item
+                >
+              }
+              <ion-list>
+                @for (link of detail.links; track link.id) {
+                  <ion-item
+                    ><ion-label class="ion-text-wrap"
+                      ><p>
+                        {{ relationLabel(link) }} ·
+                        {{ relatedType(link) | titlecase }}
+                      </p>
+                      @if (relatedHref(link)) {
+                        <a [routerLink]="router.parseUrl(relatedHref(link))">{{
+                          relatedTitle(link)
+                        }}</a>
+                      } @else {
+                        {{ link.target.id }}
+                      }
+                    </ion-label>
+                    @if (
+                      detail.capabilities.canEdit && link.relation !== 'parent'
+                    ) {
+                      <ion-button
+                        slot="end"
+                        fill="clear"
+                        [attr.aria-label]="
+                          'Remove link to ' + relatedTitle(link)
+                        "
+                        (click)="unlink(link.id)"
+                        [disabled]="locked()"
+                        >Remove</ion-button
+                      >
+                    }
+                  </ion-item>
+                } @empty {
+                  <ion-item
+                    ><ion-label color="medium"
+                      >No linked work or artefacts.</ion-label
+                    ></ion-item
+                  >
+                }
+              </ion-list>
+              @if (detail.capabilities.canEdit) {
+                <ion-item
+                  ><ion-button
+                    fill="clear"
+                    (click)="linkOpen.set(true)"
+                    [disabled]="locked()"
+                    >Link work or artefact</ion-button
+                  ></ion-item
+                >
+              }
+            </ion-card>
+          </aside>
+        </div>
+      } @else if (!creating && !itemId()) {
+        <ion-card
+          ><ion-item-divider color="light"
+            ><ion-label>{{ mine ? 'My Work' : 'Project Work' }}</ion-label
+            ><ion-buttons slot="end"
+              ><ion-button (click)="filterOpen.set(true)">Filters</ion-button
+              ><ion-button (click)="load()" [disabled]="loading()"
+                >Refresh</ion-button
+              ></ion-buttons
+            ></ion-item-divider
+          >
+          @if (mine) {
+            <ion-item
+              ><ion-label class="ion-text-wrap" color="medium"
+                >Work from {{ covered() }} admitted projects in your current
+                Spaces. Local and Git projects are not included.</ion-label
+              ></ion-item
+            ><ion-item
+              ><ion-select
+                label="My responsibility"
+                interface="popover"
+                [value]="myRole()"
+                (ionChange)="myRole.set($event.detail.value); load()"
+                ><ion-select-option value="assignee"
+                  >Assigned to me</ion-select-option
+                ><ion-select-option value="owner"
+                  >Owned by me</ion-select-option
+                ></ion-select
+              ></ion-item
+            >
+          }
+          @for (failure of partial(); track $index) {
+            <ion-item
+              ><ion-label color="warning" role="status">{{
+                failure
+              }}</ion-label></ion-item
+            >
+          }
+          <ion-searchbar
+            aria-label="Search work"
+            placeholder="Search title or description"
+            [debounce]="350"
+            [value]="filters().search || ''"
+            (ionInput)="setFilter('search', $event.detail.value || '')"
+          />
+          <ion-segment
+            [value]="filters().type || ''"
+            (ionChange)="setFilter('type', '' + ($event.detail.value || ''))"
+            ><ion-segment-button value=""
+              ><ion-label>All</ion-label></ion-segment-button
+            ><ion-segment-button value="incident"
+              ><ion-label>Incidents</ion-label></ion-segment-button
+            ><ion-segment-button value="case"
+              ><ion-label>Cases</ion-label></ion-segment-button
+            ><ion-segment-button value="task"
+              ><ion-label>Tasks</ion-label></ion-segment-button
+            ></ion-segment
+          >
+          @if (activeFilters().length) {
+            <div class="filter-chips">
+              @for (filter of activeFilters(); track filter[0]) {
+                <ion-chip
+                  ><ion-label>{{ filter[0] }}: {{ filter[1] }}</ion-label
+                  ><ion-button
+                    fill="clear"
+                    [attr.aria-label]="'Clear ' + filter[0] + ' filter'"
+                    (click)="setFilter($any(filter[0]), '')"
+                    >×</ion-button
+                  ></ion-chip
+                >
+              }
+            </div>
+          }
+          <ion-list aria-label="Work items">
+            @for (
+              item of rows();
+              track item.spaceID + '/' + item.projectID + '/' + item.id
+            ) {
+              <ion-item [routerLink]="href(item)" detail class="work-row"
+                ><ion-label class="ion-text-wrap"
+                  ><p>
+                    {{ typeLabel(item.type) }}
+                    @if (mine) {
+                      · {{ item.projectID }}
+                    }
+                  </p>
+                  <h2>{{ item.title }}</h2>
+                  <p>
+                    Owner: {{ name(item.ownerId) }} · Responsible:
+                    {{ name(item.primaryAssigneeId) }}
+                  </p>
+                  <p>
+                    @if (item.dueAt) {
+                      <span [class.overdue]="overdue(item)"
+                        >{{ overdue(item) ? 'Overdue · ' : 'Due '
+                        }}{{ item.dueAt | date: 'mediumDate' }}</span
+                      >
+                    } @else {
+                      No deadline
+                    }
+                  </p></ion-label
+                >
+                <div slot="end" class="row-status">
+                  <ion-badge
+                    [color]="item.lifecycle === 'done' ? 'success' : 'medium'"
+                    >{{ item.status | titlecase }}</ion-badge
+                  ><span>{{ item.priority | titlecase }}</span>
+                </div></ion-item
+              >
+            } @empty {
+              @if (!loading() && !error()) {
+                <ion-item
+                  ><ion-label class="ion-text-wrap"
+                    ><h2>
+                      {{
+                        activeFilters().length
+                          ? 'No work matches these filters.'
+                          : 'No work yet.'
+                      }}
+                    </h2>
+                    <p>
+                      {{
+                        mine
+                          ? 'Your assigned work appears here after you join a project.'
+                          : 'Report an incident, investigate a question, or create an operational task.'
+                      }}
+                    </p></ion-label
+                  ></ion-item
+                >
+              }
+            }
+          </ion-list>
+          @if (page()?.hasMore) {
+            <ion-item
+              ><ion-button (click)="load(true)" [disabled]="loading()"
+                >Load more work</ion-button
+              ></ion-item
+            >
+          }
+        </ion-card>
+      }
+    }
+  </div>
+</ion-content>
+<ion-modal [isOpen]="filterOpen()" (didDismiss)="filterOpen.set(false)"
+  ><ng-template
+    ><ion-header
+      ><ion-toolbar color="light"
+        ><ion-title>Filter work</ion-title
+        ><ion-buttons slot="end"
+          ><ion-button (click)="filterOpen.set(false)"
+            >Done</ion-button
+          ></ion-buttons
+        ></ion-toolbar
+      ></ion-header
+    ><ion-content>
+      <ion-item
+        ><ion-select
+          label="Priority"
+          interface="popover"
+          [value]="filters().priority || ''"
+          (ionChange)="setFilter('priority', $event.detail.value)"
+          ><ion-select-option value="">Any priority</ion-select-option>
+          @for (p of ['low', 'normal', 'high', 'urgent']; track p) {
+            <ion-select-option [value]="p">{{
+              p | titlecase
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      >
+      <ion-item
+        ><ion-select
+          label="Deadline"
+          interface="popover"
+          [value]="filters().due || ''"
+          (ionChange)="setFilter('due', $event.detail.value)"
+          ><ion-select-option value="">Any deadline</ion-select-option
+          ><ion-select-option value="overdue">Overdue</ion-select-option
+          ><ion-select-option value="scheduled"
+            >Has a deadline</ion-select-option
+          ><ion-select-option value="none"
+            >No deadline</ion-select-option
+          ></ion-select
+        ></ion-item
+      >
+      <ion-item
+        ><ion-select
+          label="Status"
+          interface="popover"
+          [value]="filters().status || ''"
+          (ionChange)="setFilter('status', $event.detail.value)"
+          ><ion-select-option value="">Any status</ion-select-option>
+          @for (
+            status of [
+              'open',
+              'active',
+              'investigating',
+              'mitigating',
+              'recovering',
+              'resolved',
+              'watching',
+              'closed',
+              'archived',
+              'in-progress',
+              'blocked',
+              'done',
+              'cancelled',
+            ];
+            track status
+          ) {
+            <ion-select-option [value]="status">{{
+              status | titlecase
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      >
+      @for (role of ['owner', 'assignee']; track role) {
+        <ion-item
+          ><ion-select
+            [label]="role | titlecase"
+            interface="popover"
+            [value]="$any(filters())[role] || ''"
+            (ionChange)="setFilter($any(role), $event.detail.value)"
+            ><ion-select-option value="">Anyone</ion-select-option>
+            @for (member of members(); track member.id) {
+              <ion-select-option [value]="member.id">{{
+                member.title || member.id
+              }}</ion-select-option>
+            }
+          </ion-select></ion-item
+        >
+      }
+    </ion-content></ng-template
+  ></ion-modal
+>
+<ion-modal
+  [isOpen]="transitionOpen()"
+  (didDismiss)="transitionOpen.set(false); focusError()"
+  ><ng-template
+    ><ion-header
+      ><ion-toolbar color="light"
+        ><ion-title>Change status</ion-title
+        ><ion-buttons slot="end"
+          ><ion-button (click)="transitionOpen.set(false)" [disabled]="locked()"
+            >Cancel</ion-button
+          ></ion-buttons
+        ></ion-toolbar
+      ></ion-header
+    ><ion-content>
+      <ion-item
+        ><ion-select
+          label="Next status"
+          interface="popover"
+          [value]="targetStatus()"
+          (ionChange)="targetStatus.set($event.detail.value)"
+        >
+          @for (status of availableStatuses(); track status) {
+            <ion-select-option [value]="status">{{
+              status | titlecase
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      ><ion-item
+        ><ion-textarea
+          label="Reason or resolution summary"
+          labelPlacement="stacked"
+          [ngModel]="summary()"
+          (ngModelChange)="summary.set($event)"
+          [autoGrow]="true"
+          maxlength="4096"
+      /></ion-item>
+      @if (
+        detail()?.item?.type === 'incident' &&
+        ['resolved', 'watching', 'closed'].includes(targetStatus())
+      ) {
+        <ion-item
+          ><ion-select
+            label="Outcome"
+            interface="popover"
+            [value]="outcome()"
+            (ionChange)="outcome.set($event.detail.value)"
+          >
+            @for (
+              outcome of [
+                'resolved',
+                'false-alarm',
+                'accepted',
+                'handed-off',
+                'unresolved',
+              ];
+              track outcome
+            ) {
+              <ion-select-option [value]="outcome">{{
+                outcome | titlecase
+              }}</ion-select-option>
+            }
+          </ion-select></ion-item
+        ><ion-item
+          ><ion-label color="medium"
+            >Incidents with a machine criterion must be resolved from their
+            evidence tools.</ion-label
+          ></ion-item
+        >
+      }
+      @if (detail()?.item?.criteria) {
+        <ion-item
+          ><ion-label class="ion-text-wrap"
+            ><h2>Closure criteria</h2>
+            <p class="preserve-lines">
+              {{ detail()?.item?.criteria }}
+            </p></ion-label
+          ></ion-item
+        >
+        <ion-item
+          ><ion-checkbox
+            [checked]="criteriaAccepted()"
+            (ionChange)="criteriaAccepted.set($event.detail.checked)"
+            >I verified the closure criteria</ion-checkbox
+          ></ion-item
+        >
+      }
+      <ion-item
+        ><ion-button
+          (click)="transition()"
+          [disabled]="locked() || !targetStatus() || !summary().trim()"
+          >Save status</ion-button
+        ></ion-item
+      ></ion-content
+    ></ng-template
+  ></ion-modal
+>
+<ion-modal
+  [isOpen]="linkOpen()"
+  (didDismiss)="linkOpen.set(false); focusError()"
+  ><ng-template
+    ><ion-header
+      ><ion-toolbar color="light"
+        ><ion-title>Link work or artefact</ion-title
+        ><ion-buttons slot="end"
+          ><ion-button (click)="linkOpen.set(false)" [disabled]="locked()"
+            >Cancel</ion-button
+          ></ion-buttons
+        ></ion-toolbar
+      ></ion-header
+    ><ion-content>
+      <ion-item
+        ><ion-select
+          label="Reference type"
+          interface="popover"
+          [value]="targetKind()"
+          (ionChange)="targetKind.set($event.detail.value)"
+        >
+          @for (kind of ['work', 'check', 'query']; track kind) {
+            <ion-select-option [value]="kind">{{
+              kind | titlecase
+            }}</ion-select-option>
+          }
+        </ion-select></ion-item
+      ><ion-item
+        ><ion-input
+          label="Existing reference ID"
+          labelPlacement="stacked"
+          [ngModel]="targetId()"
+          (ngModelChange)="targetId.set($event)"
+      /></ion-item>
+      @if (targetKind() === 'query') {
+        <ion-item
+          ><ion-input
+            label="Query folder (optional)"
+            labelPlacement="stacked"
+            [ngModel]="targetFolder()"
+            (ngModelChange)="targetFolder.set($event)"
+        /></ion-item>
+      }
+      @if (targetKind() === 'work') {
+        <ion-item
+          ><ion-select
+            label="Relationship"
+            interface="popover"
+            [value]="linkRelation()"
+            (ionChange)="linkRelation.set($event.detail.value)"
+            ><ion-select-option value="related">Related</ion-select-option
+            ><ion-select-option value="blocks">Blocks</ion-select-option
+            ><ion-select-option value="duplicates"
+              >Duplicates</ion-select-option
+            ></ion-select
+          ></ion-item
+        >
+      } @else {
+        <ion-item
+          ><ion-select
+            label="Environment"
+            interface="popover"
+            [value]="targetEnvironment()"
+            (ionChange)="targetEnvironment.set($event.detail.value)"
+          >
+            @for (env of artifactEnvironments(); track env.environmentId) {
+              <ion-select-option [value]="env.environmentId">{{
+                env.title
+                  ? env.title + ' · ' + env.environmentId
+                  : env.environmentId
+              }}</ion-select-option>
+            }
+          </ion-select></ion-item
+        ><ion-item
+          ><ion-label color="medium"
+            >This links an existing artefact in this project. It remains a
+            {{ targetKind() }} with its own permissions.</ion-label
+          ></ion-item
+        >
+      }
+      <ion-item
+        ><ion-button
+          (click)="link()"
+          [disabled]="
+            locked() ||
+            !targetId().trim() ||
+            (targetKind() !== 'work' && !targetEnvironment())
+          "
+          >Add link</ion-button
+        ></ion-item
+      ></ion-content
+    ></ng-template
+  ></ion-modal
+>
+
+<ion-modal
+  [isOpen]="proposalReviewOpen()"
+  (didDismiss)="
+    proposalReviewOpen.set(false);
+    proposalPreview.set([]);
+    reviewedProposal.set('');
+    focusError()
+  "
+  ><ng-template
+    ><ion-header
+      ><ion-toolbar color="light"
+        ><ion-title>Review proposed context</ion-title
+        ><ion-buttons slot="end"
+          ><ion-button
+            (click)="proposalReviewOpen.set(false)"
+            [disabled]="locked()"
+            >Cancel</ion-button
+          ></ion-buttons
+        ></ion-toolbar
+      ></ion-header
+    ><ion-content
+      ><ion-item
+        ><ion-label class="ion-text-wrap"
+          >Accepting copies these specific revisions into this work item's
+          Context Bag. Existing local conflicts are rejected for
+          review.</ion-label
+        ></ion-item
+      ><ion-list>
+        @for (entry of proposalPreview(); track $index) {
+          <ion-item
+            ><ion-label class="ion-text-wrap"
+              ><h3>{{ entry.label }}</h3>
+              <p>{{ entry.value }}</p></ion-label
+            ></ion-item
+          >
+        }</ion-list
+      ><ion-item
+        ><ion-button
+          (click)="acceptProposal(reviewedProposal())"
+          [disabled]="locked() || !reviewedProposal()"
+          >Accept proposed context</ion-button
+        ></ion-item
+      ></ion-content
+    ></ng-template
+  ></ion-modal
+>

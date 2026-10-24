@@ -107,6 +107,7 @@
     <ion-content>
       @if (workspace.snapshot(); as snapshot) {
         <ion-item lines="full"><ion-label><h2>{{ snapshot.session.title }}</h2><p>{{ snapshot.session.databaseId }} · {{ snapshot.session.state }}</p></ion-label></ion-item>
+        @if (!workspace.appliedCount()) { <ion-item color="light"><ion-label class="ion-text-wrap">Select entries and Apply Context before using them in queries. Copied values are not applied automatically.</ion-label></ion-item> }
         <ion-item><ion-checkbox [checked]="workspace.draft().enabled" (ionChange)="workspace.stageEnabled($event.detail.checked)" [disabled]="!workspace.canExecute()">All session context</ion-checkbox></ion-item>
         <ion-item><ion-select label="Bag" [value]="workspace.selectedBag()?.id" (ionChange)="workspace.chooseBag($event.detail.value)">
           @for (bag of snapshot.bags; track bag.id) { <ion-select-option [value]="bag.id">{{ bag.title }} · {{ bag.scope.environmentId }}</ion-select-option> }

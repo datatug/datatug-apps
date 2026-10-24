@@ -507,6 +507,24 @@ sessionWorkspacePages.push({
       (m) => m.SessionBagPageComponent,
     ),
 });
+datatugProjectRoutes.unshift(
+  {
+    path: 'work/new',
+    data: { newWork: true },
+    loadComponent: () =>
+      import('../work/work-page.component').then((m) => m.WorkPageComponent),
+  },
+  {
+    path: 'work/:workItemId',
+    loadComponent: () =>
+      import('../work/work-page.component').then((m) => m.WorkPageComponent),
+  },
+  {
+    path: 'work',
+    loadComponent: () =>
+      import('../work/work-page.component').then((m) => m.WorkPageComponent),
+  },
+);
 datatugProjectRoutes.unshift({
   path: 'sessions',
   providers: [SessionWorkspaceService],

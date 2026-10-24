@@ -72,6 +72,9 @@ describe('datatugRoutes', () => {
       'cards',
       'boards',
       'sessions',
+      'work/new',
+      'work/:workItemId',
+      'work',
       'incidents',
       'queries',
       'checks',
@@ -89,6 +92,12 @@ describe('datatugRoutes', () => {
       );
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
+    expect(matches([...base, 'work'])).toBe(true);
+    expect(matches([...base, 'work', 'new'])).toBe(true);
+    expect(matches([...base, 'work', 'item-1'])).toBe(true);
+    expect(matches([...base, 'work', 'bad.id'])).toBe(false);
+    expect(matches([...base, 'work', 'x'.repeat(129)])).toBe(false);
+    expect(matches([...base, 'work', 'item-1', 'extra'])).toBe(false);
     for (const path of ['', 'new-entity', 'entity', 'new-field', 'field']) {
       expect(matches([...base, 'meanings', ...(path ? [path] : [])])).toBe(
         true,

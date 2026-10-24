@@ -648,9 +648,13 @@ export class SessionWorkspaceService {
       const slot = this.slotFor(snapshot, bag.scope);
       selections[bag.id] = (selections[bag.id] ?? (slot?.bagId === bag.id ? slot.entries : [])).filter((ref) => bag.entryIds.includes(ref.entryId));
     }
+    const defaultBag = snapshot.bags.find((bag) => bag.id === snapshot.session.defaultBagId);
+    // A fresh private copy keeps its empty local set. Show the copied set on first
+    // open without selecting or applying any entries; preserve an explicit device choice.
+    const copiedBag = !defaultBag?.entryIds.length && snapshot.bags.find((bag) => bag.entryIds.length && snapshot.revisions.some((revision) => revision.bagId === bag.id && revision.source));
     const selectedBagId = draft?.selectedBagId && snapshot.bags.some((bag) => bag.id === draft.selectedBagId)
       ? draft.selectedBagId
-      : snapshot.session.defaultBagId;
+      : copiedBag ? copiedBag.id : snapshot.session.defaultBagId;
     return { selectedBagId,
       enabled: draft?.enabled ?? snapshot.contextSet.enabled, selections,
       attachments: (draft?.attachments ?? []).filter((ref) => snapshot.entries.some((entry) => entry.id === ref.entryId)), pinnedAttachments: draft?.pinnedAttachments ?? [], composer: draft?.composer ?? '' };

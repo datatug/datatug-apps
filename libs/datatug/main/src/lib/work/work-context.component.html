@@ -1,0 +1,180 @@
+<ion-item
+  ><ion-select
+    label="Set"
+    labelPlacement="stacked"
+    interface="popover"
+    [value]="bag()?.id"
+    (ionChange)="chooseBag($event.detail.value)"
+  >
+    @for (bag of snapshot().bags; track bag.id) {
+      <ion-select-option [value]="bag.id">{{
+        bagLabel(bag.id, bag.title)
+      }}</ion-select-option>
+    }</ion-select
+  ><ion-buttons slot="end">
+    @if (editable()) {
+      <ion-button
+        (click)="bagMode.set('create'); bagTitle.set('')"
+        [disabled]="busy()"
+        >Add bag</ion-button
+      ><ion-button
+        (click)="bagMode.set('rename'); bagTitle.set(bag()?.title || '')"
+        [disabled]="busy()"
+        >Rename</ion-button
+      >
+    }
+  </ion-buttons></ion-item
+>
+@if (bagMode()) {
+  <ion-item
+    ><ion-input
+      label="Bag title"
+      labelPlacement="stacked"
+      [ngModel]="bagTitle()"
+      (ngModelChange)="bagTitle.set($event)"
+    /><ion-buttons slot="end"
+      ><ion-button (click)="bagMode.set(undefined)">Cancel</ion-button
+      ><ion-button (click)="saveBag()" [disabled]="busy() || !bagTitle().trim()"
+        >Save bag</ion-button
+      ></ion-buttons
+    ></ion-item
+  >
+}
+@if (bag(); as bag) {
+  <details class="ion-padding-horizontal">
+    <summary>Source and revision</summary>
+    <p>
+      {{ bag.scope.environmentId }} · {{ bag.scope.identityDomain }} · revision
+      {{ bag.version }}
+    </p>
+    <p>
+      Saved values stay local. Apply selects query inputs; sharing to a parent
+      requires an explicit proposal.
+    </p>
+  </details>
+  <ion-list aria-label="Context Bag entries">
+    @for (entry of entries(); track entry.id) {
+      <ion-item
+        ><ion-checkbox
+          slot="start"
+          [attr.aria-label]="'Select ' + (entry.alias || entry.subject.fieldId)"
+          [checked]="checked(entry)"
+          (ionChange)="check(entry, $event.detail.checked)"
+          [disabled]="busy()"
+        /><ion-label class="ion-text-wrap"
+          ><h3>{{ entry.alias || entry.subject.fieldId }}</h3>
+          <p>
+            {{ entry.subject.conceptId }} · {{ entry.subject.fieldId }} ·
+            {{ inherited(entry) ? 'Inherited snapshot' : 'Local value' }}
+          </p>
+          <p>{{ value(entry) }}</p></ion-label
+        >
+        @if (editable() && canEdit(entry)) {
+          <ion-button
+            slot="end"
+            fill="clear"
+            (click)="edit(entry, $event)"
+            [disabled]="busy()"
+            >Edit</ion-button
+          >
+        }
+      </ion-item>
+    } @empty {
+      <ion-item
+        ><ion-label color="medium"
+          >Add a mapped value to start this context set.</ion-label
+        ></ion-item
+      >
+    }
+  </ion-list>
+  @if (editable()) {
+    <ion-item lines="none"
+      ><ion-buttons
+        ><ion-button
+          (click)="edit(undefined, $event)"
+          [disabled]="busy() || !subjects().length"
+          >Add value</ion-button
+        ><ion-button (click)="apply()" [disabled]="busy() || !entries().length"
+          >Apply selected context</ion-button
+        ></ion-buttons
+      ></ion-item
+    >
+  }
+  @if (editorOpen()) {
+    <ion-item lines="none"
+      ><ion-label class="ion-text-wrap" color="medium"
+        >Values are shared with project members who have access to this data
+        source. Do not add credentials or secrets.</ion-label
+      ></ion-item
+    >
+    <ion-item
+      ><ion-select
+        label="Mapped entity field"
+        interface="popover"
+        [value]="subjectId()"
+        (ionChange)="subjectId.set($event.detail.value)"
+      >
+        @for (subject of subjects(); track subject.id) {
+          <ion-select-option [value]="subject.id">{{
+            subject.label
+          }}</ion-select-option>
+        }
+      </ion-select></ion-item
+    >
+    <ion-item
+      ><ion-input
+        label="Label (optional)"
+        labelPlacement="stacked"
+        [ngModel]="alias()"
+        (ngModelChange)="alias.set($event)"
+    /></ion-item>
+    <ion-item
+      ><ion-select
+        label="Shape"
+        interface="popover"
+        [value]="shape()"
+        (ionChange)="shape.set($event.detail.value)"
+        ><ion-select-option value="scalar">Single value</ion-select-option
+        ><ion-select-option value="set"
+          >Set · one value per line</ion-select-option
+        ></ion-select
+      ></ion-item
+    >
+    <ion-item
+      ><ion-textarea
+        label="Context value"
+        #valueInput
+        (keydown.escape)="cancelEntry()"
+        labelPlacement="stacked"
+        [autoGrow]="true"
+        [ngModel]="text()"
+        (ngModelChange)="text.set($event)"
+    /></ion-item>
+    @if (error()) {
+      <ion-item
+        ><ion-label color="danger" role="alert">{{
+          error()
+        }}</ion-label></ion-item
+      >
+    }
+    <ion-item lines="none"
+      ><ion-buttons slot="end"
+        ><ion-button (click)="cancelEntry()" [disabled]="busy()"
+          >Cancel</ion-button
+        ><ion-button
+          fill="solid"
+          (click)="saveEntry()"
+          [disabled]="busy() || !subjectId()"
+          >Save value</ion-button
+        ></ion-buttons
+      ></ion-item
+    >
+  }
+  @if (!subjects().length) {
+    <ion-item
+      ><ion-label color="medium"
+        >No mapped fields are currently admitted in this environment.</ion-label
+      ></ion-item
+    >
+  }
+}

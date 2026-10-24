@@ -1,0 +1,51 @@
+{
+  "result": "PASS",
+  "observations": [
+    {
+      "path": "/space/space/store/firestore/project/project/work/w-0bf22706997c1ae450702e51ac1528e8",
+      "status": "Closed",
+      "reloaded": true
+    },
+    {
+      "path": "/space/space/store/firestore/project/project/work/w-f811f24058191e7189dfa7a198c0dd66",
+      "status": "Active",
+      "reloaded": true
+    },
+    {
+      "path": "/space/space/store/firestore/project/project/work/w-a5529e9232ec170f453da8b54ad3e0f1",
+      "status": "Open",
+      "reloaded": true
+    },
+    {
+      "path": "/space/space/store/firestore/project/project/work/w-b24d68254db10099e97d16ddf68097b1",
+      "status": "Active",
+      "reloaded": true
+    },
+    {
+      "path": "/space/space/store/firestore/project/project/work/w-494b6bde66621d4f1a2bc3b65912b7af",
+      "status": "Open",
+      "reloaded": true
+    },
+    {
+      "retainedCaseCheckEvidence": true
+    },
+    {
+      "optionalBusinessAttributionStatus": 503,
+      "optionalBusinessAttributionCode": "activity_unavailable",
+      "queryBacklinkPreserved": true
+    },
+    {
+      "nativeIncidentEnvironment": "uat",
+      "nativeIncidentStatus": "closed",
+      "nativeInvestigationLinkPreserved": true
+    }
+  ],
+  "pageErrors": [],
+  "httpErrors": [
+    {
+      "status": 503,
+      "url": "http://127.0.0.1:8090/v0/datatug/projects/query_activity_context"
+    }
+  ],
+  "appsRuntimeCommit": "cde138d9"
+}
