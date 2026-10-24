@@ -193,6 +193,32 @@ export class WorkApiService {
       !Array.isArray(detail.activity)
     )
       throw new Error('The server returned inconsistent work details.');
+    if (detail.relatedItems !== undefined) {
+      const peers = new Set(
+        detail.links
+          .filter((link) => link.target.kind === 'work')
+          .map((link) =>
+            link.sourceId === detail.item.id ? link.target.id : link.sourceId,
+          ),
+      );
+      if (
+        !Array.isArray(detail.relatedItems) ||
+        detail.relatedItems.length > 200 ||
+        new Set(detail.relatedItems.map((item) => item?.id)).size !==
+          detail.relatedItems.length ||
+        detail.relatedItems.some(
+          (item) =>
+            !item ||
+            !peers.has(item.id) ||
+            !['incident', 'case', 'task'].includes(item.type) ||
+            typeof item.title !== 'string' ||
+            !item.title.trim() ||
+            item.title.length > 4000,
+        )
+      ) {
+        throw new Error('The server returned inconsistent related work.');
+      }
+    }
     if (detail.context) {
       const snapshot = readContextSnapshot(detail.context);
       if (

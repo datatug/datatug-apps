@@ -422,11 +422,36 @@ export class WorkPageComponent {
     return '';
   }
   relationLabel(link: WorkDetail['links'][number]): string {
+    if (link.target.kind === 'work' && link.relation === 'parent') {
+      return link.sourceId === this.itemId() ? 'Child' : 'Parent';
+    }
     if (link.target.kind === 'work' && link.target.id === this.itemId()) {
-      if (link.relation === 'parent') return 'Child';
       if (link.relation === 'blocks') return 'Blocked by';
     }
     return this.activityField(link.relation);
+  }
+  relatedId(link: WorkDetail['links'][number]): string {
+    return link.target.kind === 'work' && link.sourceId !== this.itemId()
+      ? link.sourceId
+      : link.target.id;
+  }
+  relatedTitle(link: WorkDetail['links'][number]): string {
+    return (
+      (link.target.kind === 'work' &&
+        this.detail()?.relatedItems?.find(
+          (item) => item.id === this.relatedId(link),
+        )?.title) ||
+      this.relatedId(link)
+    );
+  }
+  relatedType(link: WorkDetail['links'][number]): string {
+    const type =
+      link.target.kind === 'work'
+        ? this.detail()?.relatedItems?.find(
+            (item) => item.id === this.relatedId(link),
+          )?.type
+        : link.target.kind;
+    return type === 'case' ? 'Detective Case' : type || 'Work';
   }
   relatedHref(link: WorkDetail['links'][number]): string {
     if (link.target.kind === 'work') {

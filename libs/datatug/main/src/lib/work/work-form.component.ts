@@ -47,6 +47,11 @@ import {
   ],
   templateUrl: './work-form.component.html',
   styles: `
+    ion-input,
+    ion-textarea,
+    ion-select {
+      --highlight-color-valid: var(--ion-color-primary);
+    }
     :host {
       display: block;
     }

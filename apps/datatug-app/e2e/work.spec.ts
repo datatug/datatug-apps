@@ -1,4 +1,5 @@
 import { Page } from '@playwright/test';
+import { writeFile } from 'node:fs/promises';
 import { expect, test } from './helpers/demodb-guard';
 import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
 
@@ -35,17 +36,6 @@ async function stableScreenshot(page: Page, name: string, scrollTop = true) {
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-  if (scrollTop)
-    await page
-      .locator('ion-content:visible')
-      .last()
-      .evaluate((element) =>
-        (
-          element as HTMLElement & {
-            scrollToTop(duration: number): Promise<void>;
-          }
-        ).scrollToTop(0),
-      );
   await page.evaluate(async () => {
     await Promise.all(
       document
@@ -57,6 +47,18 @@ async function stableScreenshot(page: Page, name: string, scrollTop = true) {
         .map((animation) => animation.finished.catch(() => undefined)),
     );
   });
+  if (scrollTop)
+    await page.locator('ion-content:visible').evaluateAll(async (elements) => {
+      await Promise.all(
+        elements.map((element) =>
+          (
+            element as HTMLElement & {
+              scrollToTop(duration: number): Promise<void>;
+            }
+          ).scrollToTop(0),
+        ),
+      );
+    });
   await page.screenshot({
     path: `coverage/apps/datatug-work/${name}.png`,
     fullPage: true,
@@ -408,9 +410,11 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob
     .getByRole('textbox', { name: 'Title', exact: true })
     .fill('Repair shipment allocation for order 11045');
-  await bob.getByRole('textbox',{name:'Title',exact:true}).focus();
+  await bob.getByRole('textbox', { name: 'Title', exact: true }).focus();
   await bob.keyboard.press('Tab');
-  await expect(bob.getByRole('textbox',{name:'Description',exact:true})).toBeFocused();
+  await expect(
+    bob.getByRole('textbox', { name: 'Description', exact: true }),
+  ).toBeFocused();
   await bob.setViewportSize({ width: 390, height: 844 });
   await stableScreenshot(bob, 'task-form-mobile');
   await bob.setViewportSize({ width: 1280, height: 900 });
@@ -437,9 +441,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       exact: true,
     }),
   ).toBeVisible();
-  await bob
-    .locator('ion-item[href*="/checks/shipping-request-received"]')
-    .click();
+  await bob.locator('a[href*="/checks/shipping-request-received"]').click();
   await expect(
     bob.getByRole('list', { name: 'Work referencing this artefact' }),
   ).toContainText('Repair shipment allocation for order 11045');
@@ -458,7 +460,7 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
   await bob.locator('ion-select[label="Environment"]').click();
   await bob.getByRole('radio').filter({ hasText: /uat/i }).first().click();
   await bob.getByRole('button', { name: 'Add link', exact: true }).click();
-  await bob.locator('ion-item[href*="/query/"]').click();
+  await bob.locator('a[href*="/query/"]').click();
   await expect(bob).toHaveURL(/id=shipping%2Forder-receipt/);
   await expect(
     bob.getByRole('list', { name: 'Work referencing this artefact' }),
@@ -468,9 +470,23 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     .scrollIntoViewIfNeeded();
   await stableScreenshot(bob, 'query-work-backlinks-desktop', false);
   await bob.goto(casePath);
-  const statusTrigger = bob.getByRole('button', {name:'Change status',exact:true});
+  await expect(
+    bob
+      .locator('ion-item')
+      .filter({ has: bob.locator(`a[href="${incidentPath}"]`) }),
+  ).toContainText('Parent · Incident');
+  const statusTrigger = bob.getByRole('button', {
+    name: 'Change status',
+    exact: true,
+  });
   await statusTrigger.click();
-  await expect.poll(() => bob.locator('ion-modal:visible').evaluate(element => element.contains(document.activeElement))).toBe(true);
+  await expect
+    .poll(() =>
+      bob
+        .locator('ion-modal:visible')
+        .evaluate((element) => element.contains(document.activeElement)),
+    )
+    .toBe(true);
   await bob.keyboard.press('Escape');
   await expect(bob.locator('ion-modal:visible')).toHaveCount(0);
   await expect(statusTrigger).toBeFocused();
@@ -532,8 +548,26 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
       .click();
     await expect(page.locator('.badges')).toContainText(status);
   }
-  await expect(page.locator(`ion-item[href="${casePath}"]`)).toBeVisible();
+  await expect(page.locator(`a[href="${casePath}"]`)).toBeVisible();
+  await expect(
+    page
+      .locator('ion-item')
+      .filter({ has: page.locator(`a[href="${casePath}"]`) }),
+  ).toContainText('Child · Detective Case');
   await stableScreenshot(page, 'incident-closed-desktop');
+  await page
+    .getByText('Open Incident evidence and resolution', { exact: true })
+    .click();
+  await page.reload();
+  await expect(
+    page
+      .getByRole('heading')
+      .filter({ hasText: 'Delayed shipment · order 11045' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText('Invalid Incident projection', { exact: false }),
+  ).toHaveCount(0);
+  await stableScreenshot(page, 'incident-native-evidence-desktop');
   await page.goto(base);
   for (const path of [incidentPath, casePath, taskPath])
     await expect(page.locator(`ion-item[href="${path}"]`)).toBeVisible();
@@ -554,12 +588,38 @@ test('real Work HTTP: Incident, delegated Case, context isolation and remediatio
     ),
     contentType: 'application/json',
   });
+  await writeFile(
+    'coverage/apps/datatug-work/primary-diagnostics.json',
+    JSON.stringify(
+      { errors, diagnostics, incidentPath, casePath, taskPath },
+      null,
+      2,
+    ),
+  );
   expect(errors).toEqual([]);
 });
 
 test('independent Context Bags, accountability edits, stale writes and viewer denial', async ({
   page,
 }, testInfo) => {
+  const diagnostics: { kind: string; message: string }[] = [];
+  page.on('pageerror', (error) =>
+    diagnostics.push({ kind: 'pageerror', message: error.message }),
+  );
+  page.on('console', (message) => {
+    if (message.type() === 'error')
+      diagnostics.push({ kind: 'console', message: message.text() });
+  });
+  page.on('requestfailed', (request) =>
+    diagnostics.push({
+      kind: 'request-failed',
+      message:
+        new URL(request.url()).origin +
+        new URL(request.url()).pathname +
+        ': ' +
+        request.failure()?.errorText,
+    }),
+  );
   const token = await login(page, 'alice');
   const catalog = await (
     await page.request.get(`${api}/items?spaceID=space&projectID=project`, {
@@ -599,6 +659,35 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
       page.getByRole('list', { name: 'Context Bag entries' }),
     ).toContainText('11045');
   }
+  const independentCaseID = independent[0].split('/').pop();
+  const caseBefore = await (
+    await page.request.get(
+      `${api}/item?spaceID=space&projectID=project&id=${independentCaseID}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+  ).json();
+  const invalidTransition = await page.request.post(`${api}/actions`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      spaceID: 'space',
+      projectID: 'project',
+      itemId: independentCaseID,
+      expectedVersion: caseBefore.item.version,
+      operationId: crypto.randomUUID(),
+      action: 'transition',
+      status: 'open',
+      summary: 'Deliberately invalid Case transition test.',
+    },
+  });
+  expect(invalidTransition.status()).toBe(409);
+  const caseAfter = await (
+    await page.request.get(
+      `${api}/item?spaceID=space&projectID=project&id=${independentCaseID}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+  ).json();
+  expect(caseAfter.item.version).toBe(caseBefore.item.version);
+  expect(caseAfter.item.status).toBe(caseBefore.item.status);
   const taskPath = independent[1];
   await page.getByRole('button', { name: 'Edit work', exact: true }).click();
   await page
@@ -696,6 +785,22 @@ test('independent Context Bags, accountability edits, stale writes and viewer de
     )
   ).json();
   expect(reloaded.item.version).toBe(current.item.version);
+  await writeFile(
+    'coverage/apps/datatug-work/isolation-diagnostics.json',
+    JSON.stringify(
+      {
+        independent,
+        diagnostics,
+        invalidTransitionStatus: invalidTransition.status(),
+        staleWriteStatus: 409,
+        viewerMutationStatus: denied.status(),
+        versionPreserved: reloaded.item.version === current.item.version,
+      },
+      null,
+      2,
+    ),
+  );
+  expect(diagnostics.filter((entry) => entry.kind === 'pageerror')).toEqual([]);
   await testInfo.attach('work-isolation-evidence', {
     body: JSON.stringify({
       independent,

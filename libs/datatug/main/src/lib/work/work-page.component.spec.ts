@@ -301,7 +301,7 @@ describe('WorkPageComponent', () => {
       projectID: 'project',
       operationId: 'migration-rejected',
       action: 'create',
-      draft: { type: 'task', title: 'Existing project', priority:'normal' },
+      draft: { type: 'task', title: 'Existing project', priority: 'normal' },
     });
     expect(fixture.componentInstance.pending()).toBeUndefined();
     expect(fixture.componentInstance.error()).toContain(
@@ -326,13 +326,28 @@ describe('WorkPageComponent', () => {
     await fixture.whenStable();
     const link = {
       id: 'relationship',
-      sourceId: 'child',
+      sourceId: 'parent',
       relation: 'parent',
       target: { kind: 'work' as const, id: 'task1' },
       createdBy: 'lead',
       createdAt: '',
     };
-    expect(fixture.componentInstance.relationLabel(link)).toBe('Child');
+    const detail = workDetailFixture();
+    detail.relatedItems = [
+      { id: 'parent', type: 'case', title: 'Investigate delayed shipment' },
+    ];
+    fixture.componentInstance.detail.set(detail);
+    expect(fixture.componentInstance.relatedTitle(link)).toBe(
+      'Investigate delayed shipment',
+    );
+    expect(fixture.componentInstance.relatedType(link)).toBe('Detective Case');
+    expect(
+      fixture.componentInstance.relatedTitle({
+        ...link,
+        sourceId: 'unavailable',
+      }),
+    ).toBe('unavailable');
+    expect(fixture.componentInstance.relationLabel(link)).toBe('Parent');
     expect(
       fixture.componentInstance.relationLabel({ ...link, relation: 'blocks' }),
     ).toBe('Blocked by');
@@ -340,9 +355,9 @@ describe('WorkPageComponent', () => {
       fixture.componentInstance.relationLabel({
         ...link,
         sourceId: 'task1',
-        target: { kind: 'work', id: 'parent' },
+        target: { kind: 'work', id: 'child' },
       }),
-    ).toBe('Parent');
+    ).toBe('Child');
     for (const relation of ['related', 'duplicates'])
       expect(
         fixture.componentInstance.relationLabel({ ...link, relation }),

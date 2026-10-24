@@ -11,6 +11,8 @@ import type { DetectiveInputValue } from './models';
 
 export interface HostedIncidentView {
   workItemId?: string;
+  resolutionEpoch?: number;
+  reopenedAt?: string;
   resolutionCriterion?: IncidentResolutionCriterion;
   resolution?: import('../incidents/models').IncidentResolution;
   ref: { storeId: string; incidentId: string };

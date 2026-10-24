@@ -94,4 +94,35 @@ describe('WorkApiService', () => {
       service.list(scope, {}, new AbortController().signal),
     ).rejects.toThrow('Invalid Work list');
   });
+  it('admits only unique title projections for actual Work peers', async () => {
+    const detail = workDetailFixture();
+    detail.links = [
+      {
+        id: 'link',
+        sourceId: 'case1',
+        relation: 'parent',
+        target: { kind: 'work', id: 'task1' },
+        createdBy: 'lead',
+        createdAt: '',
+      },
+    ];
+    detail.relatedItems = [
+      { id: 'case1', type: 'case', title: 'Investigate shipment' },
+    ];
+    api.get.mockReturnValue(of(detail));
+    expect(
+      (await service.read(scope, 'task1', new AbortController().signal))
+        .relatedItems?.[0].title,
+    ).toBe('Investigate shipment');
+    for (const relatedItems of [
+      [{ id: 'unrelated', type: 'case', title: 'Private' }],
+      [...detail.relatedItems, ...detail.relatedItems],
+      [{ id: 'case1', type: 'watch', title: 'Not work' }],
+    ]) {
+      api.get.mockReturnValue(of({ ...detail, relatedItems }));
+      await expect(
+        service.read(scope, 'task1', new AbortController().signal),
+      ).rejects.toThrow('inconsistent related work');
+    }
+  });
 });

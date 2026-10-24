@@ -120,6 +120,7 @@ export interface WorkProposal {
   selection: ContextEntryRef[];
 }
 export interface WorkDetail {
+  relatedItems?: Pick<WorkItem, 'id' | 'type' | 'title'>[];
   environments: WorkEnvironment[];
   proposals: WorkProposal[];
   executionSessionId?: string;

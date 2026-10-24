@@ -530,13 +530,11 @@
                     ><ion-label class="ion-text-wrap"
                       ><p>
                         {{ relationLabel(link) }} ·
-                        {{ link.target.kind | titlecase }}
+                        {{ relatedType(link) | titlecase }}
                       </p>
                       @if (relatedHref(link)) {
                         <a [routerLink]="router.parseUrl(relatedHref(link))">{{
-                          link.sourceId === detail.item.id
-                            ? link.target.id
-                            : link.sourceId
+                          relatedTitle(link)
                         }}</a>
                       } @else {
                         {{ link.target.id }}
@@ -548,7 +546,9 @@
                       <ion-button
                         slot="end"
                         fill="clear"
-                        [attr.aria-label]="'Remove link to ' + link.target.id"
+                        [attr.aria-label]="
+                          'Remove link to ' + relatedTitle(link)
+                        "
                         (click)="unlink(link.id)"
                         [disabled]="locked()"
                         >Remove</ion-button
