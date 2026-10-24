@@ -4,6 +4,7 @@ import {
   DestroyRef,
   Injector,
   afterNextRender,
+  computed,
   inject,
   signal,
   viewChild,
@@ -114,6 +115,10 @@ export class EnvironmentsPageComponent {
   >(undefined);
   protected readonly loadError = signal(false);
   protected readonly reason = signal('');
+  /** Why the verified state denies creating or reordering, so the page explains the missing controls. */
+  protected readonly managementNote = computed(() =>
+    environmentManagementNote(this.state()),
+  );
   protected readonly presentation = environmentPresentation;
   protected readonly warningIcon = warningOutline;
   protected readonly upIcon = arrowUpOutline;
@@ -583,3 +588,35 @@ export class EnvironmentsPageComponent {
     }
   }
 }
+
+/**
+ * The reasons a verified state gives for denying environment management, one per denied capability, de-duplicated.
+ * A denied capability without a reason still gets a plain note, so the absent controls are never unexplained.
+ */
+export const environmentManagementNote = (
+  state: EnvironmentState | undefined,
+): string => {
+  const capabilities = state?.capabilities;
+  if (!capabilities) return '';
+  const notes = new Set<string>();
+  // The agent's reasons are bare phrases ("... are required"); end each as a sentence so two read as two.
+  const sentence = (reason: string | undefined, fallback: string): string => {
+    const text = reason?.trim() || fallback;
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+  };
+  if (!capabilities.canCreateEnvironment)
+    notes.add(
+      sentence(
+        capabilities.reasons?.canCreateEnvironment,
+        'Adding environments is unavailable for this project.',
+      ),
+    );
+  if (!capabilities.canWriteOrder)
+    notes.add(
+      sentence(
+        capabilities.reasons?.canWriteOrder,
+        'Managing the shared environment order is unavailable for this project.',
+      ),
+    );
+  return [...notes].join(' ');
+};

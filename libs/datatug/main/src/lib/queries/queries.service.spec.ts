@@ -12,7 +12,6 @@ import {
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { IProjectRef } from '../core/project-context';
-import { isTugqlYamlRequest } from './tugql-representation';
 
 describe('QueriesService', () => {
   beforeEach(() => {
